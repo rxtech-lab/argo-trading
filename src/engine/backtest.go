@@ -6,25 +6,7 @@ import (
 )
 
 type MarketDataSource interface {
-	// Next returns the next market data point and a boolean indicating if there are more data points
-	Next() (types.MarketData, bool, error)
-
-	// Reset repositions the iterator to the beginning of the data
-	Reset() error
-
-	// Close releases any resources used by the data source
-	Close() error
-}
-
-type InMemoryMarketDataSource struct {
-	Data     []types.MarketData
-	Position int
-}
-
-// FileMarketDataSource implements MarketDataSource for disk-based data
-type FileMarketDataSource struct {
-	FilePath string
-	// Implementation details would be in the concrete type
+	Iterator() func(yield func(types.MarketData) bool)
 }
 
 type BacktestEngine interface {
