@@ -12,6 +12,8 @@ import (
 	polygon "github.com/polygon-io/client-go/rest"
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/schollz/progressbar/v3"
+
+	"github.com/sirily11/argo-trading-go/src/types"
 )
 
 type PolygonClient struct {
@@ -69,10 +71,10 @@ func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Ti
 			return "", iter.Err()
 		}
 
-		rows := []TradingData{}
+		rows := []types.MarketData{}
 		for iter.Next() {
 			agg := iter.Item()
-			tradingData := TradingData{
+			tradingData := types.MarketData{
 				Time:   time.Time(agg.Timestamp),
 				Open:   agg.Open,
 				High:   agg.High,
