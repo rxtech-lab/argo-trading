@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirily11/argo-trading-go/src/engine/writer"
-	"github.com/sirily11/argo-trading-go/src/indicator"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"gopkg.in/yaml.v2"
@@ -21,7 +20,7 @@ type BacktestEngineV1Config struct {
 }
 
 type BacktestEngineV1 struct {
-	marketDataSource MarketDataSource
+	marketDataSource types.MarketDataSource
 	strategies       []strategyInfo
 	initialCapital   float64
 	currentCapital   float64
@@ -29,7 +28,6 @@ type BacktestEngineV1 struct {
 	pendingOrders    []types.Order
 	resultsWriter    writer.ResultWriter
 	resultsFolder    string
-	historicalData   []types.MarketData
 	equityCurve      []float64
 	buyAndHoldValue  float64
 	buyAndHoldPrice  float64
@@ -45,11 +43,10 @@ type strategyInfo struct {
 
 func NewBacktestEngineV1() *BacktestEngineV1 {
 	return &BacktestEngineV1{
-		strategies:     make([]strategyInfo, 0),
-		positions:      make(map[string]types.Position),
-		pendingOrders:  make([]types.Order, 0),
-		historicalData: make([]types.MarketData, 0),
-		equityCurve:    make([]float64, 0),
+		strategies:    make([]strategyInfo, 0),
+		positions:     make(map[string]types.Position),
+		pendingOrders: make([]types.Order, 0),
+		equityCurve:   make([]float64, 0),
 	}
 }
 
@@ -121,7 +118,7 @@ func (e *BacktestEngineV1) AddStrategy(strategy strategy.TradingStrategy, config
 }
 
 // AddMarketDataSource adds a market data source to the backtest engine
-func (e *BacktestEngineV1) AddMarketDataSource(source MarketDataSource) error {
+func (e *BacktestEngineV1) AddMarketDataSource(source types.MarketDataSource) error {
 	if source == nil {
 		return errors.New("market data source cannot be nil")
 	}
@@ -141,14 +138,13 @@ func (e *BacktestEngineV1) Run() error {
 	}
 
 	if e.initialCapital <= 0 {
-		return errors.New("initial capital must be set")
+		return errors.New("initial capital must be greater than zero")
 	}
 
-	// Reset state for a new run
+	// Initialize the backtest
 	e.currentCapital = e.initialCapital
 	e.positions = make(map[string]types.Position)
 	e.pendingOrders = make([]types.Order, 0)
-	e.historicalData = make([]types.MarketData, 0)
 	e.equityCurve = make([]float64, 0)
 	e.buyAndHoldValue = 0
 	e.buyAndHoldPrice = 0
@@ -166,10 +162,12 @@ func (e *BacktestEngineV1) Run() error {
 	// Process market data
 	isFirstData := true
 
-	for data := range e.marketDataSource.Iterator() {
-		// Add to historical data (we still need this for strategy context)
-		e.historicalData = append(e.historicalData, data)
+	// Use a very old start time and a future end time to get all data
+	startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
 
+	iteratorFunc := e.marketDataSource.Iterator(startTime, endTime)
+	iteratorFunc(func(data types.MarketData) bool {
 		// Initialize buy and hold on first data point
 		if isFirstData {
 			e.initializeBuyAndHold(data)
@@ -208,30 +206,26 @@ func (e *BacktestEngineV1) Run() error {
 				// Set strategy name
 				order.StrategyName = e.strategies[i].strategy.Name()
 
-				// Write order to disk immediately
-				if e.resultsWriter != nil {
-					if err := e.resultsWriter.WriteOrder(order); err != nil {
-						fmt.Printf("Warning: failed to write order: %v\n", err)
-					}
-				}
-
+				// Add to pending orders
 				e.pendingOrders = append(e.pendingOrders, order)
 			}
 		}
 
-		// Calculate current portfolio value
-		e.calculatePortfolioValue(data)
-	}
+		// Calculate portfolio value
+		portfolioValue := e.calculatePortfolioValue(data)
 
-	// Calculate final statistics
-	e.calculateStatistics()
-
-	// Close the writer
-	if e.resultsWriter != nil {
-		if err := e.resultsWriter.Close(); err != nil {
-			return fmt.Errorf("failed to close results writer: %w", err)
+		// Write portfolio value to disk
+		if e.resultsWriter != nil {
+			if err := e.resultsWriter.WriteEquityCurve([]float64{portfolioValue}, []time.Time{data.Time}); err != nil {
+				fmt.Printf("Warning: failed to write portfolio value: %v\n", err)
+			}
 		}
-	}
+
+		return true // Continue iteration
+	})
+
+	// Calculate statistics
+	e.calculateStatistics()
 
 	return nil
 }
@@ -461,6 +455,19 @@ func (e *BacktestEngineV1) calculateStatistics() {
 			stats.AverageProfitLoss = stats.TotalPnL / float64(stats.TotalTrades)
 		}
 
+		// Calculate final portfolio value
+		finalPortfolioValue := e.currentCapital
+		marketData := e.marketDataSource.GetDataForTimeRange(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC), time.Now().AddDate(100, 0, 0))
+		if len(marketData) > 0 {
+			lastPrice := marketData[len(marketData)-1].Close
+			for _, position := range e.positions {
+				finalPortfolioValue += position.Quantity * lastPrice
+			}
+		}
+
+		fmt.Printf("Final portfolio value: $%.2f\n", finalPortfolioValue)
+
+		// Calculate statistics for each strategy
 		e.strategies[i].stats = stats
 
 		// Write strategy stats to disk
@@ -508,8 +515,12 @@ func (e *BacktestEngineV1) calculateStatistics() {
 	// Print comparison with buy and hold
 	if e.buyAndHoldValue > 0 {
 		finalPortfolioValue := e.currentCapital
-		for _, position := range e.positions {
-			finalPortfolioValue += position.Quantity * e.historicalData[len(e.historicalData)-1].Close
+		marketData := e.marketDataSource.GetDataForTimeRange(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC), time.Now().AddDate(100, 0, 0))
+		if len(marketData) > 0 {
+			lastPrice := marketData[len(marketData)-1].Close
+			for _, position := range e.positions {
+				finalPortfolioValue += position.Quantity * lastPrice
+			}
 		}
 
 		fmt.Printf("Final portfolio value: $%.2f\n", finalPortfolioValue)
@@ -576,71 +587,4 @@ func (e *BacktestEngineV1) calculateMaxDrawdown() float64 {
 	}
 
 	return maxDrawdown
-}
-
-// strategyContext implements the strategy.StrategyContext interface
-type strategyContext struct {
-	engine *BacktestEngineV1
-}
-
-func (c strategyContext) GetHistoricalData() []types.MarketData {
-	return c.engine.historicalData
-}
-
-func (c strategyContext) GetCurrentPositions() []types.Position {
-	positions := make([]types.Position, 0, len(c.engine.positions))
-	for _, pos := range c.engine.positions {
-		positions = append(positions, pos)
-	}
-	return positions
-}
-
-func (c strategyContext) GetPendingOrders() []types.Order {
-	return c.engine.pendingOrders
-}
-
-func (c strategyContext) GetExecutedTrades() []types.Trade {
-	var allTrades []types.Trade
-	for _, s := range c.engine.strategies {
-		allTrades = append(allTrades, s.trades...)
-	}
-	return allTrades
-}
-
-func (c strategyContext) GetAccountBalance() float64 {
-	return c.engine.currentCapital
-}
-
-// GetIndicator retrieves an indicator by name and calculates its value using historical data
-func (c strategyContext) GetIndicator(name strategy.Indicator) (interface{}, error) {
-	var ind indicator.Indicator
-
-	// Create the indicator based on name
-	switch name {
-	case strategy.IndicatorRSI:
-		ind = indicator.NewRSI(14) // Default period of 14
-	case strategy.IndicatorMACD:
-		ind = indicator.NewMACD(12, 26, 9) // Default periods of 12, 26, 9
-	default:
-		return nil, fmt.Errorf("indicator %s not found", name)
-	}
-
-	// Create indicator context
-	ctx := indicator.NewIndicatorContext(c.engine.historicalData)
-
-	// Calculate indicator value
-	result, err := ind.Calculate(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate indicator %s: %w", name, err)
-	}
-
-	return result, nil
-}
-
-// Close finalizes the backtest and cleans up resources
-func (e *BacktestEngineV1) Close() error {
-	if e.resultsWriter != nil {
-		return e.resultsWriter.Close()
-	}
-	return nil
 }

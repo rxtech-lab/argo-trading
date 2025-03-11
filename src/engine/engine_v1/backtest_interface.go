@@ -5,17 +5,13 @@ import (
 	"github.com/sirily11/argo-trading-go/src/types"
 )
 
-type MarketDataSource interface {
-	Iterator() func(yield func(types.MarketData) bool)
-}
-
 type BacktestEngine interface {
 	Initialize(config string) error
 
 	// AddStrategy adds a strategy to be tested
 	AddStrategy(strategy strategy.TradingStrategy, config string) error
 
-	AddMarketDataSource(source MarketDataSource) error
+	AddMarketDataSource(source types.MarketDataSource) error
 	// Run executes the backtest
 	Run() error
 	// GetTradeStatsByStrategy returns statistics for a specific strategy

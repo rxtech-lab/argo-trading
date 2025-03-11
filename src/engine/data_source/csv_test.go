@@ -77,7 +77,7 @@ func TestCSVIterator(t *testing.T) {
 			FilePath: tempFile,
 		}
 
-		iterator := csvIterator.Iterator()
+		iterator := csvIterator.Iterator(time.Time{}, time.Time{})
 
 		var results []types.MarketData
 		iterator(func(data types.MarketData) bool {
@@ -105,7 +105,7 @@ func TestCSVIterator(t *testing.T) {
 			FilePath: tempFile,
 		}
 
-		iterator := csvIterator.Iterator()
+		iterator := csvIterator.Iterator(time.Time{}, time.Time{})
 
 		var results []types.MarketData
 		iterator(func(data types.MarketData) bool {

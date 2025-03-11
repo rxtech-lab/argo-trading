@@ -3,6 +3,7 @@ package datasource
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gocarina/gocsv"
 	"github.com/sirily11/argo-trading-go/src/types"
@@ -12,7 +13,13 @@ type CSVIterator struct {
 	FilePath string
 }
 
-func (i *CSVIterator) Iterator() func(yield func(types.MarketData) bool) {
+func NewCSVIterator(filePath string) types.MarketDataSource {
+	return &CSVIterator{
+		FilePath: filePath,
+	}
+}
+
+func (i *CSVIterator) Iterator(startTime, endTime time.Time) func(yield func(types.MarketData) bool) {
 	return func(yield func(types.MarketData) bool) {
 		// read the file
 		csvFile, err := os.Open(i.FilePath)
@@ -35,9 +42,38 @@ func (i *CSVIterator) Iterator() func(yield func(types.MarketData) bool) {
 
 		// Process each record as it comes in - simpler and more efficient loop
 		for marketData := range marketDataChan {
-			if !yield(marketData) {
-				break
+			// Filter by time range
+			if (marketData.Time.Equal(startTime) || marketData.Time.After(startTime)) &&
+				(marketData.Time.Equal(endTime) || marketData.Time.Before(endTime)) {
+				if !yield(marketData) {
+					break
+				}
 			}
 		}
 	}
+}
+
+func (i *CSVIterator) GetDataForTimeRange(startTime, endTime time.Time) []types.MarketData {
+	// Read all data from CSV file
+	csvFile, err := os.Open(i.FilePath)
+	if err != nil {
+		log.Fatalf("failed to open CSV file: %v", err)
+	}
+	defer csvFile.Close()
+
+	var marketData []types.MarketData
+	if err := gocsv.UnmarshalFile(csvFile, &marketData); err != nil {
+		log.Fatalf("failed to unmarshal CSV: %v", err)
+	}
+
+	// Filter by time range
+	var filteredData []types.MarketData
+	for _, data := range marketData {
+		if (data.Time.Equal(startTime) || data.Time.After(startTime)) &&
+			(data.Time.Equal(endTime) || data.Time.Before(endTime)) {
+			filteredData = append(filteredData, data)
+		}
+	}
+
+	return filteredData
 }
