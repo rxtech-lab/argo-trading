@@ -22,7 +22,7 @@ type ExampleIndicatorStrategy struct {
 }
 
 // NewExampleIndicatorStrategy creates a new example strategy
-func NewExampleIndicatorStrategy(symbol string) *ExampleIndicatorStrategy {
+func NewExampleIndicatorStrategy(symbol string) TradingStrategy {
 	return &ExampleIndicatorStrategy{
 		name:           "ExampleIndicatorStrategy",
 		symbol:         symbol,
@@ -40,7 +40,7 @@ func (s *ExampleIndicatorStrategy) Name() string {
 }
 
 // Initialize sets up the strategy with configuration
-func (s *ExampleIndicatorStrategy) Initialize(config string, initialContext StrategyContext) error {
+func (s *ExampleIndicatorStrategy) Initialize(config string) error {
 	s.initialized = true
 	return nil
 }
@@ -86,7 +86,7 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 	currentRSI := rsiValues[len(rsiValues)-1]
 
 	// Get MACD indicator values
-	macdResult, err := ctx.GetIndicator("MACD", startTime, endTime)
+	macdResult, err := ctx.GetIndicator(types.IndicatorMACD, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get MACD indicator: %w", err)
 	}

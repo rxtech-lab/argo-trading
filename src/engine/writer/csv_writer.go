@@ -51,7 +51,7 @@ type CSVWriter struct {
 }
 
 // NewCSVWriter creates a new CSVWriter with the given base directory
-func NewCSVWriter(baseDir string) (*CSVWriter, error) {
+func NewCSVWriter(baseDir string) (ResultWriter, error) {
 	// Create a directory for this run using current timestamp
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
 	runDir := filepath.Join(baseDir, timestamp)

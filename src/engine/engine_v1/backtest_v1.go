@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/schollz/progressbar/v3"
 	"github.com/sirily11/argo-trading-go/src/engine/writer"
@@ -201,9 +202,6 @@ func (e *BacktestEngineV1) Run() error {
 		// Update buy and hold value
 		e.updateBuyAndHoldValue(data)
 
-		// Process pending orders with the new market data
-		e.processPendingOrders(data)
-
 		// Create strategy context
 		ctx := NewStrategyContext(e, e.startTime, data.Time)
 
@@ -211,7 +209,6 @@ func (e *BacktestEngineV1) Run() error {
 		for i := range e.strategies {
 			orders, err := e.strategies[i].strategy.ProcessData(ctx, data)
 			if err != nil {
-				fmt.Printf("Error processing data with strategy %s: %v\n", e.strategies[i].strategy.Name(), err)
 				continue
 			}
 
@@ -235,6 +232,9 @@ func (e *BacktestEngineV1) Run() error {
 			}
 		}
 
+		// Process pending orders with the new market data
+		e.processPendingOrders(data)
+
 		// Calculate portfolio value
 		portfolioValue := e.calculatePortfolioValue(data)
 
@@ -245,8 +245,9 @@ func (e *BacktestEngineV1) Run() error {
 			}
 		}
 	}
-
 	// Calculate statistics
+	bar.Finish()
+	fmt.Printf("\n")
 	e.calculateStatistics()
 
 	return nil
@@ -478,13 +479,12 @@ func (e *BacktestEngineV1) calculateStatistics() {
 			}
 		}
 
-		fmt.Printf("Final portfolio value: $%.2f\n", finalPortfolioValue)
-
 		// Calculate statistics for each strategy
 		e.strategies[i].stats = stats
 
 		// Write strategy stats to disk
 		if e.resultsWriter != nil {
+			fmt.Printf("%s", color.HiYellowString("Writing strategy stats for %s\n", e.strategies[i].strategy.Name()))
 			if err := e.resultsWriter.WriteStrategyStats(e.strategies[i].strategy.Name(), stats); err != nil {
 				fmt.Printf("Warning: failed to write strategy stats: %v\n", err)
 			}
@@ -536,9 +536,9 @@ func (e *BacktestEngineV1) calculateStatistics() {
 			}
 		}
 
-		fmt.Printf("Final portfolio value: $%.2f\n", finalPortfolioValue)
-		fmt.Printf("Buy and hold value: $%.2f\n", e.buyAndHoldValue)
-		fmt.Printf("Outperformance: %.2f%%\n", (finalPortfolioValue/e.buyAndHoldValue-1)*100)
+		fmt.Printf("%s", color.HiYellowString("Final portfolio value: $%.2f\n", finalPortfolioValue))
+		fmt.Printf("%s", color.HiYellowString("Buy and hold value: $%.2f\n", e.buyAndHoldValue))
+		fmt.Printf("%s", color.HiYellowString("Outperformance: %.2f%%\n", (finalPortfolioValue/e.buyAndHoldValue-1)*100))
 	}
 }
 
