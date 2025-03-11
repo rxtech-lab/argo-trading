@@ -22,9 +22,7 @@ type StrategyContext interface {
 	GetPendingOrders() []types.Order
 	GetExecutedTrades() []types.Trade
 	GetAccountBalance() float64
-
-	// // Optional indicator methods
-	GetIndicator(name Indicator) (interface{}, error)
+	GetIndicator(name Indicator) (any, error)
 }
 
 // TradingStrategy interface defines methods that any trading strategy must implement
