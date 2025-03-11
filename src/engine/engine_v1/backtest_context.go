@@ -25,10 +25,7 @@ func NewStrategyContext(engine *BacktestEngineV1, startTime, endTime time.Time) 
 }
 
 func (c strategyContext) GetHistoricalData() []types.MarketData {
-	// Use a very old start time and a future end time to get all data
-	startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
-	return c.engine.marketDataSource.GetDataForTimeRange(startTime, endTime)
+	return c.engine.marketDataSource.GetDataForTimeRange(c.startTime, c.endTime)
 }
 
 func (c strategyContext) GetCurrentPositions() []types.Position {

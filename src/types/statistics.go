@@ -9,5 +9,6 @@ type TradeStats struct {
 	TotalPnL          float64 `yaml:"total_pnl"`
 	SharpeRatio       float64 `yaml:"sharpe_ratio"`
 	MaxDrawdown       float64 `yaml:"max_drawdown"`
+	TotalFees         float64 `yaml:"total_fees"`
 	// Additional statistics as needed
 }
