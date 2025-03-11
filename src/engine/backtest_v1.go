@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirily11/argo-trading-go/src/engine/writer"
+	"github.com/sirily11/argo-trading-go/src/indicator"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"gopkg.in/yaml.v2"
@@ -53,16 +54,25 @@ func NewBacktestEngineV1() *BacktestEngineV1 {
 }
 
 func (e *BacktestEngineV1) Initialize(config string) error {
-	// parse config
 	var cfg BacktestEngineV1Config
 	err := yaml.Unmarshal([]byte(config), &cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	if cfg.InitialCapital <= 0 {
+		return errors.New("initial capital must be positive")
 	}
 
 	e.initialCapital = cfg.InitialCapital
 	e.currentCapital = cfg.InitialCapital
 	e.resultsFolder = cfg.ResultsFolder
+
+	// Initialize positions map
+	e.positions = make(map[string]types.Position)
+
+	// Initialize indicators
+	e.initializeIndicators()
 
 	// Create and initialize the results writer
 	if e.resultsFolder != "" {
@@ -74,6 +84,11 @@ func (e *BacktestEngineV1) Initialize(config string) error {
 	}
 
 	return nil
+}
+
+// initializeIndicators registers default indicators with the indicator registry
+func (e *BacktestEngineV1) initializeIndicators() {
+	// No initialization needed since we're creating indicators on demand
 }
 
 // SetInitialCapital sets the initial capital for the backtest
@@ -594,6 +609,32 @@ func (c strategyContext) GetExecutedTrades() []types.Trade {
 
 func (c strategyContext) GetAccountBalance() float64 {
 	return c.engine.currentCapital
+}
+
+// GetIndicator retrieves an indicator by name and calculates its value using historical data
+func (c strategyContext) GetIndicator(name strategy.Indicator) (interface{}, error) {
+	var ind indicator.Indicator
+
+	// Create the indicator based on name
+	switch name {
+	case strategy.IndicatorRSI:
+		ind = indicator.NewRSI(14) // Default period of 14
+	case strategy.IndicatorMACD:
+		ind = indicator.NewMACD(12, 26, 9) // Default periods of 12, 26, 9
+	default:
+		return nil, fmt.Errorf("indicator %s not found", name)
+	}
+
+	// Create indicator context
+	ctx := indicator.NewIndicatorContext(c.engine.historicalData)
+
+	// Calculate indicator value
+	result, err := ind.Calculate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate indicator %s: %w", name, err)
+	}
+
+	return result, nil
 }
 
 // Close finalizes the backtest and cleans up resources

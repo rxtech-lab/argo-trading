@@ -24,7 +24,7 @@ type StrategyContext interface {
 	GetAccountBalance() float64
 
 	// // Optional indicator methods
-	GetIndicator(name string) (interface{}, error)
+	GetIndicator(name Indicator) (interface{}, error)
 }
 
 // TradingStrategy interface defines methods that any trading strategy must implement
