@@ -1,12 +1,15 @@
 package writer
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/gocarina/gocsv"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"gopkg.in/yaml.v3"
 )
@@ -84,12 +87,19 @@ func (w *CSVWriter) initFiles() error {
 	w.tradesFile = tradesFile
 	w.tradesCsv = csv.NewWriter(tradesFile)
 
-	// Write header for trades file
-	if err := w.tradesCsv.Write([]string{
-		"symbol", "order_type", "executed_at", "executed_qty",
-		"executed_price", "commission", "pnl", "strategy_name",
-	}); err != nil {
-		return fmt.Errorf("failed to write trades header: %w", err)
+	// Write header for trades file using gocsv
+	tradeHeader := []types.Trade{}
+	csvContent, err := gocsv.MarshalString(&tradeHeader)
+	if err != nil {
+		return fmt.Errorf("failed to get trade headers: %w", err)
+	}
+	// Extract just the header line
+	headerLine := strings.Split(csvContent, "\n")[0]
+	if headerLine != "" {
+		if err := w.tradesCsv.Write(strings.Split(headerLine, ",")); err != nil {
+			return fmt.Errorf("failed to write trades header: %w", err)
+		}
+		w.tradesCsv.Flush()
 	}
 
 	// Create positions file
@@ -100,11 +110,19 @@ func (w *CSVWriter) initFiles() error {
 	w.positionsFile = positionsFile
 	w.positionsCsv = csv.NewWriter(positionsFile)
 
-	// Write header for positions file
-	if err := w.positionsCsv.Write([]string{
-		"symbol", "quantity", "average_price", "open_timestamp",
-	}); err != nil {
-		return fmt.Errorf("failed to write positions header: %w", err)
+	// Write header for positions file using gocsv
+	positionHeader := []types.Position{}
+	csvContent, err = gocsv.MarshalString(&positionHeader)
+	if err != nil {
+		return fmt.Errorf("failed to get position headers: %w", err)
+	}
+	// Extract just the header line
+	headerLine = strings.Split(csvContent, "\n")[0]
+	if headerLine != "" {
+		if err := w.positionsCsv.Write(strings.Split(headerLine, ",")); err != nil {
+			return fmt.Errorf("failed to write positions header: %w", err)
+		}
+		w.positionsCsv.Flush()
 	}
 
 	// Create orders file
@@ -115,12 +133,19 @@ func (w *CSVWriter) initFiles() error {
 	w.ordersFile = ordersFile
 	w.ordersCsv = csv.NewWriter(ordersFile)
 
-	// Write header for orders file
-	if err := w.ordersCsv.Write([]string{
-		"symbol", "order_type", "quantity", "price", "timestamp",
-		"order_id", "is_completed", "strategy_name",
-	}); err != nil {
-		return fmt.Errorf("failed to write orders header: %w", err)
+	// Write header for orders file using gocsv
+	orderHeader := []types.Order{}
+	csvContent, err = gocsv.MarshalString(&orderHeader)
+	if err != nil {
+		return fmt.Errorf("failed to get order headers: %w", err)
+	}
+	// Extract just the header line
+	headerLine = strings.Split(csvContent, "\n")[0]
+	if headerLine != "" {
+		if err := w.ordersCsv.Write(strings.Split(headerLine, ",")); err != nil {
+			return fmt.Errorf("failed to write orders header: %w", err)
+		}
+		w.ordersCsv.Flush()
 	}
 
 	// Create equity curve file
@@ -131,9 +156,25 @@ func (w *CSVWriter) initFiles() error {
 	w.equityCurveFile = equityCurveFile
 	w.equityCurveCsv = csv.NewWriter(equityCurveFile)
 
-	// Write header for equity curve file
-	if err := w.equityCurveCsv.Write([]string{"timestamp", "equity"}); err != nil {
-		return fmt.Errorf("failed to write equity curve header: %w", err)
+	// Define a struct for equity curve with csv tags
+	type EquityCurvePoint struct {
+		Timestamp string  `csv:"timestamp"`
+		Equity    float64 `csv:"equity"`
+	}
+
+	// Write header for equity curve file using gocsv
+	equityCurveHeader := []EquityCurvePoint{}
+	csvContent, err = gocsv.MarshalString(&equityCurveHeader)
+	if err != nil {
+		return fmt.Errorf("failed to get equity curve headers: %w", err)
+	}
+	// Extract just the header line
+	headerLine = strings.Split(csvContent, "\n")[0]
+	if headerLine != "" {
+		if err := w.equityCurveCsv.Write(strings.Split(headerLine, ",")); err != nil {
+			return fmt.Errorf("failed to write equity curve header: %w", err)
+		}
+		w.equityCurveCsv.Flush()
 	}
 
 	return nil
@@ -179,17 +220,25 @@ func (w *CSVWriter) WritePosition(position types.Position) error {
 
 // WriteOrder writes an order to the output
 func (w *CSVWriter) WriteOrder(order types.Order) error {
-	record := []string{
-		order.Symbol,
-		string(order.OrderType),
-		fmt.Sprintf("%f", order.Quantity),
-		fmt.Sprintf("%f", order.Price),
-		order.Timestamp.Format(time.RFC3339),
-		order.OrderID,
-		fmt.Sprintf("%t", order.IsCompleted),
-		order.StrategyName,
+	// Create a buffer to hold the CSV data
+	var buf bytes.Buffer
+
+	// Marshal a single order to the buffer without headers
+	if err := gocsv.MarshalWithoutHeaders([]*types.Order{&order}, &buf); err != nil {
+		return fmt.Errorf("failed to marshal order: %w", err)
 	}
 
+	// Read the CSV line from the buffer
+	csvLine := strings.TrimSpace(buf.String())
+
+	// Parse the CSV line into fields
+	r := csv.NewReader(strings.NewReader(csvLine))
+	record, err := r.Read()
+	if err != nil {
+		return fmt.Errorf("failed to parse CSV line: %w", err)
+	}
+
+	// Write the record to the CSV writer
 	if err := w.ordersCsv.Write(record); err != nil {
 		return fmt.Errorf("failed to write order: %w", err)
 	}

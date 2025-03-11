@@ -120,6 +120,10 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 			OrderID:      uuid.New().String(),
 			IsCompleted:  false,
 			StrategyName: s.name,
+			Reason: types.Reason{
+				Reason:  types.OrderReasonBuySignal,
+				Message: "{{buy_signal}} based on RSI and MACD",
+			},
 		}
 
 		orders = append(orders, order)
@@ -138,6 +142,10 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 			OrderID:      uuid.New().String(),
 			IsCompleted:  false,
 			StrategyName: s.name,
+			Reason: types.Reason{
+				Reason:  types.OrderReasonSellSignal,
+				Message: "{{sell_signal}} based on RSI and MACD",
+			},
 		}
 
 		orders = append(orders, order)
