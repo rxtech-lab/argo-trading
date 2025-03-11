@@ -2,6 +2,19 @@ package strategy
 
 import "github.com/sirily11/argo-trading-go/src/types"
 
+type Indicator string
+
+const (
+	IndicatorRSI                   Indicator = "rsi"
+	IndicatorMACD                  Indicator = "macd"
+	IndicatorBollingerBands        Indicator = "bollinger_bands"
+	IndicatorStochasticOsciallator Indicator = "stochastic_oscillator"
+	IndicatorWilliamsR             Indicator = "williams_r"
+	IndicatorADX                   Indicator = "adx"
+	IndicatorCCI                   Indicator = "cci"
+	IndicatorAO                    Indicator = "ao"
+)
+
 type StrategyContext interface {
 	// Data access methods
 	GetHistoricalData() []types.MarketData
@@ -11,8 +24,7 @@ type StrategyContext interface {
 	GetAccountBalance() float64
 
 	// // Optional indicator methods
-	// GetIndicator(name string) (interface{}, error)
-	// GetIndicators() map[string]interface{}
+	GetIndicator(name string) (interface{}, error)
 }
 
 // TradingStrategy interface defines methods that any trading strategy must implement

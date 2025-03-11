@@ -10,11 +10,12 @@ const (
 )
 
 type Order struct {
-	Symbol      string
-	OrderType   OrderType
-	Quantity    float64
-	Price       float64
-	Timestamp   time.Time
-	OrderID     string
-	IsCompleted bool
+	Symbol       string
+	OrderType    OrderType
+	Quantity     float64
+	Price        float64
+	Timestamp    time.Time
+	OrderID      string
+	IsCompleted  bool
+	StrategyName string // Name of the strategy that created this order
 }

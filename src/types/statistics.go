@@ -1,13 +1,13 @@
 package types
 
 type TradeStats struct {
-	TotalTrades       int
-	WinningTrades     int
-	LosingTrades      int
-	WinRate           float64
-	AverageProfitLoss float64
-	TotalPnL          float64
-	SharpeRatio       float64
-	MaxDrawdown       float64
+	TotalTrades       int     `yaml:"total_trades"`
+	WinningTrades     int     `yaml:"winning_trades"`
+	LosingTrades      int     `yaml:"losing_trades"`
+	WinRate           float64 `yaml:"win_rate"`
+	AverageProfitLoss float64 `yaml:"average_profit_loss"`
+	TotalPnL          float64 `yaml:"total_pnl"`
+	SharpeRatio       float64 `yaml:"sharpe_ratio"`
+	MaxDrawdown       float64 `yaml:"max_drawdown"`
 	// Additional statistics as needed
 }
