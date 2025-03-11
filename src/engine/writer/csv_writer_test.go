@@ -79,5 +79,82 @@ func TestCSVWriter_WriteOrder(t *testing.T) {
 		assert.Equal(t, testOrder.Reason.Message, order.Reason.Message, "Reason message should match")
 		assert.Equal(t, testOrder.StrategyName, order.StrategyName, "StrategyName should match")
 	})
+}
 
+func TestCSVWriter_WriteTrade(t *testing.T) {
+	t.Run("test_write_trade", func(t *testing.T) {
+		// Create a temporary directory for the test
+		tempDir := t.TempDir()
+
+		// Create a new CSVWriter
+		writer, err := NewCSVWriter(tempDir)
+		assert.NoError(t, err, "Failed to create CSVWriter")
+
+		// Create a test order for the trade
+		testTime := time.Now()
+		testOrder := types.Order{
+			Symbol:      "AAPL",
+			OrderType:   types.OrderTypeBuy,
+			Quantity:    10.5,
+			Price:       150.75,
+			Timestamp:   testTime,
+			OrderID:     "test-order-123",
+			IsCompleted: true,
+			Reason: types.Reason{
+				Reason:  types.OrderReasonBuySignal,
+				Message: "Test buy signal",
+			},
+			StrategyName: "TestStrategy",
+		}
+
+		// Create a test trade
+		executedTime := testTime.Add(time.Hour) // Executed 1 hour after order creation
+		testTrade := types.Trade{
+			Order:         testOrder,
+			ExecutedAt:    executedTime,
+			ExecutedQty:   10.0,
+			ExecutedPrice: 151.25,
+			Commission:    1.50,
+			PnL:           5.0,
+		}
+
+		// Write the trade
+		err = writer.WriteTrade(testTrade)
+		assert.NoError(t, err, "Failed to write trade")
+
+		// Close the writer to ensure all data is flushed
+		err = writer.Close()
+		assert.NoError(t, err, "Failed to close writer")
+
+		// Verify the trade was written correctly
+		// Get the timestamp directory
+		dirs, err := os.ReadDir(tempDir)
+		assert.NoError(t, err, "Failed to read temp directory")
+		assert.Equal(t, 1, len(dirs), "Should have one timestamp directory")
+
+		// Read the trades.csv file
+		tradesFilePath := filepath.Join(tempDir, dirs[0].Name(), "trades.csv")
+		tradesFile, err := os.Open(tradesFilePath)
+		assert.NoError(t, err, "Failed to open trades file")
+		defer tradesFile.Close()
+
+		// Parse the CSV file
+		var trades []types.Trade
+		err = gocsv.UnmarshalFile(tradesFile, &trades)
+		assert.NoError(t, err, "Failed to unmarshal trades CSV")
+
+		// Verify we have one trade
+		assert.Equal(t, 1, len(trades), "Should have one trade")
+
+		// Verify the trade data
+		trade := trades[0]
+		assert.Equal(t, testTrade.Order.Symbol, trade.Order.Symbol, "Symbol should match")
+		assert.Equal(t, testTrade.Order.OrderType, trade.Order.OrderType, "OrderType should match")
+		assert.Equal(t, testTrade.ExecutedAt.Format(time.RFC3339), trade.ExecutedAt.Format(time.RFC3339), "ExecutedAt should match")
+		assert.Equal(t, testTrade.ExecutedQty, trade.ExecutedQty, "ExecutedQty should match")
+		assert.Equal(t, testTrade.ExecutedPrice, trade.ExecutedPrice, "ExecutedPrice should match")
+		assert.Equal(t, testTrade.Commission, trade.Commission, "Commission should match")
+		assert.Equal(t, testTrade.PnL, trade.PnL, "PnL should match")
+		assert.Equal(t, testTrade.Order.StrategyName, trade.Order.StrategyName, "StrategyName should match")
+	})
 }
