@@ -4,9 +4,11 @@ go 1.24.0
 
 require (
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
+	github.com/google/uuid v1.6.0
 	github.com/polygon-io/client-go v1.16.10
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/stretchr/testify v1.10.0
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
