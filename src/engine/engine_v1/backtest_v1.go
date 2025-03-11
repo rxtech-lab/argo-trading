@@ -22,7 +22,6 @@ type BacktestEngineV1Config struct {
 	ResultsFolder     string    `yaml:"results_folder"`
 	StartTime         time.Time `yaml:"start_time"`
 	EndTime           time.Time `yaml:"end_time"`
-	TargetSymbol      string    `yaml:"target_symbol"`
 }
 
 type BacktestEngineV1Fees struct {
@@ -45,28 +44,22 @@ type BacktestEngineV1 struct {
 	buyAndHoldPrice  float64
 	buyAndHoldShares float64
 	fees             BacktestEngineV1Fees
-	targetSymbol     string
 }
 
 type strategyInfo struct {
-	strategy StrategyFactory
+	strategy strategy.TradingStrategy
 	config   string
 	trades   []types.Trade
 	stats    types.TradeStats
 }
 
-func NewBacktestEngineV1() BacktestEngine {
+func NewBacktestEngineV1() *BacktestEngineV1 {
 	return &BacktestEngineV1{
 		strategies:    make([]strategyInfo, 0),
 		positions:     make(map[string]types.Position),
 		pendingOrders: make([]types.Order, 0),
 		equityCurve:   make([]float64, 0),
 	}
-}
-
-// Name returns the name of the backtest engine
-func (e *BacktestEngineV1) Name() string {
-	return "BacktestEngineV1"
 }
 
 func (e *BacktestEngineV1) Initialize(config string) error {
@@ -85,7 +78,6 @@ func (e *BacktestEngineV1) Initialize(config string) error {
 	e.resultsFolder = cfg.ResultsFolder
 	e.startTime = cfg.StartTime
 	e.endTime = cfg.EndTime
-	e.targetSymbol = cfg.TargetSymbol
 	e.fees = BacktestEngineV1Fees{
 		CommissionFormula: cfg.CommissionFormula,
 	}
@@ -124,7 +116,7 @@ func (e *BacktestEngineV1) SetInitialCapital(amount float64) error {
 }
 
 // AddStrategy adds a strategy to be tested
-func (e *BacktestEngineV1) AddStrategy(strategy StrategyFactory, config string) error {
+func (e *BacktestEngineV1) AddStrategy(strategy strategy.TradingStrategy, config string) error {
 	if strategy == nil {
 		return errors.New("strategy cannot be nil")
 	}
@@ -176,6 +168,14 @@ func (e *BacktestEngineV1) Run() error {
 	e.buyAndHoldPrice = 0
 	e.buyAndHoldShares = 0
 
+	// Initialize strategies
+	for i := range e.strategies {
+		err := e.strategies[i].strategy.Initialize(e.strategies[i].config)
+		if err != nil {
+			return fmt.Errorf("failed to initialize strategy %s: %w", e.strategies[i].strategy.Name(), err)
+		}
+	}
+
 	// Process market data
 	isFirstData := true
 
@@ -215,10 +215,7 @@ func (e *BacktestEngineV1) Run() error {
 
 		// Process data with each strategy
 		for i := range e.strategies {
-			strategy := e.strategies[i].strategy()
-			strategy.Initialize(e.strategies[i].config)
-
-			orders, err := strategy.ProcessData(ctx, data, e.targetSymbol)
+			orders, err := e.strategies[i].strategy.ProcessData(ctx, data)
 			if err != nil {
 				continue
 			}
@@ -236,14 +233,15 @@ func (e *BacktestEngineV1) Run() error {
 				}
 
 				// Set strategy name
-				order.StrategyName = strategy.Name()
+				order.StrategyName = e.strategies[i].strategy.Name()
 
 				// Add to pending orders
 				e.pendingOrders = append(e.pendingOrders, order)
 			}
-			// Process pending orders with the new market data
-			e.processPendingOrders(strategy, data)
 		}
+
+		// Process pending orders with the new market data
+		e.processPendingOrders(data)
 
 		// Calculate portfolio value
 		portfolioValue := e.calculatePortfolioValue(data)
@@ -266,7 +264,7 @@ func (e *BacktestEngineV1) Run() error {
 // GetTradeStatsByStrategy returns statistics for a specific strategy
 func (e *BacktestEngineV1) GetTradeStatsByStrategy(strategyName string) types.TradeStats {
 	for _, s := range e.strategies {
-		if s.strategy().Name() == strategyName {
+		if s.strategy.Name() == strategyName {
 			return s.stats
 		}
 	}
@@ -274,7 +272,7 @@ func (e *BacktestEngineV1) GetTradeStatsByStrategy(strategyName string) types.Tr
 }
 
 // processPendingOrders processes all pending orders
-func (e *BacktestEngineV1) processPendingOrders(strategy strategy.TradingStrategy, data types.MarketData) {
+func (e *BacktestEngineV1) processPendingOrders(data types.MarketData) {
 	remainingOrders := make([]types.Order, 0)
 
 	for _, order := range e.pendingOrders {
@@ -285,7 +283,7 @@ func (e *BacktestEngineV1) processPendingOrders(strategy strategy.TradingStrateg
 		}
 
 		// Execute the order
-		executed := e.executeOrder(strategy, order, data)
+		executed := e.executeOrder(order, data)
 		if !executed {
 			// If not executed, keep in pending orders
 			remainingOrders = append(remainingOrders, order)
@@ -306,7 +304,7 @@ func (e *BacktestEngineV1) processPendingOrders(strategy strategy.TradingStrateg
 }
 
 // executeOrder attempts to execute an order
-func (e *BacktestEngineV1) executeOrder(strategy strategy.TradingStrategy, order types.Order, data types.MarketData) bool {
+func (e *BacktestEngineV1) executeOrder(order types.Order, data types.MarketData) bool {
 	// Determine execution price (using close price for simplicity)
 	executionPrice := data.Close
 
@@ -412,7 +410,7 @@ func (e *BacktestEngineV1) executeOrder(strategy strategy.TradingStrategy, order
 
 	// Add to strategy's trades
 	for i, s := range e.strategies {
-		if s.strategy().Name() == order.StrategyName {
+		if s.strategy.Name() == order.StrategyName {
 			e.strategies[i].trades = append(e.strategies[i].trades, trade)
 			break
 		}
@@ -500,8 +498,8 @@ func (e *BacktestEngineV1) calculateStatistics() {
 
 		// Write strategy stats to disk
 		if e.resultsWriter != nil {
-			fmt.Printf("%s", color.HiYellowString("Writing strategy stats for %s\n", e.strategies[i].strategy().Name()))
-			if err := e.resultsWriter.WriteStrategyStats(e.strategies[i].strategy().Name(), stats); err != nil {
+			fmt.Printf("%s", color.HiYellowString("Writing strategy stats for %s\n", e.strategies[i].strategy.Name()))
+			if err := e.resultsWriter.WriteStrategyStats(e.strategies[i].strategy.Name(), stats); err != nil {
 				fmt.Printf("Warning: failed to write strategy stats: %v\n", err)
 			}
 		}
@@ -564,14 +562,6 @@ func (e *BacktestEngineV1) calculateStatistics() {
 		fmt.Printf("%s", color.HiYellowString("Realized PnL: $%.2f\n", combinedStats.RealizedPnL))
 		fmt.Printf("%s", color.HiYellowString("Unrealized PnL: $%.2f\n", combinedStats.UnrealizedPnL))
 		fmt.Printf("%s", color.HiYellowString("Total PnL: $%.2f\n", combinedStats.TotalPnL))
-		fmt.Printf("%s", color.HiYellowString("Win Rate: %.2f%%\n", combinedStats.WinRate*100))
-		fmt.Printf("%s", color.HiYellowString("Average Profit/Loss: $%.2f\n", combinedStats.AverageProfitLoss))
-		fmt.Printf("%s", color.HiYellowString("Sharpe Ratio: %.2f\n", combinedStats.SharpeRatio))
-		fmt.Printf("%s", color.HiYellowString("Max Drawdown: %.2f%%\n", combinedStats.MaxDrawdown*100))
-		fmt.Printf("%s", color.HiYellowString("Total Fees: $%.2f\n", combinedStats.TotalFees))
-		fmt.Printf("%s", color.HiYellowString("Total Trades: %d\n", combinedStats.TotalTrades))
-		fmt.Printf("%s", color.HiYellowString("Winning Trades: %d\n", combinedStats.WinningTrades))
-		fmt.Printf("%s", color.HiYellowString("Losing Trades: %d\n", combinedStats.LosingTrades))
 	}
 
 	// Print comparison with buy and hold
@@ -668,18 +658,4 @@ func (e *BacktestEngineV1) calculateCommission(order types.Order, executionPrice
 // TestCalculateCommission is a helper method for testing commission calculations
 func (e *BacktestEngineV1) TestCalculateCommission(order types.Order, executionPrice float64) (float64, error) {
 	return e.calculateCommission(order, executionPrice)
-}
-
-// TestSetConfig sets configuration values for testing purposes
-func (e *BacktestEngineV1) TestSetConfig(initialCapital, currentCapital float64, resultsFolder string, startTime, endTime time.Time, commissionFormula string) error {
-	e.initialCapital = initialCapital
-	e.currentCapital = currentCapital
-	e.resultsFolder = resultsFolder
-	e.startTime = startTime
-	e.endTime = endTime
-	e.fees = BacktestEngineV1Fees{
-		CommissionFormula: commissionFormula,
-	}
-	e.positions = make(map[string]types.Position)
-	return nil
 }
