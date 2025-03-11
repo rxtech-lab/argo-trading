@@ -11,6 +11,7 @@ import (
 
 type CSVIterator struct {
 	FilePath string
+	cache    []types.MarketData
 }
 
 func NewCSVIterator(filePath string) types.MarketDataSource {
@@ -21,27 +22,17 @@ func NewCSVIterator(filePath string) types.MarketDataSource {
 
 func (i *CSVIterator) Iterator(startTime, endTime time.Time) func(yield func(types.MarketData) bool) {
 	return func(yield func(types.MarketData) bool) {
-		// read the file
-		csvFile, err := os.Open(i.FilePath)
-		if err != nil {
-			log.Fatalf("failed to open CSV file: %v", err)
+		// Ensure cache is populated
+		if i.cache == nil {
+			// Load data into cache using GetDataForTimeRange with very wide time range
+			// This will populate the cache with all data
+			veryOldTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+			veryFutureTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
+			i.GetDataForTimeRange(veryOldTime, veryFutureTime)
 		}
-		defer csvFile.Close()
 
-		// read the file line by line using a channel
-		marketDataChan := make(chan types.MarketData)
-
-		// Start a goroutine to parse the CSV file
-		go func() {
-			// Use UnmarshalToChan to read the CSV file line by line
-			if err := gocsv.UnmarshalToChan(csvFile, marketDataChan); err != nil {
-				log.Fatalf("failed to unmarshal CSV: %v", err)
-			}
-			// No need to explicitly close the channel - UnmarshalToChan will close it
-		}()
-
-		// Process each record as it comes in - simpler and more efficient loop
-		for marketData := range marketDataChan {
+		// Iterate through cached data and yield matching records
+		for _, marketData := range i.cache {
 			// Filter by time range
 			if (marketData.Time.Equal(startTime) || marketData.Time.After(startTime)) &&
 				(marketData.Time.Equal(endTime) || marketData.Time.Before(endTime)) {
@@ -54,21 +45,26 @@ func (i *CSVIterator) Iterator(startTime, endTime time.Time) func(yield func(typ
 }
 
 func (i *CSVIterator) GetDataForTimeRange(startTime, endTime time.Time) []types.MarketData {
-	// Read all data from CSV file
-	csvFile, err := os.Open(i.FilePath)
-	if err != nil {
-		log.Fatalf("failed to open CSV file: %v", err)
-	}
-	defer csvFile.Close()
+	// Check if cache is already populated
+	if i.cache == nil {
+		// Cache is empty, load data from CSV file
+		csvFile, err := os.Open(i.FilePath)
+		if err != nil {
+			log.Fatalf("failed to open CSV file: %v", err)
+		}
+		defer csvFile.Close()
 
-	var marketData []types.MarketData
-	if err := gocsv.UnmarshalFile(csvFile, &marketData); err != nil {
-		log.Fatalf("failed to unmarshal CSV: %v", err)
+		// Unmarshal the CSV file into the cache
+		if err := gocsv.UnmarshalFile(csvFile, &i.cache); err != nil {
+			log.Fatalf("failed to unmarshal CSV: %v", err)
+		}
+
+		log.Printf("Loaded %d market data points into cache", len(i.cache))
 	}
 
-	// Filter by time range
+	// Filter cached data by time range
 	var filteredData []types.MarketData
-	for _, data := range marketData {
+	for _, data := range i.cache {
 		if (data.Time.Equal(startTime) || data.Time.After(startTime)) &&
 			(data.Time.Equal(endTime) || data.Time.Before(endTime)) {
 			filteredData = append(filteredData, data)
@@ -76,4 +72,10 @@ func (i *CSVIterator) GetDataForTimeRange(startTime, endTime time.Time) []types.
 	}
 
 	return filteredData
+}
+
+// ClearCache clears the in-memory cache to free up memory
+func (i *CSVIterator) ClearCache() {
+	i.cache = nil
+	log.Printf("Cache cleared for CSV iterator: %s", i.FilePath)
 }

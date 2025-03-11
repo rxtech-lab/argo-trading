@@ -17,11 +17,15 @@ import (
 )
 
 type BacktestEngineV1Config struct {
-	InitialCapital float64   `yaml:"initial_capital"`
-	BrokerageFee   float64   `yaml:"brokerage_fee"`
-	ResultsFolder  string    `yaml:"results_folder"`
-	StartTime      time.Time `yaml:"start_time"`
-	EndTime        time.Time `yaml:"end_time"`
+	InitialCapital    float64   `yaml:"initial_capital"`
+	CommissionFormula string    `yaml:"commission_formula"`
+	ResultsFolder     string    `yaml:"results_folder"`
+	StartTime         time.Time `yaml:"start_time"`
+	EndTime           time.Time `yaml:"end_time"`
+}
+
+type BacktestEngineV1Fees struct {
+	CommissionFormula string `yaml:"commission_formula"`
 }
 
 type BacktestEngineV1 struct {
@@ -39,6 +43,7 @@ type BacktestEngineV1 struct {
 	buyAndHoldValue  float64
 	buyAndHoldPrice  float64
 	buyAndHoldShares float64
+	fees             BacktestEngineV1Fees
 }
 
 type strategyInfo struct {
@@ -73,6 +78,9 @@ func (e *BacktestEngineV1) Initialize(config string) error {
 	e.resultsFolder = cfg.ResultsFolder
 	e.startTime = cfg.StartTime
 	e.endTime = cfg.EndTime
+	e.fees = BacktestEngineV1Fees{
+		CommissionFormula: cfg.CommissionFormula,
+	}
 
 	// Initialize positions map
 	e.positions = make(map[string]types.Position)
@@ -300,8 +308,12 @@ func (e *BacktestEngineV1) executeOrder(order types.Order, data types.MarketData
 	// Determine execution price (using close price for simplicity)
 	executionPrice := data.Close
 
-	// Calculate commission
-	commission := executionPrice * order.Quantity * 0.001 // 0.1% commission
+	// Calculate commission using the formula
+	commission, err := e.calculateCommission(order, executionPrice)
+	if err != nil {
+		fmt.Printf("Warning: failed to calculate commission: %v\n", err)
+		return false
+	}
 
 	// Calculate cost or proceeds
 	var cost float64
@@ -462,6 +474,7 @@ func (e *BacktestEngineV1) calculateStatistics() {
 				stats.LosingTrades++
 			}
 			stats.TotalPnL += trade.PnL
+			stats.TotalFees += trade.Commission
 		}
 
 		if stats.TotalTrades > 0 {
@@ -500,6 +513,7 @@ func (e *BacktestEngineV1) calculateStatistics() {
 			LosingTrades:      0,
 			TotalPnL:          0,
 			AverageProfitLoss: 0,
+			TotalFees:         0,
 		}
 
 		for _, s := range e.strategies {
@@ -507,6 +521,7 @@ func (e *BacktestEngineV1) calculateStatistics() {
 			combinedStats.WinningTrades += s.stats.WinningTrades
 			combinedStats.LosingTrades += s.stats.LosingTrades
 			combinedStats.TotalPnL += s.stats.TotalPnL
+			combinedStats.TotalFees += s.stats.TotalFees
 		}
 
 		if combinedStats.TotalTrades > 0 {
@@ -600,4 +615,23 @@ func (e *BacktestEngineV1) calculateMaxDrawdown() float64 {
 	}
 
 	return maxDrawdown
+}
+
+// calculateCommission calculates the commission for an order using the formula from the config
+func (e *BacktestEngineV1) calculateCommission(order types.Order, executionPrice float64) (float64, error) {
+	// If no formula is provided, default to zero commission
+	if e.fees.CommissionFormula == "" {
+		return 0, nil
+	}
+
+	formula := e.fees.CommissionFormula
+
+	return calculateCommissionWithExpression(formula, order, executionPrice)
+}
+
+// calculateCommissionWithExpression calculates commission using a human-readable expression
+
+// TestCalculateCommission is a helper method for testing commission calculations
+func (e *BacktestEngineV1) TestCalculateCommission(order types.Order, executionPrice float64) (float64, error) {
+	return e.calculateCommission(order, executionPrice)
 }
