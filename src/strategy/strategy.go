@@ -25,7 +25,7 @@ type TradingStrategy interface {
 
 	// ProcessData processes new market data and generates signals
 	// It receives a context object with all necessary information to make decisions
-	ProcessData(ctx StrategyContext, data types.MarketData) ([]types.Order, error)
+	ProcessData(ctx StrategyContext, data types.MarketData, targetSymbol string) ([]types.Order, error)
 
 	// Name returns the name of the strategy
 	Name() string
