@@ -41,20 +41,6 @@ func (s *ExampleIndicatorStrategy) Name() string {
 
 // Initialize sets up the strategy with configuration
 func (s *ExampleIndicatorStrategy) Initialize(config string, initialContext StrategyContext) error {
-	// In a real implementation, parse the config string to set parameters
-	// For this example, we'll use default values
-
-	// Verify that required indicators are available
-	_, err := initialContext.GetIndicator(IndicatorRSI)
-	if err != nil {
-		return fmt.Errorf("RSI indicator not available: %w", err)
-	}
-
-	_, err = initialContext.GetIndicator(IndicatorMACD)
-	if err != nil {
-		return fmt.Errorf("MACD indicator not available: %w", err)
-	}
-
 	s.initialized = true
 	return nil
 }
@@ -84,7 +70,9 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 	}
 
 	// Get RSI indicator values
-	rsiResult, err := ctx.GetIndicator(IndicatorRSI)
+	startTime := data.Time.Add(-1 * time.Hour * 24 * 30)
+	endTime := data.Time
+	rsiResult, err := ctx.GetIndicator(types.IndicatorRSI, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get RSI indicator: %w", err)
 	}
@@ -98,7 +86,7 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 	currentRSI := rsiValues[len(rsiValues)-1]
 
 	// Get MACD indicator values
-	macdResult, err := ctx.GetIndicator("MACD")
+	macdResult, err := ctx.GetIndicator("MACD", startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get MACD indicator: %w", err)
 	}

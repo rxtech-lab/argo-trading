@@ -3,6 +3,8 @@ package indicator
 import (
 	"fmt"
 	"time"
+
+	"github.com/sirily11/argo-trading-go/src/types"
 )
 
 // MACD (Moving Average Convergence Divergence) indicator implementation
@@ -10,6 +12,8 @@ type MACD struct {
 	fastPeriod   int
 	slowPeriod   int
 	signalPeriod int
+	startTime    time.Time
+	endTime      time.Time
 	params       map[string]interface{}
 }
 
@@ -21,11 +25,13 @@ type MACDResult struct {
 }
 
 // NewMACD creates a new MACD indicator with the specified periods
-func NewMACD(fastPeriod, slowPeriod, signalPeriod int) Indicator {
+func NewMACD(startTime, endTime time.Time, fastPeriod, slowPeriod, signalPeriod int) Indicator {
 	return &MACD{
 		fastPeriod:   fastPeriod,
 		slowPeriod:   slowPeriod,
 		signalPeriod: signalPeriod,
+		startTime:    startTime,
+		endTime:      endTime,
 		params: map[string]interface{}{
 			"fastPeriod":   fastPeriod,
 			"slowPeriod":   slowPeriod,
@@ -35,8 +41,8 @@ func NewMACD(fastPeriod, slowPeriod, signalPeriod int) Indicator {
 }
 
 // Name returns the name of the indicator
-func (m *MACD) Name() string {
-	return "MACD"
+func (m *MACD) Name() types.Indicator {
+	return types.IndicatorMACD
 }
 
 // SetParams allows setting parameters for the indicator
@@ -79,9 +85,7 @@ func (m *MACD) GetParams() map[string]interface{} {
 // Calculate computes the MACD values using the provided context
 func (m *MACD) Calculate(ctx IndicatorContext) (interface{}, error) {
 	// Get all available data using a very wide time range
-	startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
-	data := ctx.GetDataForTimeRange(startTime, endTime)
+	data := ctx.GetDataForTimeRange(m.startTime, m.endTime)
 
 	if len(data) < m.slowPeriod+m.signalPeriod {
 		return nil, fmt.Errorf("not enough data points for MACD calculation, need at least %d", m.slowPeriod+m.signalPeriod)

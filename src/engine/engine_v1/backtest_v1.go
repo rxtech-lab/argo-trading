@@ -161,8 +161,7 @@ func (e *BacktestEngineV1) Run() error {
 
 	// Initialize strategies
 	for i := range e.strategies {
-		ctx := e.createStrategyContext()
-		err := e.strategies[i].strategy.Initialize(e.strategies[i].config, ctx)
+		err := e.strategies[i].strategy.Initialize(e.strategies[i].config)
 		if err != nil {
 			return fmt.Errorf("failed to initialize strategy %s: %w", e.strategies[i].strategy.Name(), err)
 		}
@@ -206,7 +205,7 @@ func (e *BacktestEngineV1) Run() error {
 		e.processPendingOrders(data)
 
 		// Create strategy context
-		ctx := e.createStrategyContext()
+		ctx := NewStrategyContext(e, e.startTime, data.Time)
 
 		// Process data with each strategy
 		for i := range e.strategies {
@@ -261,15 +260,6 @@ func (e *BacktestEngineV1) GetTradeStatsByStrategy(strategyName string) types.Tr
 		}
 	}
 	return types.TradeStats{} // Return empty stats if strategy not found
-}
-
-// Helper methods
-
-// createStrategyContext creates a context for strategies to use
-func (e *BacktestEngineV1) createStrategyContext() strategyContext {
-	return strategyContext{
-		engine: e,
-	}
 }
 
 // processPendingOrders processes all pending orders

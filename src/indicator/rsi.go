@@ -4,27 +4,33 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/sirily11/argo-trading-go/src/types"
 )
 
 // RSI (Relative Strength Index) indicator implementation
 type RSI struct {
-	period int
-	params map[string]interface{}
+	period    int
+	params    map[string]interface{}
+	startTime time.Time
+	endTime   time.Time
 }
 
 // NewRSI creates a new RSI indicator with the specified period
-func NewRSI(period int) Indicator {
+func NewRSI(startTime, endTime time.Time, period int) Indicator {
 	return &RSI{
 		period: period,
 		params: map[string]interface{}{
 			"period": period,
 		},
+		startTime: startTime,
+		endTime:   endTime,
 	}
 }
 
 // Name returns the name of the indicator
-func (r *RSI) Name() string {
-	return "RSI"
+func (r *RSI) Name() types.Indicator {
+	return types.IndicatorRSI
 }
 
 // SetParams allows setting parameters for the indicator
@@ -47,10 +53,7 @@ func (r *RSI) GetParams() map[string]interface{} {
 
 // Calculate computes the RSI value using the provided context
 func (r *RSI) Calculate(ctx IndicatorContext) (interface{}, error) {
-	// Get all available data using a very wide time range
-	startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
-	data := ctx.GetDataForTimeRange(startTime, endTime)
+	data := ctx.GetDataForTimeRange(r.startTime, r.endTime)
 
 	if len(data) < r.period+1 {
 		return nil, fmt.Errorf("not enough data points for RSI calculation, need at least %d", r.period+1)
