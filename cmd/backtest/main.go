@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/sirily11/argo-trading-go/src/engine"
 	datasource "github.com/sirily11/argo-trading-go/src/engine/data_source"
+	engine "github.com/sirily11/argo-trading-go/src/engine/engine_v1"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 )
 
@@ -36,7 +36,7 @@ func main() {
 	}
 
 	// Create and add strategy
-	smaStrategy := strategy.NewSimpleMovingAverageCrossover(5, 20, "AAPL")
+	smaStrategy := strategy.NewExampleIndicatorStrategy("AAPL")
 	err = backtester.AddStrategy(smaStrategy, "")
 	if err != nil {
 		log.Fatalf("Failed to add strategy: %v", err)

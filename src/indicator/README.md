@@ -78,12 +78,14 @@ func (i *MyCustomIndicator) GetParams() map[string]interface{} {
 
 // Calculate computes the indicator value using the provided context
 func (i *MyCustomIndicator) Calculate(ctx indicator.IndicatorContext) (interface{}, error) {
-    // Get data from context
-    data := ctx.GetData()
+    // Get data for a specific time range
+    startTime := time.Now().Add(-30 * 24 * time.Hour) // 30 days ago
+    endTime := time.Now()
+    data := ctx.GetDataForTimeRange(startTime, endTime)
 
-    // Or get data for a specific time range
-    // startTime := time.Now().Add(-30 * 24 * time.Hour) // 30 days ago
-    // endTime := time.Now()
+    // Or get all data using a very wide time range
+    // startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+    // endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
     // data := ctx.GetDataForTimeRange(startTime, endTime)
 
     // Implement your calculation logic

@@ -3,6 +3,7 @@ package indicator
 import (
 	"fmt"
 	"math"
+	"time"
 )
 
 // RSI (Relative Strength Index) indicator implementation
@@ -46,8 +47,10 @@ func (r *RSI) GetParams() map[string]interface{} {
 
 // Calculate computes the RSI value using the provided context
 func (r *RSI) Calculate(ctx IndicatorContext) (interface{}, error) {
-	// Get all available data
-	data := ctx.GetData()
+	// Get all available data using a very wide time range
+	startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
+	data := ctx.GetDataForTimeRange(startTime, endTime)
 
 	if len(data) < r.period+1 {
 		return nil, fmt.Errorf("not enough data points for RSI calculation, need at least %d", r.period+1)
