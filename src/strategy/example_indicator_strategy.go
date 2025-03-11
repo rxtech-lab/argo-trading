@@ -122,7 +122,7 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 			StrategyName: s.name,
 			Reason: types.Reason{
 				Reason:  types.OrderReasonBuySignal,
-				Message: "{{buy_signal}} based on RSI and MACD",
+				Message: "based on RSI and MACD",
 			},
 		}
 
@@ -144,7 +144,7 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 			StrategyName: s.name,
 			Reason: types.Reason{
 				Reason:  types.OrderReasonSellSignal,
-				Message: "{{sell_signal}} based on RSI and MACD",
+				Message: "based on RSI and MACD",
 			},
 		}
 

@@ -182,69 +182,17 @@ func (w *CSVWriter) initFiles() error {
 
 // WriteTrade writes a trade to the output
 func (w *CSVWriter) WriteTrade(trade types.Trade) error {
-	record := []string{
-		trade.Order.Symbol,
-		string(trade.Order.OrderType),
-		trade.ExecutedAt.Format(time.RFC3339),
-		fmt.Sprintf("%f", trade.ExecutedQty),
-		fmt.Sprintf("%f", trade.ExecutedPrice),
-		fmt.Sprintf("%f", trade.Commission),
-		fmt.Sprintf("%f", trade.PnL),
-		trade.Order.StrategyName,
-	}
-
-	if err := w.tradesCsv.Write(record); err != nil {
-		return fmt.Errorf("failed to write trade: %w", err)
-	}
-
-	w.tradesCsv.Flush()
-	return nil
+	return writeWithType(trade, w.tradesCsv)
 }
 
 // WritePosition writes a position to the output
 func (w *CSVWriter) WritePosition(position types.Position) error {
-	record := []string{
-		position.Symbol,
-		fmt.Sprintf("%f", position.Quantity),
-		fmt.Sprintf("%f", position.AveragePrice),
-		position.OpenTimestamp.Format(time.RFC3339),
-	}
-
-	if err := w.positionsCsv.Write(record); err != nil {
-		return fmt.Errorf("failed to write position: %w", err)
-	}
-
-	w.positionsCsv.Flush()
-	return nil
+	return writeWithType(position, w.positionsCsv)
 }
 
 // WriteOrder writes an order to the output
 func (w *CSVWriter) WriteOrder(order types.Order) error {
-	// Create a buffer to hold the CSV data
-	var buf bytes.Buffer
-
-	// Marshal a single order to the buffer without headers
-	if err := gocsv.MarshalWithoutHeaders([]*types.Order{&order}, &buf); err != nil {
-		return fmt.Errorf("failed to marshal order: %w", err)
-	}
-
-	// Read the CSV line from the buffer
-	csvLine := strings.TrimSpace(buf.String())
-
-	// Parse the CSV line into fields
-	r := csv.NewReader(strings.NewReader(csvLine))
-	record, err := r.Read()
-	if err != nil {
-		return fmt.Errorf("failed to parse CSV line: %w", err)
-	}
-
-	// Write the record to the CSV writer
-	if err := w.ordersCsv.Write(record); err != nil {
-		return fmt.Errorf("failed to write order: %w", err)
-	}
-
-	w.ordersCsv.Flush()
-	return nil
+	return writeWithType(order, w.ordersCsv)
 }
 
 // WriteEquityCurve writes the equity curve data
@@ -354,5 +302,33 @@ func (w *CSVWriter) Close() error {
 		w.equityCurveFile.Close()
 	}
 
+	return nil
+}
+
+func writeWithType[T any](data T, w *csv.Writer) error {
+	// Create a buffer to hold the CSV data
+	var buf bytes.Buffer
+
+	// Marshal a single order to the buffer without headers
+	if err := gocsv.MarshalWithoutHeaders([]T{data}, &buf); err != nil {
+		return fmt.Errorf("failed to marshal order: %w", err)
+	}
+
+	// Read the CSV line from the buffer
+	csvLine := strings.TrimSpace(buf.String())
+
+	// Parse the CSV line into fields
+	r := csv.NewReader(strings.NewReader(csvLine))
+	record, err := r.Read()
+	if err != nil {
+		return fmt.Errorf("failed to parse CSV line: %w", err)
+	}
+
+	// Write the record to the CSV writer
+	if err := w.Write(record); err != nil {
+		return fmt.Errorf("failed to write order: %w", err)
+	}
+
+	w.Flush()
 	return nil
 }
