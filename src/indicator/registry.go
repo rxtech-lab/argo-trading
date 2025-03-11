@@ -81,6 +81,4 @@ func RegisterDefaultIndicators() {
 
 	// Register MACD with default periods of 12, 26, 9
 	DefaultRegistry.RegisterIndicator(NewMACD(12, 26, 9))
-
-	// Add more default indicators here as they are implemented
 }

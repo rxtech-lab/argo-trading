@@ -3,10 +3,12 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/schollz/progressbar/v3"
 	"github.com/sirily11/argo-trading-go/src/engine/writer"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
@@ -14,12 +16,16 @@ import (
 )
 
 type BacktestEngineV1Config struct {
-	InitialCapital float64 `yaml:"initial_capital"`
-	BrokerageFee   float64 `yaml:"brokerage_fee"`
-	ResultsFolder  string  `yaml:"results_folder"`
+	InitialCapital float64   `yaml:"initial_capital"`
+	BrokerageFee   float64   `yaml:"brokerage_fee"`
+	ResultsFolder  string    `yaml:"results_folder"`
+	StartTime      time.Time `yaml:"start_time"`
+	EndTime        time.Time `yaml:"end_time"`
 }
 
 type BacktestEngineV1 struct {
+	startTime        time.Time
+	endTime          time.Time
 	marketDataSource types.MarketDataSource
 	strategies       []strategyInfo
 	initialCapital   float64
@@ -64,6 +70,8 @@ func (e *BacktestEngineV1) Initialize(config string) error {
 	e.initialCapital = cfg.InitialCapital
 	e.currentCapital = cfg.InitialCapital
 	e.resultsFolder = cfg.ResultsFolder
+	e.startTime = cfg.StartTime
+	e.endTime = cfg.EndTime
 
 	// Initialize positions map
 	e.positions = make(map[string]types.Position)
@@ -141,6 +149,7 @@ func (e *BacktestEngineV1) Run() error {
 		return errors.New("initial capital must be greater than zero")
 	}
 
+	log.Printf("Initializing backtest with start time: %s and end time: %s", e.startTime, e.endTime)
 	// Initialize the backtest
 	e.currentCapital = e.initialCapital
 	e.positions = make(map[string]types.Position)
@@ -162,11 +171,28 @@ func (e *BacktestEngineV1) Run() error {
 	// Process market data
 	isFirstData := true
 
-	// Use a very old start time and a future end time to get all data
-	startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
+	// Create a progress bar with undefined length
+	bar := progressbar.NewOptions(-1,
+		progressbar.OptionSetDescription("Processing market data..."),
+		progressbar.OptionSetItsString("data points"),
+		progressbar.OptionShowIts(),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "=",
+			SaucerHead:    ">",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+	)
+	defer bar.Close()
 
-	for data := range e.marketDataSource.Iterator(startTime, endTime) {
+	dataCount := 0
+	for data := range e.marketDataSource.Iterator(e.startTime, e.endTime) {
+		// Increment the progress bar
+		bar.Add(1)
+		dataCount++
+
 		// Initialize buy and hold on first data point
 		if isFirstData {
 			e.initializeBuyAndHold(data)

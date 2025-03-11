@@ -98,7 +98,7 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 	currentRSI := rsiValues[len(rsiValues)-1]
 
 	// Get MACD indicator values
-	macdResult, err := ctx.GetIndicator(IndicatorMACD)
+	macdResult, err := ctx.GetIndicator("MACD")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get MACD indicator: %w", err)
 	}
