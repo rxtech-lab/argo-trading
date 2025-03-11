@@ -77,7 +77,7 @@ func TestCSVIterator(t *testing.T) {
 			FilePath: tempFile,
 		}
 
-		iterator := csvIterator.Iterator(time.Time{}, time.Time{})
+		iterator := csvIterator.Iterator(parseTime(t, "2025-01-01T00:00:00+08:00"), parseTime(t, "2025-01-02T00:00:00+08:00"))
 
 		var results []types.MarketData
 		iterator(func(data types.MarketData) bool {
@@ -105,7 +105,7 @@ func TestCSVIterator(t *testing.T) {
 			FilePath: tempFile,
 		}
 
-		iterator := csvIterator.Iterator(time.Time{}, time.Time{})
+		iterator := csvIterator.Iterator(parseTime(t, "2025-01-01T00:00:00+08:00"), parseTime(t, "2025-01-02T00:00:00+08:00"))
 
 		var results []types.MarketData
 		iterator(func(data types.MarketData) bool {
@@ -114,6 +114,52 @@ func TestCSVIterator(t *testing.T) {
 		})
 
 		// Verify we only got 2 records
+		assert.Equal(t, 2, len(results), "Should only get 2 records when yield returns false")
+
+		// Verify the records we did get
+		for i := 0; i < 2; i++ {
+			assert.Equal(t, expectedData[i].Time.Format(time.RFC3339), results[i].Time.Format(time.RFC3339), "Time should match for record %d", i)
+			assert.Equal(t, expectedData[i].Open, results[i].Open, "Open should match for record %d", i)
+			assert.Equal(t, expectedData[i].High, results[i].High, "High should match for record %d", i)
+			assert.Equal(t, expectedData[i].Low, results[i].Low, "Low should match for record %d", i)
+			assert.Equal(t, expectedData[i].Close, results[i].Close, "Close should match for record %d", i)
+			assert.Equal(t, expectedData[i].Volume, results[i].Volume, "Volume should match for record %d", i)
+		}
+	})
+
+	t.Run("Iterator should return empty slice if no data is found", func(t *testing.T) {
+		// Create a new CSV iterator for this test case
+		csvIterator := CSVIterator{
+			FilePath: tempFile,
+		}
+
+		iterator := csvIterator.Iterator(parseTime(t, "2024-01-01T00:00:00+08:00"), parseTime(t, "2024-01-02T00:00:00+08:00"))
+
+		var results []types.MarketData
+		iterator(func(data types.MarketData) bool {
+			results = append(results, data)
+			return true
+		})
+
+		// Verify we only got 0 records
+		assert.Equal(t, 0, len(results), "Should only get 0 records when no data is found")
+
+	})
+
+	t.Run("Iterator should yield data for a specific time range", func(t *testing.T) {
+		// Create a new CSV iterator for this test case
+		csvIterator := CSVIterator{
+			FilePath: tempFile,
+		}
+
+		iterator := csvIterator.Iterator(parseTime(t, "2025-01-01T08:03:00+08:00"), parseTime(t, "2025-01-01T08:11:00+08:00"))
+
+		var results []types.MarketData
+		iterator(func(data types.MarketData) bool {
+			results = append(results, data)
+			return true // Continue iteration
+		})
+
 		assert.Equal(t, 2, len(results), "Should only get 2 records when yield returns false")
 
 		// Verify the records we did get

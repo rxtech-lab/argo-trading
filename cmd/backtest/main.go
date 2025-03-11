@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	datasource "github.com/sirily11/argo-trading-go/src/engine/data_source"
+	datasource "github.com/sirily11/argo-trading-go/src/engine/data_source/csv"
 	engine "github.com/sirily11/argo-trading-go/src/engine/engine_v1"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 )
