@@ -11,7 +11,17 @@ import (
 
 // strategyContext implements the strategy.StrategyContext interface
 type strategyContext struct {
-	engine *BacktestEngineV1
+	engine    *BacktestEngineV1
+	startTime time.Time
+	endTime   time.Time
+}
+
+func NewStrategyContext(engine *BacktestEngineV1, startTime, endTime time.Time) strategy.StrategyContext {
+	return &strategyContext{
+		engine:    engine,
+		startTime: startTime,
+		endTime:   endTime,
+	}
 }
 
 func (c strategyContext) GetHistoricalData() []types.MarketData {
@@ -46,15 +56,20 @@ func (c strategyContext) GetAccountBalance() float64 {
 }
 
 // GetIndicator retrieves an indicator by name and calculates its value using historical data
-func (c strategyContext) GetIndicator(name strategy.Indicator) (interface{}, error) {
+func (c strategyContext) GetIndicator(name types.Indicator, startTime, endTime time.Time) (any, error) {
 	var ind indicator.Indicator
 
-	// Create the indicator based on name
+	// if endTime is before the end of the backtest, use the end of the backtest
+	targetEndtime := endTime
+	if c.endTime.Before(endTime) {
+		targetEndtime = c.endTime
+	}
+
 	switch name {
-	case strategy.IndicatorRSI:
-		ind = indicator.NewRSI(14) // Default period of 14
-	case strategy.IndicatorMACD:
-		ind = indicator.NewMACD(12, 26, 9) // Default periods of 12, 26, 9
+	case types.IndicatorRSI:
+		ind = indicator.NewRSI(startTime, targetEndtime, 14) // Default period of 14
+	case types.IndicatorMACD:
+		ind = indicator.NewMACD(startTime, targetEndtime, 12, 26, 9) // Default periods of 12, 26, 9
 	default:
 		return nil, fmt.Errorf("indicator %s not found", name)
 	}
@@ -67,7 +82,6 @@ func (c strategyContext) GetIndicator(name strategy.Indicator) (interface{}, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate indicator %s: %w", name, err)
 	}
-
 	return result, nil
 }
 

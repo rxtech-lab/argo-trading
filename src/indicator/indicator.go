@@ -18,7 +18,7 @@ type Indicator interface {
 	Calculate(ctx IndicatorContext) (interface{}, error)
 
 	// Name returns the name of the indicator
-	Name() string
+	Name() types.Indicator
 
 	// SetParams allows setting parameters for the indicator
 	SetParams(params map[string]interface{}) error
