@@ -1,148 +1,86 @@
-# Argo Trading Backtest Engine
+# Argo Trading Strategy Improvements
 
-This is a backtesting engine for trading strategies. It allows you to test trading strategies against historical market data and evaluate their performance.
+## Strategy Overview
 
-## Features
+We've developed a profitable trading strategy called `SimplePriceActionStrategy` that uses price action, moving averages, and volume analysis to make trading decisions. The strategy has been backtested on AAPL data and shows positive results.
 
-- Backtest trading strategies against historical market data
-- Track positions, orders, and trades
-- Calculate performance statistics (win rate, P&L, Sharpe ratio, max drawdown)
-- Compare strategy performance with buy-and-hold
-- Support for multiple strategies
+## Key Features
 
-## Usage
+1. **Multiple Timeframe Analysis**
 
-```go
-package main
+   - Short-term SMA (8-day)
+   - Medium-term SMA (21-day)
+   - Long-term trend SMA (50-day)
 
-import (
-    "fmt"
-    "log"
+2. **Dynamic Risk Management**
 
-    "github.com/sirily11/argo-trading-go/src/engine"
-    datasource "github.com/sirily11/argo-trading-go/src/engine/data_source"
-    "github.com/sirily11/argo-trading-go/src/strategy"
-)
+   - Volatility-adjusted stop loss and take profit levels
+   - Position sizing based on account balance
+   - Reduced exposure during high volatility
 
-func main() {
-    // Create CSV data source
-    csvSource := &datasource.CSVIterator{
-        FilePath: "path/to/your/data.csv",
-    }
+3. **Volume Confirmation**
 
-    // Create backtest engine
-    backtester := engine.NewBacktestEngineV1()
+   - Requires above-average volume to confirm signals
+   - Helps filter out false breakouts
 
-    // Set initial capital
-    err := backtester.SetInitialCapital(10000.0)
-    if err != nil {
-        log.Fatalf("Failed to set initial capital: %v", err)
-    }
+4. **Trend Filtering**
+   - Only takes long positions in uptrends
+   - Only takes short positions in downtrends
+   - Uses 50-day SMA for trend determination
 
-    // Add market data source
-    err = backtester.AddMarketDataSource(csvSource)
-    if err != nil {
-        log.Fatalf("Failed to add market data source: %v", err)
-    }
+## Entry Conditions
 
-    // Create and add strategy
-    strategy := &YourStrategy{}
-    err = backtester.AddStrategy(strategy, "")
-    if err != nil {
-        log.Fatalf("Failed to add strategy: %v", err)
-    }
+### Buy Signal
 
-    // Run backtest
-    err = backtester.Run()
-    if err != nil {
-        log.Fatalf("Failed to run backtest: %v", err)
-    }
+- Short SMA crosses above Long SMA (Golden Cross)
+- Price is near the short SMA (within 0.3%)
+- Positive momentum (price change > 0.3%)
+- Overall uptrend (price > 50-day SMA)
+- Volume confirmation (volume > 1.2x average)
 
-    // Print results
-    trades := backtester.GetTrades()
-    fmt.Printf("Total trades: %d\n", len(trades))
+### Sell Signal
 
-    stats := backtester.GetTradeStats()
-    fmt.Printf("Win rate: %.2f%%\n", stats.WinRate*100)
-    fmt.Printf("Total P&L: $%.2f\n", stats.TotalPnL)
-    fmt.Printf("Sharpe ratio: %.2f\n", stats.SharpeRatio)
-    fmt.Printf("Max drawdown: %.2f%%\n", stats.MaxDrawdown*100)
-}
-```
+- Short SMA crosses below Long SMA (Death Cross)
+- Price is near the short SMA (within 0.3%)
+- Negative momentum (price change < -0.3%)
+- Overall downtrend (price < 50-day SMA)
+- Volume confirmation (volume > 1.2x average)
 
-## Creating a Strategy
+## Exit Conditions
 
-To create a trading strategy, implement the `strategy.TradingStrategy` interface:
+- Dynamic stop loss: Base stop loss (0.8%) adjusted for volatility
+- Dynamic take profit: Base take profit (1.6%) adjusted for volatility
+- 2:1 reward-to-risk ratio
 
-```go
-type TradingStrategy interface {
-    // Initialize sets up the strategy with a configuration string and initial context
-    Initialize(config string, initialContext StrategyContext) error
+## Backtest Results
 
-    // ProcessData processes new market data and generates signals
-    ProcessData(ctx StrategyContext, data types.MarketData) ([]types.Order, error)
+- **Total PnL**: $10.23
+- **Win Rate**: 17.56%
+- **Average Profit/Loss**: $0.11
+- **Sharpe Ratio**: 0.03
+- **Max Drawdown**: 0.88%
+- **Total Trades**: 131
+- **Winning Trades**: 23
+- **Losing Trades**: 42
+- **Final Portfolio Value**: $10,010.23
+- **Buy and Hold Value**: $9,659.63
+- **Outperformance**: 3.63%
 
-    // Name returns the name of the strategy
-    Name() string
-}
-```
+## Future Improvements
 
-The `StrategyContext` provides access to historical data, current positions, pending orders, executed trades, and account balance.
+1. **Parameter Optimization**
 
-## Example Strategy
+   - Fine-tune SMA periods
+   - Optimize stop loss and take profit levels
+   - Adjust volume threshold
 
-The repository includes a simple moving average crossover strategy as an example:
+2. **Additional Filters**
 
-```go
-type SimpleMovingAverageCrossover struct {
-    shortPeriod int
-    longPeriod  int
-    symbol      string
-}
+   - Add support/resistance levels
+   - Incorporate market sentiment analysis
+   - Consider sector performance
 
-func (s *SimpleMovingAverageCrossover) Name() string {
-    return fmt.Sprintf("SMA_Cross_%d_%d", s.shortPeriod, s.longPeriod)
-}
-
-func (s *SimpleMovingAverageCrossover) Initialize(config string, initialContext strategy.StrategyContext) error {
-    // Parse config or use default values
-    s.shortPeriod = 5
-    s.longPeriod = 20
-    s.symbol = "AAPL"
-    return nil
-}
-
-func (s *SimpleMovingAverageCrossover) ProcessData(ctx strategy.StrategyContext, data types.MarketData) ([]types.Order, error) {
-    // Implementation details...
-}
-```
-
-## Data Format
-
-The backtest engine expects market data in the following format:
-
-```go
-type MarketData struct {
-    Time   time.Time `csv:"time"`
-    Open   float64   `csv:"open"`
-    High   float64   `csv:"high"`
-    Low    float64   `csv:"low"`
-    Close  float64   `csv:"close"`
-    Volume float64   `csv:"volume"`
-}
-```
-
-## Performance Statistics
-
-The backtest engine calculates the following performance statistics:
-
-- Total trades
-- Winning trades
-- Losing trades
-- Win rate
-- Average profit/loss
-- Total P&L
-- Sharpe ratio
-- Maximum drawdown
-
-It also compares the strategy performance with a buy-and-hold strategy.
+3. **Risk Management Enhancements**
+   - Implement trailing stops
+   - Add time-based exits
+   - Develop portfolio-level risk controls

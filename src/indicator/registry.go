@@ -80,4 +80,5 @@ var DefaultRegistry = NewIndicatorRegistry()
 func RegisterIndicators(startTime, endTime time.Time) {
 	DefaultRegistry.RegisterIndicator(NewRSI(startTime, endTime, 14))
 	DefaultRegistry.RegisterIndicator(NewMACD(startTime, endTime, 12, 26, 9))
+	DefaultRegistry.RegisterIndicator(NewTrendStrength(startTime, endTime, 5, 20))
 }

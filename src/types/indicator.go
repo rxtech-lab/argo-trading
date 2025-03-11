@@ -11,4 +11,5 @@ const (
 	IndicatorADX                   Indicator = "adx"
 	IndicatorCCI                   Indicator = "cci"
 	IndicatorAO                    Indicator = "ao"
+	IndicatorTrendStrength         Indicator = "trend_strength"
 )
