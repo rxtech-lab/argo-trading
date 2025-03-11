@@ -13,7 +13,7 @@ type RSI struct {
 }
 
 // NewRSI creates a new RSI indicator with the specified period
-func NewRSI(period int) *RSI {
+func NewRSI(period int) Indicator {
 	return &RSI{
 		period: period,
 		params: map[string]interface{}{

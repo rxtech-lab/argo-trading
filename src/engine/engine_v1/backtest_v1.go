@@ -166,8 +166,7 @@ func (e *BacktestEngineV1) Run() error {
 	startTime := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
 	endTime := time.Now().AddDate(100, 0, 0) // 100 years in the future
 
-	iteratorFunc := e.marketDataSource.Iterator(startTime, endTime)
-	iteratorFunc(func(data types.MarketData) bool {
+	for data := range e.marketDataSource.Iterator(startTime, endTime) {
 		// Initialize buy and hold on first data point
 		if isFirstData {
 			e.initializeBuyAndHold(data)
@@ -220,9 +219,7 @@ func (e *BacktestEngineV1) Run() error {
 				fmt.Printf("Warning: failed to write portfolio value: %v\n", err)
 			}
 		}
-
-		return true // Continue iteration
-	})
+	}
 
 	// Calculate statistics
 	e.calculateStatistics()

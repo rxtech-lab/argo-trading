@@ -21,7 +21,7 @@ type MACDResult struct {
 }
 
 // NewMACD creates a new MACD indicator with the specified periods
-func NewMACD(fastPeriod, slowPeriod, signalPeriod int) *MACD {
+func NewMACD(fastPeriod, slowPeriod, signalPeriod int) Indicator {
 	return &MACD{
 		fastPeriod:   fastPeriod,
 		slowPeriod:   slowPeriod,
