@@ -13,15 +13,11 @@ func TestCommissionFormula(t *testing.T) {
 	backtest := NewBacktestEngineV1()
 
 	// Initialize with a config that includes our commission formula
-	config := `
-initial_capital: 10000
-start_time: 2025-01-01T00:00:00Z
-end_time: 2025-02-02T23:59:59Z
-results_folder: results
-commission_formula: "orderType == \"BUY\" ? max(1.0, 0.001 * total) : max(1.5, 0.0015 * total)"
-`
-	err := backtest.Initialize(config)
-	assert.NoError(t, err, "Failed to initialize backtest engine")
+	startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
+	formula := `orderType == "BUY" ? max(1.0, 0.001 * total) : max(1.5, 0.0015 * total)`
+	err := backtest.TestSetConfig(10000, 10000, "results", startTime, endTime, formula)
+	assert.NoError(t, err, "Failed to configure test")
 
 	// Define test cases
 	testCases := []struct {
@@ -215,17 +211,11 @@ func TestCommissionFormulaExpressions(t *testing.T) {
 			// Create a new backtest engine for each test
 			backtest := NewBacktestEngineV1()
 
-			// Initialize with the test formula
-			// Use direct initialization instead of YAML parsing to avoid escaping issues
-			backtest.initialCapital = 10000
-			backtest.currentCapital = 10000
-			backtest.resultsFolder = "results"
-			backtest.startTime = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-			backtest.endTime = time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
-			backtest.fees = BacktestEngineV1Fees{
-				CommissionFormula: tf.formula,
-			}
-			backtest.positions = make(map[string]types.Position)
+			// Initialize with the test formula using TestSetConfig
+			startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+			endTime := time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
+			err := backtest.TestSetConfig(10000, 10000, "results", startTime, endTime, tf.formula)
+			assert.NoError(t, err, "Failed to configure test")
 
 			// Calculate commission
 			commission, err := backtest.TestCalculateCommission(tf.order, tf.price)
@@ -262,16 +252,10 @@ func TestInvalidFormulas(t *testing.T) {
 			backtest := NewBacktestEngineV1()
 
 			// Initialize with the test formula
-			// Use direct initialization instead of YAML parsing to avoid escaping issues
-			backtest.initialCapital = 10000
-			backtest.currentCapital = 10000
-			backtest.resultsFolder = "results"
-			backtest.startTime = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-			backtest.endTime = time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
-			backtest.fees = BacktestEngineV1Fees{
-				CommissionFormula: tf.formula,
-			}
-			backtest.positions = make(map[string]types.Position)
+			startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+			endTime := time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
+			err := backtest.TestSetConfig(10000, 10000, "results", startTime, endTime, tf.formula)
+			assert.NoError(t, err, "Failed to configure test")
 
 			// Calculate commission - should fail
 			order := types.Order{
@@ -280,7 +264,7 @@ func TestInvalidFormulas(t *testing.T) {
 				Quantity:  100,
 				Price:     150,
 			}
-			_, err := backtest.TestCalculateCommission(order, 150)
+			_, err = backtest.TestCalculateCommission(order, 150)
 			assert.Error(t, err, "Expected error for invalid formula")
 		})
 	}
