@@ -64,6 +64,11 @@ func NewBacktestEngineV1() BacktestEngine {
 	}
 }
 
+// Name returns the name of the backtest engine
+func (e *BacktestEngineV1) Name() string {
+	return "BacktestEngineV1"
+}
+
 func (e *BacktestEngineV1) Initialize(config string) error {
 	var cfg BacktestEngineV1Config
 	err := yaml.Unmarshal([]byte(config), &cfg)
@@ -407,7 +412,7 @@ func (e *BacktestEngineV1) executeOrder(strategy strategy.TradingStrategy, order
 
 	// Add to strategy's trades
 	for i, s := range e.strategies {
-		if s.strategy.Name() == order.StrategyName {
+		if s.strategy().Name() == order.StrategyName {
 			e.strategies[i].trades = append(e.strategies[i].trades, trade)
 			break
 		}
@@ -495,8 +500,8 @@ func (e *BacktestEngineV1) calculateStatistics() {
 
 		// Write strategy stats to disk
 		if e.resultsWriter != nil {
-			fmt.Printf("%s", color.HiYellowString("Writing strategy stats for %s\n", e.strategies[i].strategy.Name()))
-			if err := e.resultsWriter.WriteStrategyStats(e.strategies[i].strategy.Name(), stats); err != nil {
+			fmt.Printf("%s", color.HiYellowString("Writing strategy stats for %s\n", e.strategies[i].strategy().Name()))
+			if err := e.resultsWriter.WriteStrategyStats(e.strategies[i].strategy().Name(), stats); err != nil {
 				fmt.Printf("Warning: failed to write strategy stats: %v\n", err)
 			}
 		}
@@ -663,4 +668,18 @@ func (e *BacktestEngineV1) calculateCommission(order types.Order, executionPrice
 // TestCalculateCommission is a helper method for testing commission calculations
 func (e *BacktestEngineV1) TestCalculateCommission(order types.Order, executionPrice float64) (float64, error) {
 	return e.calculateCommission(order, executionPrice)
+}
+
+// TestSetConfig sets configuration values for testing purposes
+func (e *BacktestEngineV1) TestSetConfig(initialCapital, currentCapital float64, resultsFolder string, startTime, endTime time.Time, commissionFormula string) error {
+	e.initialCapital = initialCapital
+	e.currentCapital = currentCapital
+	e.resultsFolder = resultsFolder
+	e.startTime = startTime
+	e.endTime = endTime
+	e.fees = BacktestEngineV1Fees{
+		CommissionFormula: commissionFormula,
+	}
+	e.positions = make(map[string]types.Position)
+	return nil
 }
