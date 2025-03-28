@@ -1,9 +1,8 @@
 module github.com/sirily11/argo-trading-go
 
 go 1.24.0
-
 require (
-	github.com/expr-lang/expr v1.16.9
+	github.com/expr-lang/expr v1.17.0
 	github.com/fatih/color v1.18.0
 	github.com/gocarina/gocsv v0.0.0-20240520201108-78e41c74b4b1
 	github.com/google/uuid v1.6.0
