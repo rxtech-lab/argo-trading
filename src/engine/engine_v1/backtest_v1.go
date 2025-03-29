@@ -4,10 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/schollz/progressbar/v3"
 	"github.com/sirily11/argo-trading-go/src/engine/writer"
@@ -85,9 +83,6 @@ func (e *BacktestEngineV1) Initialize(config string) error {
 	// Initialize positions map
 	e.positions = make(map[string]types.Position)
 
-	// Initialize indicators
-	e.initializeIndicators()
-
 	// Create and initialize the results writer
 	if e.resultsFolder != "" {
 		fileWriter, err := writer.NewCSVWriter(e.resultsFolder)
@@ -98,11 +93,6 @@ func (e *BacktestEngineV1) Initialize(config string) error {
 	}
 
 	return nil
-}
-
-// initializeIndicators registers default indicators with the indicator registry
-func (e *BacktestEngineV1) initializeIndicators() {
-	// No initialization needed since we're creating indicators on demand
 }
 
 // SetInitialCapital sets the initial capital for the backtest
@@ -215,7 +205,7 @@ func (e *BacktestEngineV1) Run() error {
 
 		// Process data with each strategy
 		for i := range e.strategies {
-			orders, err := e.strategies[i].strategy.ProcessData(ctx, data)
+			orders, err := e.strategies[i].strategy.ProcessData(ctx, data, "")
 			if err != nil {
 				continue
 			}
@@ -242,16 +232,6 @@ func (e *BacktestEngineV1) Run() error {
 
 		// Process pending orders with the new market data
 		e.processPendingOrders(data)
-
-		// Calculate portfolio value
-		portfolioValue := e.calculatePortfolioValue(data)
-
-		// Write portfolio value to disk
-		if e.resultsWriter != nil {
-			if err := e.resultsWriter.WriteEquityCurve([]float64{portfolioValue}, []time.Time{data.Time}); err != nil {
-				fmt.Printf("Warning: failed to write portfolio value: %v\n", err)
-			}
-		}
 	}
 	// Calculate statistics
 	bar.Finish()
@@ -426,221 +406,6 @@ func (e *BacktestEngineV1) executeOrder(order types.Order, data types.MarketData
 	return true
 }
 
-// calculatePortfolioValue calculates the current portfolio value
-func (e *BacktestEngineV1) calculatePortfolioValue(data types.MarketData) float64 {
-	value := e.currentCapital
-	for _, position := range e.positions {
-		value += position.Quantity * data.Close
-	}
-
-	// Add to equity curve
-	e.equityCurve = append(e.equityCurve, value)
-
-	// Write equity curve point to disk
-	if e.resultsWriter != nil {
-		if err := e.resultsWriter.WriteEquityCurve([]float64{value}, []time.Time{data.Time}); err != nil {
-			fmt.Printf("Warning: failed to write equity curve point: %v\n", err)
-		}
-	}
-
-	return value
-}
-
-// initializeBuyAndHold initializes the buy and hold strategy
-func (e *BacktestEngineV1) initializeBuyAndHold(data types.MarketData) {
-	e.buyAndHoldPrice = data.Close
-	e.buyAndHoldShares = e.initialCapital / data.Close
-	e.buyAndHoldValue = e.initialCapital
-}
-
-// updateBuyAndHoldValue updates the buy and hold value
-func (e *BacktestEngineV1) updateBuyAndHoldValue(data types.MarketData) {
-	e.buyAndHoldValue = e.buyAndHoldShares * data.Close
-}
-
-// calculateStatistics calculates performance statistics
-func (e *BacktestEngineV1) calculateStatistics() {
-	// Calculate statistics for each strategy
-	for i := range e.strategies {
-		trades := e.strategies[i].trades
-		stats := types.TradeStats{
-			TotalTrades: len(trades),
-		}
-
-		for _, trade := range trades {
-			if trade.PnL > 0 {
-				stats.WinningTrades++
-			} else if trade.PnL < 0 {
-				stats.LosingTrades++
-			}
-			stats.TotalPnL += trade.PnL
-			stats.RealizedPnL += trade.PnL
-			stats.TotalFees += trade.Commission
-		}
-
-		if stats.TotalTrades > 0 {
-			stats.WinRate = float64(stats.WinningTrades) / float64(stats.TotalTrades)
-			stats.AverageProfitLoss = stats.RealizedPnL / float64(stats.TotalTrades)
-		}
-
-		// Calculate final portfolio value
-		finalPortfolioValue := e.currentCapital
-		marketData := e.marketDataSource.GetDataForTimeRange(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC), time.Now().AddDate(100, 0, 0))
-		if len(marketData) > 0 {
-			lastPrice := marketData[len(marketData)-1].Close
-			for _, position := range e.positions {
-				finalPortfolioValue += position.Quantity * lastPrice
-			}
-		}
-
-		// Calculate statistics for each strategy
-		e.strategies[i].stats = stats
-
-		// Write strategy stats to disk
-		if e.resultsWriter != nil {
-			fmt.Printf("%s", color.HiYellowString("Writing strategy stats for %s\n", e.strategies[i].strategy.Name()))
-			if err := e.resultsWriter.WriteStrategyStats(e.strategies[i].strategy.Name(), stats); err != nil {
-				fmt.Printf("Warning: failed to write strategy stats: %v\n", err)
-			}
-		}
-	}
-
-	// Write combined stats to disk
-	if e.resultsWriter != nil {
-		// Calculate combined stats
-		combinedStats := types.TradeStats{
-			TotalTrades:       0,
-			WinningTrades:     0,
-			LosingTrades:      0,
-			TotalPnL:          0,
-			RealizedPnL:       0,
-			UnrealizedPnL:     0,
-			AverageProfitLoss: 0,
-			TotalFees:         0,
-		}
-
-		for _, s := range e.strategies {
-			combinedStats.TotalTrades += s.stats.TotalTrades
-			combinedStats.WinningTrades += s.stats.WinningTrades
-			combinedStats.LosingTrades += s.stats.LosingTrades
-			combinedStats.RealizedPnL += s.stats.RealizedPnL
-			combinedStats.TotalFees += s.stats.TotalFees
-		}
-
-		// Get the final portfolio value including unrealized PnL
-		finalPortfolioValue := e.currentCapital
-		marketData := e.marketDataSource.GetDataForTimeRange(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC), time.Now().AddDate(100, 0, 0))
-		if len(marketData) > 0 {
-			lastPrice := marketData[len(marketData)-1].Close
-			for _, position := range e.positions {
-				finalPortfolioValue += position.Quantity * lastPrice
-			}
-		}
-
-		// Calculate unrealized PnL from open positions
-		combinedStats.UnrealizedPnL = finalPortfolioValue - e.initialCapital - combinedStats.RealizedPnL
-
-		// Calculate total PnL (realized + unrealized)
-		combinedStats.TotalPnL = combinedStats.RealizedPnL + combinedStats.UnrealizedPnL
-
-		if combinedStats.TotalTrades > 0 {
-			combinedStats.WinRate = float64(combinedStats.WinningTrades) / float64(combinedStats.TotalTrades)
-			combinedStats.AverageProfitLoss = combinedStats.RealizedPnL / float64(combinedStats.TotalTrades)
-		}
-
-		// Calculate Sharpe ratio and max drawdown from equity curve
-		if len(e.equityCurve) > 0 {
-			combinedStats.SharpeRatio = e.calculateSharpeRatio()
-			combinedStats.MaxDrawdown = e.calculateMaxDrawdown()
-		}
-
-		if err := e.resultsWriter.WriteStats(combinedStats); err != nil {
-			fmt.Printf("Warning: failed to write combined stats: %v\n", err)
-		}
-
-		// Print summary of realized vs unrealized PnL
-		fmt.Printf("%s", color.HiYellowString("Realized PnL: $%.2f\n", combinedStats.RealizedPnL))
-		fmt.Printf("%s", color.HiYellowString("Unrealized PnL: $%.2f\n", combinedStats.UnrealizedPnL))
-		fmt.Printf("%s", color.HiYellowString("Total PnL: $%.2f\n", combinedStats.TotalPnL))
-	}
-
-	// Print comparison with buy and hold
-	if e.buyAndHoldValue > 0 {
-		finalPortfolioValue := e.currentCapital
-		marketData := e.marketDataSource.GetDataForTimeRange(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC), time.Now().AddDate(100, 0, 0))
-		if len(marketData) > 0 {
-			lastPrice := marketData[len(marketData)-1].Close
-			for _, position := range e.positions {
-				finalPortfolioValue += position.Quantity * lastPrice
-			}
-		}
-
-		fmt.Printf("%s", color.HiYellowString("Final portfolio value: $%.2f\n", finalPortfolioValue))
-		fmt.Printf("%s", color.HiYellowString("Buy and hold value: $%.2f\n", e.buyAndHoldValue))
-		fmt.Printf("%s", color.HiYellowString("Outperformance: %.2f%%\n", (finalPortfolioValue/e.buyAndHoldValue-1)*100))
-	}
-}
-
-// calculateSharpeRatio calculates the Sharpe ratio
-func (e *BacktestEngineV1) calculateSharpeRatio() float64 {
-	if len(e.equityCurve) < 2 {
-		return 0
-	}
-
-	// Calculate daily returns
-	returns := make([]float64, len(e.equityCurve)-1)
-	for i := 1; i < len(e.equityCurve); i++ {
-		returns[i-1] = (e.equityCurve[i] - e.equityCurve[i-1]) / e.equityCurve[i-1]
-	}
-
-	// Calculate mean return
-	meanReturn := 0.0
-	for _, r := range returns {
-		meanReturn += r
-	}
-	meanReturn /= float64(len(returns))
-
-	// Calculate standard deviation
-	variance := 0.0
-	for _, r := range returns {
-		variance += math.Pow(r-meanReturn, 2)
-	}
-	variance /= float64(len(returns))
-	stdDev := math.Sqrt(variance)
-
-	if stdDev == 0 {
-		return 0
-	}
-
-	// Assume risk-free rate of 0 for simplicity
-	sharpeRatio := meanReturn / stdDev * math.Sqrt(252) // Annualized
-
-	return sharpeRatio
-}
-
-// calculateMaxDrawdown calculates the maximum drawdown
-func (e *BacktestEngineV1) calculateMaxDrawdown() float64 {
-	if len(e.equityCurve) < 2 {
-		return 0
-	}
-
-	maxDrawdown := 0.0
-	peak := e.equityCurve[0]
-
-	for _, value := range e.equityCurve {
-		if value > peak {
-			peak = value
-		}
-
-		drawdown := (peak - value) / peak
-		if drawdown > maxDrawdown {
-			maxDrawdown = drawdown
-		}
-	}
-
-	return maxDrawdown
-}
-
 // calculateCommission calculates the commission for an order using the formula from the config
 func (e *BacktestEngineV1) calculateCommission(order types.Order, executionPrice float64) (float64, error) {
 	// If no formula is provided, default to zero commission
@@ -658,4 +423,17 @@ func (e *BacktestEngineV1) calculateCommission(order types.Order, executionPrice
 // TestCalculateCommission is a helper method for testing commission calculations
 func (e *BacktestEngineV1) TestCalculateCommission(order types.Order, executionPrice float64) (float64, error) {
 	return e.calculateCommission(order, executionPrice)
+}
+
+// TestSetConfig sets configuration values for testing purposes
+func (e *BacktestEngineV1) TestSetConfig(initialCapital, currentCapital float64, resultsFolder string, startTime, endTime time.Time, commissionFormula string) error {
+	e.initialCapital = initialCapital
+	e.currentCapital = currentCapital
+	e.resultsFolder = resultsFolder
+	e.startTime = startTime
+	e.endTime = endTime
+	e.fees = BacktestEngineV1Fees{
+		CommissionFormula: commissionFormula,
+	}
+	return nil
 }

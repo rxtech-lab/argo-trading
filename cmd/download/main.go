@@ -18,7 +18,7 @@ func main() {
 	endDate := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
 	// Download data to DuckDB
-	dbPath, err := client.Download(ticker, "data/market_data.duckdb", startDate, endDate, 15, models.Second)
+	dbPath, err := client.Download(ticker, "data/market_data.duckdb", startDate, endDate, 1, models.Minute)
 	if err != nil {
 		log.Fatalf("Failed to download data: %v", err)
 	}
