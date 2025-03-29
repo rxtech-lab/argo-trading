@@ -9,15 +9,7 @@ import (
 )
 
 func TestCommissionFormula(t *testing.T) {
-	// Create a new backtest engine
-	backtest := NewBacktestEngineV1()
-
-	// Initialize with a config that includes our commission formula
-	startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
 	formula := `orderType == "BUY" ? max(1.0, 0.001 * total) : max(1.5, 0.0015 * total)`
-	err := backtest.TestSetConfig(10000, 10000, "results", startTime, endTime, formula)
-	assert.NoError(t, err, "Failed to configure test")
 
 	// Define test cases
 	testCases := []struct {
@@ -91,7 +83,7 @@ func TestCommissionFormula(t *testing.T) {
 	// Run tests
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			commission, err := backtest.TestCalculateCommission(tc.order, tc.price)
+			commission, err := calculateCommissionWithExpression(formula, tc.order, tc.price)
 			assert.NoError(t, err, "Failed to calculate commission")
 			assert.Equal(t, tc.expected, commission, "Commission calculation mismatch")
 		})
@@ -208,17 +200,7 @@ func TestCommissionFormulaExpressions(t *testing.T) {
 	// Run tests for each formula
 	for _, tf := range testFormulas {
 		t.Run(tf.name, func(t *testing.T) {
-			// Create a new backtest engine for each test
-			backtest := NewBacktestEngineV1()
-
-			// Initialize with the test formula using TestSetConfig
-			startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-			endTime := time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
-			err := backtest.TestSetConfig(10000, 10000, "results", startTime, endTime, tf.formula)
-			assert.NoError(t, err, "Failed to configure test")
-
-			// Calculate commission
-			commission, err := backtest.TestCalculateCommission(tf.order, tf.price)
+			commission, err := calculateCommissionWithExpression(tf.formula, tf.order, tf.price)
 			assert.NoError(t, err, "Failed to calculate commission")
 			assert.Equal(t, tf.expected, commission, "Commission calculation mismatch")
 		})
@@ -249,13 +231,6 @@ func TestInvalidFormulas(t *testing.T) {
 	for _, tf := range testFormulas {
 		t.Run(tf.name, func(t *testing.T) {
 			// Create a new backtest engine for each test
-			backtest := NewBacktestEngineV1()
-
-			// Initialize with the test formula
-			startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-			endTime := time.Date(2025, 2, 2, 23, 59, 59, 0, time.UTC)
-			err := backtest.TestSetConfig(10000, 10000, "results", startTime, endTime, tf.formula)
-			assert.NoError(t, err, "Failed to configure test")
 
 			// Calculate commission - should fail
 			order := types.Order{
@@ -264,7 +239,7 @@ func TestInvalidFormulas(t *testing.T) {
 				Quantity:  100,
 				Price:     150,
 			}
-			_, err = backtest.TestCalculateCommission(order, 150)
+			_, err := calculateCommissionWithExpression(tf.formula, order, 150)
 			assert.Error(t, err, "Expected error for invalid formula")
 		})
 	}

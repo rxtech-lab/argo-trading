@@ -1,61 +1,31 @@
 package main
 
 import (
-	"path/filepath"
+	"log"
+	"os"
+
+	engine "github.com/sirily11/argo-trading-go/src/engine/engine_v1"
 )
 
-func listCsvFiles() ([]string, error) {
-	files, err := filepath.Glob("./data/*.csv")
-	if err != nil {
-		return nil, err
-	}
-	return files, nil
-}
-
 func main() {
-	// config, err := os.ReadFile("./config/backtest_config.yaml")
-	// if err != nil {
-	// 	log.Fatalf("Failed to read config: %v", err)
-	// }
+	engine := engine.NewBacktestEngineV1()
 
-	// files, err := listCsvFiles()
-	// if err != nil {
-	// 	log.Fatalf("Failed to list CSV files: %v", err)
-	// }
+	// read config from config/backtest_config.yaml
+	config, err := os.ReadFile("config/backtest_config.yaml")
+	if err != nil {
+		log.Fatalf("Failed to read config: %v", err)
+	}
 
-	// for _, file := range files {
-	// 	log.Printf("Processing file: %s", file)
-	// 	// Create CSV data source
-	// 	csvSource := &datasource.CSVIterator{
-	// 		FilePath: file,
-	// 	}
+	if err := engine.Initialize(string(config)); err != nil {
+		log.Fatalf("Failed to initialize engine: %v", err)
+	}
 
-	// 	// Create backtest engine
-	// 	backtester := engine.NewBacktestEngineV1()
+	// set the results folder
+	engine.SetResultsFolder("results")
 
-	// 	// Initialize backtest engine
-	// 	err = backtester.Initialize(string(config))
-	// 	if err != nil {
-	// 		log.Fatalf("Failed to initialize backtest engine: %v", err)
-	// 	}
+	// set the data path
+	engine.SetDataPath("data/*.parquet")
 
-	// 	// Add market data source
-	// 	err = backtester.AddMarketDataSource(csvSource)
-	// 	if err != nil {
-	// 		log.Fatalf("Failed to add market data source: %v", err)
-	// 	}
-
-	// 	// Create and add strategy
-	// 	smaStrategy := strategy.NewSimplePriceActionStrategy()
-	// 	err = backtester.AddStrategy(smaStrategy, "")
-	// 	if err != nil {
-	// 		log.Fatalf("Failed to add strategy: %v", err)
-	// 	}
-
-	// 	// Run backtest
-	// 	err = backtester.Run()
-	// 	if err != nil {
-	// 		log.Fatalf("Failed to run backtest: %v", err)
-	// 	}
-	// }
+	// run the engine
+	engine.Run()
 }
