@@ -193,9 +193,9 @@ func (b *BacktestEngineV1) Run() error {
 				// initialize the data source with in-memory database
 				datasource, err := datasource.NewDataSource(":memory:", b.log)
 				strategyContext := s.StrategyContext{
-					DataSource: datasource,
+					DataSource:        datasource,
 					IndicatorRegistry: b.indicatorRegistry,
-					GetPosition: b.state.GetPosition,
+					GetPosition:       b.state.GetPosition,
 				}
 				if err != nil {
 					b.log.Error("Failed to create data source",

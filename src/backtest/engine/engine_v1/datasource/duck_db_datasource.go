@@ -25,6 +25,17 @@ func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Set DuckDB-specific optimizations
+	_, err = db.Exec(`
+		SET memory_limit='8GB';
+		SET threads=4;
+		SET temp_directory='./temp';
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set DuckDB optimizations: %w", err)
+	}
+
 	return &DuckDBDataSource{db: db, logger: logger}, nil
 }
 
@@ -32,8 +43,12 @@ func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 func (d *DuckDBDataSource) Initialize(path string) error {
 	d.logger.Debug("Initializing DuckDB data source", zap.String("path", path))
 
-	// create a view from the given path
-	query := fmt.Sprintf("CREATE VIEW market_data AS SELECT * FROM read_parquet('%s')", path)
+	// Create a view from the parquet file
+	query := fmt.Sprintf(`
+		CREATE VIEW market_data AS 
+		SELECT * FROM read_parquet('%s');
+	`, path)
+
 	_, err := d.db.Exec(query)
 	if err != nil {
 		return err
@@ -52,21 +67,34 @@ func (d *DuckDBDataSource) Count() (int, error) {
 	return count, nil
 }
 
-// ReadAll implements DataSource.
+// ReadAll implements DataSource with batch processing.
 func (d *DuckDBDataSource) ReadAll() func(yield func(types.MarketData, error) bool) {
-	// read all the data from the view
+	const batchSize = 1000 // Adjust this value based on your memory constraints
 
 	return func(yield func(types.MarketData, error) bool) {
-		d.logger.Debug("Reading all data from DuckDB", zap.String("query", "SELECT * FROM market_data"))
-		rows, err := d.db.Query("SELECT * FROM market_data")
+		d.logger.Debug("Reading all data from DuckDB with batch processing")
+
+		// Use a prepared statement for better performance
+		stmt, err := d.db.Prepare(`
+			SELECT time, symbol, open, high, low, close, volume 
+			FROM market_data 
+			ORDER BY time ASC
+		`)
+		if err != nil {
+			yield(types.MarketData{}, err)
+			return
+		}
+		defer stmt.Close()
+
+		rows, err := stmt.Query()
 		if err != nil {
 			yield(types.MarketData{}, err)
 			return
 		}
 		defer rows.Close()
 
-		// use iterator pattern to yield the data
-		// don't need to load all the data into memory
+		// Process rows in batches
+		batch := make([]types.MarketData, 0, batchSize)
 		for rows.Next() {
 			var (
 				timestamp                      time.Time
@@ -90,14 +118,29 @@ func (d *DuckDBDataSource) ReadAll() func(yield func(types.MarketData, error) bo
 				Volume: volume,
 			}
 
-			if !yield(marketData, nil) {
+			batch = append(batch, marketData)
+
+			// Process batch when it reaches the batch size
+			if len(batch) >= batchSize {
+				for _, data := range batch {
+					if !yield(data, nil) {
+						return
+					}
+				}
+				batch = batch[:0] // Reset slice while keeping capacity
+			}
+		}
+
+		// Process remaining rows
+		for _, data := range batch {
+			if !yield(data, nil) {
 				return
 			}
 		}
 	}
 }
 
-// ReadRange implements DataSource.
+// ReadRange implements DataSource with optimized query.
 func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error) {
 	// Convert interval to minutes for aggregation
 	var intervalMinutes int
@@ -128,22 +171,21 @@ func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval In
 		return nil, fmt.Errorf("unsupported interval: %s", interval)
 	}
 
-	// Construct the SQL query to get aggregated data within the time range
+	// Optimized query using materialized CTE and window functions
 	query := fmt.Sprintf(`
-		WITH time_buckets AS (
+		WITH time_buckets AS MATERIALIZED (
 			SELECT 
 				time_bucket(INTERVAL '%d minutes', time) as bucket_time,
 				symbol,
-				FIRST(open) as open,
-				MAX(high) as high,
-				MIN(low) as low,
-				LAST(close) as close,
-				SUM(volume) as volume
+				FIRST_VALUE(open) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time) as open,
+				MAX(high) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as high,
+				MIN(low) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as low,
+				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
+				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
 			FROM market_data 
 			WHERE time >= ? AND time <= ?
-			GROUP BY time_bucket(INTERVAL '%d minutes', time), symbol
 		)
-		SELECT 
+		SELECT DISTINCT
 			bucket_time as time,
 			symbol,
 			open,
@@ -153,17 +195,23 @@ func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval In
 			volume
 		FROM time_buckets
 		ORDER BY bucket_time ASC
-	`, intervalMinutes, intervalMinutes)
+	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
 
-	// Execute the query
-	rows, err := d.db.Query(query, start, end)
+	// Use prepared statement for better performance
+	stmt, err := d.db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query: %w", err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(start, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query market data: %w", err)
 	}
 	defer rows.Close()
 
-	// Read all rows into a slice
-	var result []types.MarketData
+	// Pre-allocate slice with reasonable capacity
+	result := make([]types.MarketData, 0, 1000)
 	for rows.Next() {
 		var (
 			timestamp                      time.Time
