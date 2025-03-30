@@ -2,14 +2,8 @@ package types
 
 import "time"
 
-type MarketDataSource interface {
-	// Iterator iterates over the market data row by row
-	Iterator(startTime, endTime time.Time) func(yield func(MarketData) bool)
-	// GetDataForTimeRange returns market data within a specific time range
-	GetDataForTimeRange(startTime, endTime time.Time) []MarketData
-}
-
 type MarketData struct {
+	Symbol string    `csv:"symbol"`
 	Time   time.Time `csv:"time"`
 	Open   float64   `csv:"open"`
 	High   float64   `csv:"high"`

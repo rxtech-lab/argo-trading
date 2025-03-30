@@ -1,161 +1,83 @@
 package strategy
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/google/uuid"
 	"github.com/sirily11/argo-trading-go/src/indicator"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
 
 // ExampleIndicatorStrategy demonstrates how to use indicators in a strategy
 type ExampleIndicatorStrategy struct {
-	name           string
-	symbol         string
-	rsiPeriod      int
-	rsiOverbought  float64
-	rsiOversold    float64
-	initialized    bool
-	lastSignalTime time.Time
-	cooldownPeriod time.Duration
 }
 
 // NewExampleIndicatorStrategy creates a new example strategy
-func NewExampleIndicatorStrategy(symbol string) TradingStrategy {
-	return &ExampleIndicatorStrategy{
-		name:           "ExampleIndicatorStrategy",
-		symbol:         symbol,
-		rsiPeriod:      14,
-		rsiOverbought:  70.0,
-		rsiOversold:    30.0,
-		initialized:    false,
-		cooldownPeriod: 24 * time.Hour, // Avoid frequent trading
-	}
+func NewExampleIndicatorStrategy() TradingStrategy {
+	return &ExampleIndicatorStrategy{}
 }
 
 // Name returns the name of the strategy
 func (s *ExampleIndicatorStrategy) Name() string {
-	return s.name
+	return "ExampleIndicatorStrategy"
 }
 
 // Initialize sets up the strategy with configuration
 func (s *ExampleIndicatorStrategy) Initialize(config string) error {
-	s.initialized = true
 	return nil
 }
 
 // ProcessData processes new market data and generates signals
-func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.MarketData, param string) ([]types.Order, error) {
-	if !s.initialized {
-		return nil, fmt.Errorf("strategy not initialized")
-	}
-
-	// Check if we're in cooldown period
-	if !s.lastSignalTime.IsZero() && time.Since(s.lastSignalTime) < s.cooldownPeriod {
-		return nil, nil
-	}
-
-	// Get current positions
-	positions := ctx.GetCurrentPositions()
-	hasPosition := false
-	var currentPosition types.Position
-
-	for _, pos := range positions {
-		if pos.Symbol == s.symbol {
-			hasPosition = true
-			currentPosition = pos
-			break
-		}
-	}
-
-	// Get RSI indicator values
-	startTime := data.Time.Add(-1 * time.Hour * 24 * 30)
-	endTime := data.Time
-	rsiResult, err := ctx.GetIndicator(types.IndicatorRSI, startTime, endTime)
+func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.MarketData, param string) ([]types.ExecuteOrder, error) {
+	currentPosition, err := ctx.GetPosition(data.Symbol)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get RSI indicator: %w", err)
+		return nil, err
 	}
+	hasPosition := currentPosition.Quantity > 0
 
-	rsiValues, ok := rsiResult.([]float64)
-	if !ok || len(rsiValues) == 0 {
-		return nil, fmt.Errorf("invalid RSI result format")
-	}
-
-	// Get latest RSI value
-	currentRSI := rsiValues[len(rsiValues)-1]
-
-	// Get MACD indicator values
-	macdResult, err := ctx.GetIndicator(types.IndicatorMACD, startTime, endTime)
+	bollingerBands, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorBollingerBands)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get MACD indicator: %w", err)
+		return nil, err
 	}
 
-	macdData, ok := macdResult.(indicator.MACDResult)
-	if !ok || len(macdData.MACD) == 0 || len(macdData.Signal) == 0 || len(macdData.Histogram) == 0 {
-		return nil, fmt.Errorf("invalid MACD result format")
+	signal, err := bollingerBands.GetSignal(data, indicator.IndicatorContext{
+		DataSource: ctx.DataSource,
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	// Get latest MACD values
-	macdValue := macdData.MACD[len(macdData.MACD)-1]
-	signalValue := macdData.Signal[len(macdData.Signal)-1]
-
-	// Generate orders based on indicator signals
-	var orders []types.Order
-
-	// Buy signal: RSI < oversold threshold and MACD crosses above signal line
-	if currentRSI < s.rsiOversold && macdValue > signalValue && !hasPosition {
-		// Calculate position size (10% of available capital)
-		capital := ctx.GetAccountBalance()
-		positionSize := capital * 0.1
-		quantity := positionSize / data.Close
-
-		// Ensure minimum buy quantity is at least 0.01
-		if quantity < 0.01 {
-			quantity = 0.01
+	if signal.Type == types.SignalTypeBuy {
+		if hasPosition {
+			return []types.ExecuteOrder{}, nil
 		}
 
-		// Create buy order
-		order := types.Order{
-			Symbol:       s.symbol,
-			OrderType:    types.OrderTypeBuy,
-			Quantity:     quantity,
-			Price:        data.Close,
-			Timestamp:    data.Time,
-			OrderID:      uuid.New().String(),
-			IsCompleted:  false,
-			StrategyName: s.name,
-			Reason: types.Reason{
-				Reason:  types.OrderReasonBuySignal,
-				Message: "based on RSI and MACD",
+		return []types.ExecuteOrder{
+			{
+				Symbol:    data.Symbol,
+				OrderType: types.OrderTypeBuy,
+				Reason: types.Reason{
+					Reason:  signal.Name,
+					Message: "Buy signal",
+				},
 			},
-		}
-
-		orders = append(orders, order)
-		s.lastSignalTime = data.Time
+		}, nil
 	}
 
-	// Sell signal: RSI > overbought threshold or MACD crosses below signal line
-	if (currentRSI > s.rsiOverbought || macdValue < signalValue) && hasPosition {
-		// Create sell order for entire position
-		order := types.Order{
-			Symbol:       s.symbol,
-			OrderType:    types.OrderTypeSell,
-			Quantity:     currentPosition.Quantity,
-			Price:        data.Close,
-			Timestamp:    data.Time,
-			OrderID:      uuid.New().String(),
-			IsCompleted:  false,
-			StrategyName: s.name,
-			Reason: types.Reason{
-				Reason:  types.OrderReasonSellSignal,
-				Message: "based on RSI and MACD",
+	if signal.Type == types.SignalTypeSell {
+		if !hasPosition {
+			return []types.ExecuteOrder{}, nil
+		}
+
+		return []types.ExecuteOrder{
+			{
+				Symbol:    data.Symbol,
+				OrderType: types.OrderTypeSell,
+				Reason: types.Reason{
+					Reason:  signal.Name,
+					Message: signal.Reason,
+				},
 			},
-		}
-
-		orders = append(orders, order)
-		s.lastSignalTime = data.Time
+		}, nil
 	}
 
-	return orders, nil
+	return []types.ExecuteOrder{}, nil
 }

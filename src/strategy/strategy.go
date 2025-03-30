@@ -1,19 +1,18 @@
 package strategy
 
 import (
-	"time"
-
+	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
+	"github.com/sirily11/argo-trading-go/src/indicator"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
 
-type StrategyContext interface {
-	// Data access methods
-	GetHistoricalData() []types.MarketData
-	GetCurrentPositions() []types.Position
-	GetPendingOrders() []types.Order
-	GetExecutedTrades() []types.Trade
-	GetAccountBalance() float64
-	GetIndicator(name types.Indicator, startTime, endTime time.Time) (any, error)
+type StrategyContext struct {
+	// DataSource provides the market data as well as the historical data
+	DataSource datasource.DataSource
+	// IndicatorRegistry is the registry of all indicators
+	IndicatorRegistry *indicator.IndicatorRegistry
+	// GetPosition returns the current position of the symbol
+	GetPosition func(symbol string) (types.Position, error)
 }
 
 // TradingStrategy interface defines methods that any trading strategy must implement
@@ -25,7 +24,7 @@ type TradingStrategy interface {
 
 	// ProcessData processes new market data and generates signals
 	// It receives a context object with all necessary information to make decisions
-	ProcessData(ctx StrategyContext, data types.MarketData, targetSymbol string) ([]types.Order, error)
+	ProcessData(ctx StrategyContext, data types.MarketData, targetSymbol string) ([]types.ExecuteOrder, error)
 
 	// Name returns the name of the strategy
 	Name() string

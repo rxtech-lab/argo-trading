@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	engine "github.com/sirily11/argo-trading-go/src/engine/engine_v1"
+	engine "github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 )
 
@@ -27,10 +27,10 @@ func main() {
 	// set the data path
 	engine.SetDataPath("data/*.parquet")
 
-	engine.SetConfigPath("config")
+	engine.SetConfigPath("config/strategy/*.yaml")
 
 	// set strategy
-	engine.LoadStrategy(strategy.NewExampleIndicatorStrategy("APPL"))
+	engine.LoadStrategy(strategy.NewExampleIndicatorStrategy())
 
 	// run the engine
 	engine.Run()

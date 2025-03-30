@@ -17,4 +17,5 @@ type Position struct {
 	Quantity      float64   `csv:"quantity"`
 	AveragePrice  float64   `csv:"average_price"`
 	OpenTimestamp time.Time `csv:"open_timestamp"`
+	StrategyName  string    `csv:"strategy_name"`
 }

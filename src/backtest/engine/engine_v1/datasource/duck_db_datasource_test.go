@@ -101,6 +101,7 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 			name: "Read valid market data",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
+				symbol TEXT,
 				open DOUBLE,
 				high DOUBLE,
 				low DOUBLE,
@@ -108,8 +109,8 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 				volume DOUBLE
 			);
 			INSERT INTO market_data_source VALUES
-			('2024-01-01 10:00:00'::TIMESTAMP, 100.0, 101.0, 99.0, 100.5, 1000.0),
-			('2024-01-01 10:01:00'::TIMESTAMP, 100.5, 102.0, 100.0, 101.5, 1500.0);
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0);
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
 			expectedData: []types.MarketData{
 				{
@@ -119,6 +120,7 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 					Low:    99.0,
 					Close:  100.5,
 					Volume: 1000.0,
+					Symbol: "AAPL",
 				},
 				{
 					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
@@ -127,6 +129,7 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 					Low:    100.0,
 					Close:  101.5,
 					Volume: 1500.0,
+					Symbol: "AAPL",
 				},
 			},
 			expectError: false,
@@ -135,6 +138,7 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 			name: "Read empty data",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
+				symbol TEXT,
 				open DOUBLE,
 				high DOUBLE,
 				low DOUBLE,
@@ -199,6 +203,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			name: "Read 1-minute data",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
+				symbol TEXT,
 				open DOUBLE,
 				high DOUBLE,
 				low DOUBLE,
@@ -206,9 +211,9 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 				volume DOUBLE
 			);
 			INSERT INTO market_data_source VALUES
-			('2024-01-01 10:00:00'::TIMESTAMP, 100.0, 101.0, 99.0, 100.5, 1000.0),
-			('2024-01-01 10:01:00'::TIMESTAMP, 100.5, 102.0, 100.0, 101.5, 1500.0),
-			('2024-01-01 10:02:00'::TIMESTAMP, 101.5, 103.0, 101.0, 102.5, 2000.0);
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
 			start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			end:      time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
@@ -221,6 +226,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 					Low:    99.0,
 					Close:  100.5,
 					Volume: 1000.0,
+					Symbol: "AAPL",
 				},
 				{
 					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
@@ -229,6 +235,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 					Low:    100.0,
 					Close:  101.5,
 					Volume: 1500.0,
+					Symbol: "AAPL",
 				},
 				{
 					Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
@@ -237,6 +244,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 					Low:    101.0,
 					Close:  102.5,
 					Volume: 2000.0,
+					Symbol: "AAPL",
 				},
 			},
 			expectError: false,
@@ -245,6 +253,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			name: "Read 5-minute aggregated data",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
+				symbol TEXT,
 				open DOUBLE,
 				high DOUBLE,
 				low DOUBLE,
@@ -252,11 +261,11 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 				volume DOUBLE
 			);
 			INSERT INTO market_data_source VALUES
-			('2024-01-01 10:00:00'::TIMESTAMP, 100.0, 101.0, 99.0, 100.5, 1000.0),
-			('2024-01-01 10:01:00'::TIMESTAMP, 100.5, 102.0, 100.0, 101.5, 1500.0),
-			('2024-01-01 10:02:00'::TIMESTAMP, 101.5, 103.0, 101.0, 102.5, 2000.0),
-			('2024-01-01 10:03:00'::TIMESTAMP, 102.5, 104.0, 102.0, 103.5, 2500.0),
-			('2024-01-01 10:04:00'::TIMESTAMP, 103.5, 105.0, 103.0, 104.5, 3000.0);
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0),
+			('2024-01-01 10:04:00'::TIMESTAMP, 'AAPL', 103.5, 105.0, 103.0, 104.5, 3000.0);
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
 			start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			end:      time.Date(2024, 1, 1, 10, 5, 0, 0, time.UTC),
@@ -269,6 +278,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 					Low:    99.0,
 					Close:  104.5,
 					Volume: 10000.0,
+					Symbol: "AAPL",
 				},
 			},
 			expectError: false,
@@ -277,6 +287,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			name: "Read empty data range",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
+				symbol TEXT,
 				open DOUBLE,
 				high DOUBLE,
 				low DOUBLE,
@@ -294,6 +305,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			name: "Invalid interval",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
+				symbol TEXT,
 				open DOUBLE,
 				high DOUBLE,
 				low DOUBLE,

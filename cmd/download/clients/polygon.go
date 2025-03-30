@@ -73,6 +73,7 @@ func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Ti
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS market_data (
 			time TIMESTAMP,
+			symbol TEXT,
 			open DOUBLE,
 			high DOUBLE,
 			low DOUBLE,
@@ -98,8 +99,8 @@ func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Ti
 
 	// Prepare insert statement
 	stmt, err := tx.Prepare(`
-		INSERT INTO market_data (time, open, high, low, close, volume)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO market_data (time, symbol, open, high, low, close, volume)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -129,6 +130,7 @@ func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Ti
 			// Insert directly into DuckDB
 			_, err := stmt.Exec(
 				time.Time(agg.Timestamp),
+				ticker,
 				agg.Open,
 				agg.High,
 				agg.Low,

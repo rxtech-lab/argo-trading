@@ -71,15 +71,17 @@ func (d *DuckDBDataSource) ReadAll() func(yield func(types.MarketData, error) bo
 			var (
 				timestamp                      time.Time
 				open, high, low, close, volume float64
+				symbol                         string
 			)
 
-			err := rows.Scan(&timestamp, &open, &high, &low, &close, &volume)
+			err := rows.Scan(&timestamp, &symbol, &open, &high, &low, &close, &volume)
 			if err != nil {
 				yield(types.MarketData{}, err)
 				return
 			}
 
 			marketData := types.MarketData{
+				Symbol: symbol,
 				Time:   timestamp,
 				Open:   open,
 				High:   high,
@@ -131,6 +133,7 @@ func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval In
 		WITH time_buckets AS (
 			SELECT 
 				time_bucket(INTERVAL '%d minutes', time) as bucket_time,
+				symbol,
 				FIRST(open) as open,
 				MAX(high) as high,
 				MIN(low) as low,
@@ -138,10 +141,11 @@ func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval In
 				SUM(volume) as volume
 			FROM market_data 
 			WHERE time >= ? AND time <= ?
-			GROUP BY time_bucket(INTERVAL '%d minutes', time)
+			GROUP BY time_bucket(INTERVAL '%d minutes', time), symbol
 		)
 		SELECT 
 			bucket_time as time,
+			symbol,
 			open,
 			high,
 			low,
@@ -164,14 +168,16 @@ func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval In
 		var (
 			timestamp                      time.Time
 			open, high, low, close, volume float64
+			symbol                         string
 		)
 
-		err := rows.Scan(&timestamp, &open, &high, &low, &close, &volume)
+		err := rows.Scan(&timestamp, &symbol, &open, &high, &low, &close, &volume)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
 		marketData := types.MarketData{
+			Symbol: symbol,
 			Time:   timestamp,
 			Open:   open,
 			High:   high,
