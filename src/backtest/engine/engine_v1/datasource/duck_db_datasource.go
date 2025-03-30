@@ -243,3 +243,66 @@ func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval In
 
 	return result, nil
 }
+
+// ExecuteSQL implements DataSource.
+func (d *DuckDBDataSource) ExecuteSQL(query string, params ...interface{}) ([]SQLResult, error) {
+	d.logger.Debug("Executing SQL query", zap.String("query", query))
+
+	// Use prepared statement for better performance
+	stmt, err := d.db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query: %w", err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(params...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	// Pre-allocate slice with reasonable capacity
+	result := make([]SQLResult, 0, 1000)
+	for rows.Next() {
+		// Create a slice of interface{} to hold the values
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		// Scan the row into the values slice
+		err := rows.Scan(valuePtrs...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Create a map to store the column-value pairs
+		rowMap := make(map[string]interface{})
+		for i, col := range columns {
+			rowMap[col] = values[i]
+		}
+
+		result = append(result, SQLResult{Values: rowMap})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return result, nil
+}
+
+// Close implements DataSource.
+func (d *DuckDBDataSource) Close() error {
+	if d.db != nil {
+		return d.db.Close()
+	}
+	return nil
+}

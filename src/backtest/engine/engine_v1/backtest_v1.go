@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/commission_fee"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
@@ -15,6 +15,8 @@ import (
 	"github.com/sirily11/argo-trading-go/src/logger"
 	s "github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -155,12 +157,73 @@ func (b *BacktestEngineV1) preRunCheck() error {
 	return nil
 }
 
+// ParallelRunState holds the state for a single parallel run
+type ParallelRunState struct {
+	state      *BacktestState
+	balance    float64
+	datasource datasource.DataSource
+}
+
 // Run implements engine.Engine.
 func (b *BacktestEngineV1) Run() error {
 	if err := b.preRunCheck(); err != nil {
 		return err
 	}
 
+	// Create a channel to collect errors from goroutines
+	errChan := make(chan error, len(b.strategies)*len(b.strategyConfigPaths)*len(b.dataPaths))
+	var wg sync.WaitGroup
+
+	// Create progress container
+	p := mpb.New(mpb.WithWaitGroup(&wg))
+
+	// Create a map to store bars for each goroutine
+	type runKey struct {
+		strategy, configPath, dataPath string
+	}
+	bars := make(map[runKey]*mpb.Bar)
+
+	// Pre-create all progress bars
+	for _, strategy := range b.strategies {
+		for _, configPath := range b.strategyConfigPaths {
+			for _, dataPath := range b.dataPaths {
+				// Initialize datasource to get count
+				datasource, err := datasource.NewDataSource(":memory:", b.log)
+				if err != nil {
+					return fmt.Errorf("failed to create data source: %w", err)
+				}
+				if err := datasource.Initialize(dataPath); err != nil {
+					return fmt.Errorf("failed to initialize data source: %w", err)
+				}
+				count, err := datasource.Count()
+				if err != nil {
+					return fmt.Errorf("failed to get count of data source: %w", err)
+				}
+
+				key := runKey{
+					strategy:   strategy.Name(),
+					configPath: configPath,
+					dataPath:   dataPath,
+				}
+
+				bars[key] = p.AddBar(int64(count),
+					mpb.PrependDecorators(
+						decor.Name(fmt.Sprintf("%s - %s", strategy.Name(), filepath.Base(dataPath)),
+							decor.WC{W: len(strategy.Name()) + len(filepath.Base(dataPath)) + 3}),
+					),
+					mpb.AppendDecorators(
+						decor.Percentage(),
+						decor.OnComplete(
+							decor.AverageETA(decor.ET_STYLE_GO),
+							"done",
+						),
+					),
+				)
+			}
+		}
+	}
+
+	// Start the goroutines
 	for _, strategy := range b.strategies {
 		for _, configPath := range b.strategyConfigPaths {
 			config, err := os.ReadFile(configPath)
@@ -179,97 +242,116 @@ func (b *BacktestEngineV1) Run() error {
 				)
 			}
 			for _, dataPath := range b.dataPaths {
-				b.state.Initialize()
-				// reset the balance
-				b.balance = b.config.InitialCapital
-				resultFolderPath := filepath.Join(b.resultsFolder, fmt.Sprintf("%s_%s_%s", strategy.Name(), filepath.Base(configPath), filepath.Base(dataPath)))
-				b.log.Debug("Running strategy",
-					zap.String("strategy", strategy.Name()),
-					zap.String("config", configPath),
-					zap.String("data", dataPath),
-					zap.String("result", resultFolderPath),
-				)
+				wg.Add(1)
+				go func(strategy s.TradingStrategy, configPath, dataPath string) {
+					defer wg.Done()
 
-				// initialize the data source with in-memory database
-				datasource, err := datasource.NewDataSource(":memory:", b.log)
-				strategyContext := s.StrategyContext{
-					DataSource:        datasource,
-					IndicatorRegistry: b.indicatorRegistry,
-					GetPosition:       b.state.GetPosition,
-				}
-				if err != nil {
-					b.log.Error("Failed to create data source",
-						zap.String("data", dataPath),
-						zap.Error(err),
-					)
-					return err
-				}
-
-				// initialize the data source with the given data path
-				err = datasource.Initialize(dataPath)
-				if err != nil {
-					b.log.Error("Failed to initialize data source",
-						zap.String("data", dataPath),
-						zap.Error(err),
-					)
-				}
-
-				// get the count of the data source
-				count, err := datasource.Count()
-				if err != nil {
-					b.log.Error("Failed to get count of data source",
-						zap.String("data", dataPath),
-						zap.Error(err),
-					)
-					return err
-				}
-
-				// Create progress bar
-				bar := progressbar.Default(int64(count))
-				bar.Describe(fmt.Sprintf("Processing %s with %s", filepath.Base(dataPath), strategy.Name()))
-
-				for data, err := range datasource.ReadAll() {
-					if err != nil {
-						b.log.Error("Failed to read data",
-							zap.Error(err),
-						)
-						return err
+					key := runKey{
+						strategy:   strategy.Name(),
+						configPath: configPath,
+						dataPath:   dataPath,
 					}
-					// run the strategy
-					executeOrders, err := strategy.ProcessData(strategyContext, data, data.Symbol)
-					if err != nil {
-						b.log.Error("Failed to process data",
-							zap.Error(err),
-						)
-						return err
+					bar := bars[key]
+
+					// Create a new state for this parallel run
+					runState := &ParallelRunState{
+						state:   NewBacktestState(b.log),
+						balance: b.config.InitialCapital,
 					}
-					_, err = b.executeOrders(data, strategy, executeOrders)
-					if err != nil {
-						b.log.Error("Failed to execute orders",
-							zap.Error(err),
-						)
-						return err
+
+					// Initialize the state
+					if err := runState.state.Initialize(); err != nil {
+						errChan <- fmt.Errorf("failed to initialize state: %w", err)
+						return
 					}
-					// Update progress bar
-					bar.Add(1)
-				}
-				b.state.Write(resultFolderPath)
-				b.state.Cleanup()
+
+					resultFolderPath := filepath.Join(b.resultsFolder, fmt.Sprintf("%s_%s_%s", strategy.Name(), filepath.Base(configPath), filepath.Base(dataPath)))
+					b.log.Debug("Running strategy",
+						zap.String("strategy", strategy.Name()),
+						zap.String("config", configPath),
+						zap.String("data", dataPath),
+						zap.String("result", resultFolderPath),
+					)
+
+					// Initialize the data source with in-memory database
+					datasource, err := datasource.NewDataSource(":memory:", b.log)
+					if err != nil {
+						errChan <- fmt.Errorf("failed to create data source: %w", err)
+						return
+					}
+					runState.datasource = datasource
+
+					strategyContext := s.StrategyContext{
+						DataSource:        datasource,
+						IndicatorRegistry: b.indicatorRegistry,
+						GetPosition:       runState.state.GetPosition,
+					}
+
+					// Initialize the data source with the given data path
+					if err := datasource.Initialize(dataPath); err != nil {
+						errChan <- fmt.Errorf("failed to initialize data source: %w", err)
+						return
+					}
+
+					for data, err := range datasource.ReadAll() {
+						if err != nil {
+							errChan <- fmt.Errorf("failed to read data: %w", err)
+							return
+						}
+						// run the strategy
+						executeOrders, err := strategy.ProcessData(strategyContext, data, data.Symbol)
+						if err != nil {
+							errChan <- fmt.Errorf("failed to process data: %w", err)
+							return
+						}
+						_, err = b.executeOrdersWithState(data, strategy, executeOrders, runState)
+						if err != nil {
+							errChan <- fmt.Errorf("failed to execute orders: %w", err)
+							return
+						}
+						// Update progress bar
+						bar.Increment()
+					}
+
+					// Write results and cleanup
+					if err := runState.state.Write(resultFolderPath); err != nil {
+						errChan <- fmt.Errorf("failed to write results: %w", err)
+						return
+					}
+					if err := runState.state.Cleanup(); err != nil {
+						errChan <- fmt.Errorf("failed to cleanup state: %w", err)
+						return
+					}
+				}(strategy, configPath, dataPath)
 			}
 		}
 	}
+
+	// Wait for all progress bars to complete
+	p.Wait()
+	close(errChan)
+
+	// Check for any errors
+	var errors []error
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("encountered %d errors during parallel execution: %v", len(errors), errors)
+	}
+
 	return nil
 }
 
-// executeOrders executes the orders and returns the orders
-// it will also update the position of the orders and add trades
-func (b *BacktestEngineV1) executeOrders(marketData types.MarketData, strategy s.TradingStrategy, executeOrders []types.ExecuteOrder) ([]types.Order, error) {
+// executeOrdersWithState executes the orders using the provided state
+func (b *BacktestEngineV1) executeOrdersWithState(marketData types.MarketData, strategy s.TradingStrategy, executeOrders []types.ExecuteOrder, runState *ParallelRunState) ([]types.Order, error) {
 	orders := []types.Order{}
 	pendingOrders := []types.Order{}
 	totalCost := 0.0
 
 	for _, executeOrder := range executeOrders {
-		position, err := b.state.GetPosition(executeOrder.Symbol)
+		position, err := runState.state.GetPosition(executeOrder.Symbol)
 		price := (marketData.High + marketData.Low) / 2
 		commissionFeeHandler := commission_fee.GetCommissionFeeHandler(b.config.Broker)
 		if err != nil {
@@ -283,7 +365,7 @@ func (b *BacktestEngineV1) executeOrders(marketData types.MarketData, strategy s
 		quantity := 0.0
 		if executeOrder.OrderType == types.OrderTypeBuy {
 			// calculate the quantity by the current balance / price
-			quantity = float64(CalculateMaxQuantity(b.balance, price, commissionFeeHandler))
+			quantity = float64(CalculateMaxQuantity(runState.balance, price, commissionFeeHandler))
 		} else {
 			quantity = position.Quantity
 		}
@@ -306,7 +388,7 @@ func (b *BacktestEngineV1) executeOrders(marketData types.MarketData, strategy s
 		}
 	}
 
-	results, err := b.state.Update(pendingOrders)
+	results, err := runState.state.Update(pendingOrders)
 	if err != nil {
 		b.log.Error("Failed to update state",
 			zap.Error(err),
@@ -317,7 +399,7 @@ func (b *BacktestEngineV1) executeOrders(marketData types.MarketData, strategy s
 	for _, result := range results {
 		orders = append(orders, result.Order)
 	}
-	b.balance -= totalCost
+	runState.balance -= totalCost
 
 	return orders, nil
 }
