@@ -6,27 +6,32 @@ import (
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/types"
+	"go.uber.org/zap"
 )
 
 type DuckDBDataSource struct {
-	db *sql.DB
+	db     *sql.DB
+	logger *logger.Logger
 }
 
 // NewDataSource creates a new DuckDB data source instance with the specified database path.
 // The path parameter specifies the DuckDB database file location.
 // This is distinct from Initialize() which loads market data into the database.
 // Returns a DataSource interface and any error encountered during creation.
-func NewDataSource(path string) (DataSource, error) {
+func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 	db, err := sql.Open("duckdb", path)
 	if err != nil {
 		return nil, err
 	}
-	return &DuckDBDataSource{db: db}, nil
+	return &DuckDBDataSource{db: db, logger: logger}, nil
 }
 
 // Initialize implements DataSource.
 func (d *DuckDBDataSource) Initialize(path string) error {
+	d.logger.Debug("Initializing DuckDB data source", zap.String("path", path))
+
 	// create a view from the given path
 	query := fmt.Sprintf("CREATE VIEW market_data AS SELECT * FROM read_parquet('%s')", path)
 	_, err := d.db.Exec(query)
@@ -36,42 +41,56 @@ func (d *DuckDBDataSource) Initialize(path string) error {
 	return nil
 }
 
-// ReadAll implements DataSource.
-func (d *DuckDBDataSource) ReadAll(yield func(types.MarketData, error) bool) {
-	// read all the data from the view
-	rows, err := d.db.Query("SELECT * FROM market_data")
+// Count implements DataSource.
+func (d *DuckDBDataSource) Count() (int, error) {
+	var count int
+	rows := d.db.QueryRow("SELECT COUNT(*) FROM market_data")
+	err := rows.Scan(&count)
 	if err != nil {
-		yield(types.MarketData{}, err)
-		return
+		return 0, err
 	}
+	return count, nil
+}
 
-	defer rows.Close()
+// ReadAll implements DataSource.
+func (d *DuckDBDataSource) ReadAll() func(yield func(types.MarketData, error) bool) {
+	// read all the data from the view
 
-	// use iterator pattern to yield the data
-	// don't need to load all the data into memory
-	for rows.Next() {
-		var (
-			timestamp                      time.Time
-			open, high, low, close, volume float64
-		)
-
-		err := rows.Scan(&timestamp, &open, &high, &low, &close, &volume)
+	return func(yield func(types.MarketData, error) bool) {
+		d.logger.Debug("Reading all data from DuckDB", zap.String("query", "SELECT * FROM market_data"))
+		rows, err := d.db.Query("SELECT * FROM market_data")
 		if err != nil {
 			yield(types.MarketData{}, err)
 			return
 		}
+		defer rows.Close()
 
-		marketData := types.MarketData{
-			Time:   timestamp,
-			Open:   open,
-			High:   high,
-			Low:    low,
-			Close:  close,
-			Volume: volume,
-		}
+		// use iterator pattern to yield the data
+		// don't need to load all the data into memory
+		for rows.Next() {
+			var (
+				timestamp                      time.Time
+				open, high, low, close, volume float64
+			)
 
-		if !yield(marketData, nil) {
-			return
+			err := rows.Scan(&timestamp, &open, &high, &low, &close, &volume)
+			if err != nil {
+				yield(types.MarketData{}, err)
+				return
+			}
+
+			marketData := types.MarketData{
+				Time:   timestamp,
+				Open:   open,
+				High:   high,
+				Low:    low,
+				Close:  close,
+				Volume: volume,
+			}
+
+			if !yield(marketData, nil) {
+				return
+			}
 		}
 	}
 }

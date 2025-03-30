@@ -27,8 +27,10 @@ type DataSource interface {
 	// Initialize initializes the data source with the given data path in parquet format
 	Initialize(path string) error
 	// ReadAll reads all the data from the data source and yields it to the caller
-	ReadAll(yield func(types.MarketData, error) bool)
-
+	ReadAll() func(yield func(types.MarketData, error) bool)
 	// ReadRange reads a range of data from the data source and yields it to the caller
 	ReadRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error)
+
+	// Count returns the number of rows in the data source
+	Count() (int, error)
 }

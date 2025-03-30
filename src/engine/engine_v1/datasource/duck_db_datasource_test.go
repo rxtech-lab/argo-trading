@@ -6,6 +6,7 @@ import (
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"github.com/stretchr/testify/suite"
 )
@@ -13,14 +14,18 @@ import (
 // DuckDBTestSuite is a test suite for DuckDBDataSource
 type DuckDBTestSuite struct {
 	suite.Suite
-	ds *DuckDBDataSource
+	ds     *DuckDBDataSource
+	logger *logger.Logger
 }
 
 // SetupSuite runs once before all tests in the suite
 func (suite *DuckDBTestSuite) SetupSuite() {
 	db, err := sql.Open("duckdb", "")
 	suite.Require().NoError(err)
-	suite.ds = &DuckDBDataSource{db: db}
+	logger, err := logger.NewLogger()
+	suite.Require().NoError(err)
+	suite.logger = logger
+	suite.ds = &DuckDBDataSource{db: db, logger: suite.logger}
 }
 
 // TearDownSuite runs once after all tests in the suite
@@ -153,7 +158,8 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 
 			// Collect results from ReadAll
 			var results []types.MarketData
-			suite.ds.ReadAll(func(data types.MarketData, err error) bool {
+			iterator := suite.ds.ReadAll()
+			iterator(func(data types.MarketData, err error) bool {
 				if err != nil {
 					suite.Assert().Fail("Unexpected error in ReadAll: %v", err)
 					return false
