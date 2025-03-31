@@ -6,6 +6,7 @@
     "backtester",
     "duckdb",
     "fatih",
+    "jsonschema",
     "MACD",
     "Outperformance",
     "progressbar",
