@@ -11,6 +11,10 @@ const (
 	BrokerInteractiveBroker Broker = "interactive_broker"
 )
 
+var AllBrokers = []any{
+	BrokerInteractiveBroker,
+}
+
 func GetCommissionFeeHandler(broker Broker) CommissionFee {
 	switch broker {
 	case BrokerInteractiveBroker:
