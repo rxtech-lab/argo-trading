@@ -3,9 +3,11 @@ package datasource
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"go.uber.org/zap"
@@ -57,9 +59,36 @@ func (d *DuckDBDataSource) Initialize(path string) error {
 }
 
 // Count implements DataSource.
-func (d *DuckDBDataSource) Count() (int, error) {
+func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error) {
 	var count int
-	rows := d.db.QueryRow("SELECT COUNT(*) FROM market_data")
+	query := "SELECT COUNT(*) FROM market_data"
+	var params []interface{}
+	paramCount := 0
+
+	if start.IsSome() {
+		paramCount++
+		query += fmt.Sprintf(" WHERE time >= $%d", paramCount)
+		params = append(params, start.Unwrap())
+	}
+
+	if end.IsSome() {
+		paramCount++
+		if paramCount == 1 {
+			query += " WHERE"
+		} else {
+			query += " AND"
+		}
+		query += fmt.Sprintf(" time <= $%d", paramCount)
+		params = append(params, end.Unwrap())
+	}
+
+	var rows *sql.Row
+	if len(params) > 0 {
+		rows = d.db.QueryRow(query, params...)
+	} else {
+		rows = d.db.QueryRow(query)
+	}
+
 	err := rows.Scan(&count)
 	if err != nil {
 		return 0, err
@@ -68,25 +97,55 @@ func (d *DuckDBDataSource) Count() (int, error) {
 }
 
 // ReadAll implements DataSource with batch processing.
-func (d *DuckDBDataSource) ReadAll() func(yield func(types.MarketData, error) bool) {
+func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optional.Option[time.Time]) func(yield func(types.MarketData, error) bool) {
 	const batchSize = 1000 // Adjust this value based on your memory constraints
 
 	return func(yield func(types.MarketData, error) bool) {
 		d.logger.Debug("Reading all data from DuckDB with batch processing")
 
-		// Use a prepared statement for better performance
-		stmt, err := d.db.Prepare(`
+		// Build the base query
+		query := `
 			SELECT time, symbol, open, high, low, close, volume 
 			FROM market_data 
-			ORDER BY time ASC
-		`)
+		`
+
+		// Add time range conditions if provided
+		var conditions []string
+		var params []interface{}
+		paramCount := 0
+
+		if start.IsSome() {
+			paramCount++
+			conditions = append(conditions, fmt.Sprintf("time >= $%d", paramCount))
+			params = append(params, start.Unwrap())
+		}
+
+		if end.IsSome() {
+			paramCount++
+			conditions = append(conditions, fmt.Sprintf("time <= $%d", paramCount))
+			params = append(params, end.Unwrap())
+		}
+
+		if len(conditions) > 0 {
+			query += " WHERE " + strings.Join(conditions, " AND ")
+		}
+
+		query += " ORDER BY time ASC"
+
+		// Use a prepared statement for better performance
+		stmt, err := d.db.Prepare(query)
 		if err != nil {
 			yield(types.MarketData{}, err)
 			return
 		}
 		defer stmt.Close()
 
-		rows, err := stmt.Query()
+		var rows *sql.Rows
+		if len(params) > 0 {
+			rows, err = stmt.Query(params...)
+		} else {
+			rows, err = stmt.Query()
+		}
 		if err != nil {
 			yield(types.MarketData{}, err)
 			return
@@ -140,8 +199,8 @@ func (d *DuckDBDataSource) ReadAll() func(yield func(types.MarketData, error) bo
 	}
 }
 
-// ReadRange implements DataSource with optimized query.
-func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error) {
+// GetRange implements DataSource with optimized query.
+func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error) {
 	// Convert interval to minutes for aggregation
 	intervalMinutes, err := getIntervalMinutes(interval)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"github.com/stretchr/testify/suite"
@@ -136,7 +137,7 @@ func (suite *DuckDBTestSuite) TestInitialize() {
 
 			// Verify data was loaded correctly
 			if tc.parquetPath == testFilePath {
-				count, err := suite.ds.Count()
+				count, err := suite.ds.Count(optional.None[time.Time](), optional.None[time.Time]())
 				suite.Assert().NoError(err)
 				suite.Assert().Equal(len(testData), count, "Data count mismatch")
 
@@ -164,11 +165,13 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 	tests := []struct {
 		name         string
 		setupData    string
+		start        optional.Option[time.Time]
+		end          optional.Option[time.Time]
 		expectedData []types.MarketData
 		expectError  bool
 	}{
 		{
-			name: "Read valid market data",
+			name: "Read all data without time range",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
 				symbol TEXT,
@@ -182,6 +185,128 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
 			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0);
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start: optional.None[time.Time](),
+			end:   optional.None[time.Time](),
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   101.0,
+					Low:    99.0,
+					Close:  100.5,
+					Volume: 1000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read data with start time only",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start: optional.Some(time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)),
+			end:   optional.None[time.Time](),
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read data with end time only",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start: optional.None[time.Time](),
+			end:   optional.Some(time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)),
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   101.0,
+					Low:    99.0,
+					Close:  100.5,
+					Volume: 1000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read data with both start and end time",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start: optional.Some(time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)),
+			end:   optional.Some(time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)),
 			expectedData: []types.MarketData{
 				{
 					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
@@ -216,6 +341,8 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 				volume DOUBLE
 			);
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:        optional.None[time.Time](),
+			end:          optional.None[time.Time](),
 			expectedData: []types.MarketData{},
 			expectError:  false,
 		},
@@ -232,7 +359,7 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 
 			// Collect results from ReadAll
 			var results []types.MarketData
-			iterator := suite.ds.ReadAll()
+			iterator := suite.ds.ReadAll(tc.start, tc.end)
 			iterator(func(data types.MarketData, err error) bool {
 				if err != nil {
 					suite.Assert().Fail("Unexpected error in ReadAll: %v", err)
@@ -252,6 +379,7 @@ func (suite *DuckDBTestSuite) TestReadAll() {
 					suite.Assert().Equal(expected.Low, results[i].Low, "Low price mismatch")
 					suite.Assert().Equal(expected.Close, results[i].Close, "Close price mismatch")
 					suite.Assert().Equal(expected.Volume, results[i].Volume, "Volume mismatch")
+					suite.Assert().Equal(expected.Symbol, results[i].Symbol, "Symbol mismatch")
 				}
 			}
 		})
@@ -401,7 +529,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			suite.Require().NoError(err)
 
 			// Test ReadRange
-			results, err := suite.ds.ReadRange(tc.start, tc.end, tc.interval)
+			results, err := suite.ds.GetRange(tc.start, tc.end, tc.interval)
 			if tc.expectError {
 				suite.Assert().Error(err)
 				return
@@ -477,11 +605,13 @@ func (suite *DuckDBTestSuite) TestCount() {
 	tests := []struct {
 		name          string
 		setupData     string
+		start         optional.Option[time.Time]
+		end           optional.Option[time.Time]
 		expectedCount int
 		expectError   bool
 	}{
 		{
-			name: "Count with data",
+			name: "Count all data without time range",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
 				symbol TEXT,
@@ -495,11 +625,76 @@ func (suite *DuckDBTestSuite) TestCount() {
 			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
 			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0);
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:         optional.None[time.Time](),
+			end:           optional.None[time.Time](),
 			expectedCount: 2,
 			expectError:   false,
 		},
 		{
-			name: "Count with empty data",
+			name: "Count data with start time only",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:         optional.Some(time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)),
+			end:           optional.None[time.Time](),
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "Count data with end time only",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:         optional.None[time.Time](),
+			end:           optional.Some(time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)),
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "Count data with both start and end time",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:         optional.Some(time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)),
+			end:           optional.Some(time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)),
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "Count empty data",
 			setupData: `CREATE TABLE market_data_source (
 				time TIMESTAMP,
 				symbol TEXT,
@@ -510,12 +705,16 @@ func (suite *DuckDBTestSuite) TestCount() {
 				volume DOUBLE
 			);
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:         optional.None[time.Time](),
+			end:           optional.None[time.Time](),
 			expectedCount: 0,
 			expectError:   false,
 		},
 		{
 			name:          "Count with invalid view",
 			setupData:     `DROP VIEW IF EXISTS market_data`,
+			start:         optional.None[time.Time](),
+			end:           optional.None[time.Time](),
 			expectedCount: 0,
 			expectError:   true,
 		},
@@ -530,7 +729,7 @@ func (suite *DuckDBTestSuite) TestCount() {
 			suite.Require().NoError(err)
 
 			// Test Count
-			count, err := suite.ds.Count()
+			count, err := suite.ds.Count(tc.start, tc.end)
 			if tc.expectError {
 				suite.Assert().Error(err)
 				return
