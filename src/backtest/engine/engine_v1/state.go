@@ -3,6 +3,7 @@ package engine
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,6 +11,7 @@ import (
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/shopspring/decimal"
 	"github.com/sirily11/argo-trading-go/src/logger"
+	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"go.uber.org/zap"
 )
@@ -364,4 +366,185 @@ func (b *BacktestState) Write(path string) error {
 		zap.String("orders", ordersPath),
 	)
 	return nil
+}
+
+// calculateTradeResult calculates the trade result statistics for a symbol
+func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
+	var result types.TradeResult
+	err := b.db.QueryRow(`
+		WITH trade_stats AS (
+			SELECT 
+				COUNT(*) as total_trades,
+				SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
+				SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
+				MIN(pnl) as min_pnl,
+				MAX(pnl) as max_pnl
+			FROM trades
+			WHERE symbol = ?
+		)
+		SELECT 
+			total_trades,
+			winning_trades,
+			losing_trades,
+			CASE WHEN total_trades > 0 THEN CAST(winning_trades AS DOUBLE) / total_trades ELSE 0 END as win_rate,
+			CASE WHEN min_pnl < 0 THEN ABS(min_pnl) ELSE 0 END as max_drawdown
+		FROM trade_stats
+	`, symbol).Scan(
+		&result.NumberOfTrades,
+		&result.NumberOfWinningTrades,
+		&result.NumberOfLosingTrades,
+		&result.WinRate,
+		&result.MaxDrawdown,
+	)
+	if err != nil {
+		return types.TradeResult{}, fmt.Errorf("failed to calculate trade result: %w", err)
+	}
+
+	return result, nil
+}
+
+// calculateTradeHoldingTime calculates the holding time statistics for a symbol
+func (b *BacktestState) calculateTradeHoldingTime(symbol string) (types.TradeHoldingTime, error) {
+	var holdingTime types.TradeHoldingTime
+	var avgDuration float64
+	err := b.db.QueryRow(`
+		WITH buy_trades AS (
+			SELECT executed_at
+			FROM trades
+			WHERE symbol = ? AND order_type = ?
+		),
+		sell_trades AS (
+			SELECT executed_at
+			FROM trades
+			WHERE symbol = ? AND order_type = ?
+		),
+		trade_durations AS (
+			SELECT 
+				EXTRACT(EPOCH FROM (s.executed_at - b.executed_at)) / 3600 as duration
+			FROM buy_trades b
+			JOIN sell_trades s ON s.executed_at > b.executed_at
+		)
+		SELECT 
+			COALESCE(MIN(duration), 0) as min_duration,
+			COALESCE(MAX(duration), 0) as max_duration,
+			COALESCE(AVG(duration), 0) as avg_duration
+		FROM trade_durations
+	`, symbol, types.OrderTypeBuy, symbol, types.OrderTypeSell).Scan(
+		&holdingTime.Min,
+		&holdingTime.Max,
+		&avgDuration,
+	)
+	if err != nil {
+		return types.TradeHoldingTime{}, fmt.Errorf("failed to calculate holding time: %w", err)
+	}
+	holdingTime.Avg = int(math.Round(avgDuration))
+	return holdingTime, nil
+}
+
+// calculateTotalFees calculates the total fees for a symbol
+func (b *BacktestState) calculateTotalFees(symbol string) (float64, error) {
+	var totalFees float64
+	err := b.db.QueryRow(`
+		SELECT SUM(commission)
+		FROM trades
+		WHERE symbol = ?
+	`, symbol).Scan(&totalFees)
+	if err != nil {
+		return 0, fmt.Errorf("failed to calculate total fees: %w", err)
+	}
+	return totalFees, nil
+}
+
+// GetStats returns the statistics of the backtest
+func (b *BacktestState) GetStats(ctx strategy.StrategyContext) ([]types.TradeStats, error) {
+	// Get all unique symbols that have trades
+	rows, err := b.db.Query(`
+		SELECT DISTINCT symbol
+		FROM trades
+		ORDER BY symbol
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unique symbols: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []types.TradeStats
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			return nil, fmt.Errorf("failed to scan symbol: %w", err)
+		}
+
+		// Calculate trade result
+		tradeResult, err := b.calculateTradeResult(symbol)
+		if err != nil {
+			return nil, err
+		}
+
+		// Calculate holding time
+		holdingTime, err := b.calculateTradeHoldingTime(symbol)
+		if err != nil {
+			return nil, err
+		}
+
+		// Calculate total fees
+		totalFees, err := b.calculateTotalFees(symbol)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get current position
+		position, err := b.GetPosition(symbol)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get last market data for unrealized PnL calculation
+		lastData, err := ctx.DataSource.ReadLastData(symbol)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get last market data for %s: %w", symbol, err)
+		}
+
+		tradePnl := types.TradePnl{}
+
+		// Calculate unrealized PnL if there's an open position
+		if position.Quantity > 0 {
+			entryDec := decimal.NewFromFloat(position.Quantity).Mul(decimal.NewFromFloat(position.GetAverageEntryPrice()))
+			exitDec := decimal.NewFromFloat(position.Quantity).Mul(decimal.NewFromFloat(lastData.Close))
+			unrealizedPnL, _ := exitDec.Sub(entryDec).Float64()
+			realizedPnl := position.GetTotalPnL()
+			tradePnl.TotalPnL = realizedPnl + unrealizedPnL
+			tradePnl.RealizedPnL = realizedPnl
+			tradePnl.UnrealizedPnL = unrealizedPnL
+		}
+
+		// Calculate maximum loss and maximum profit
+		var maxLoss, maxProfit float64
+		err = b.db.QueryRow(`
+			SELECT 
+				COALESCE(MIN(pnl), 0) as max_loss,
+				COALESCE(MAX(pnl), 0) as max_profit
+			FROM trades
+			WHERE symbol = ?
+		`, symbol).Scan(&maxLoss, &maxProfit)
+		if err != nil {
+			return nil, fmt.Errorf("failed to calculate max loss/profit: %w", err)
+		}
+		tradePnl.MaximumLoss = maxLoss
+		tradePnl.MaximumProfit = maxProfit
+
+		stats = append(stats, types.TradeStats{
+			Symbol:           symbol,
+			TradeResult:      tradeResult,
+			TotalFees:        totalFees,
+			TradeHoldingTime: holdingTime,
+			TradePnl:         tradePnl,
+		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating symbols: %w", err)
+	}
+
+	return stats, nil
 }

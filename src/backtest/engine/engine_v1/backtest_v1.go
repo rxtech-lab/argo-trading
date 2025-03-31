@@ -16,7 +16,6 @@ import (
 	s "github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -177,50 +176,10 @@ func (b *BacktestEngineV1) Run() error {
 	// Create progress container
 	p := mpb.New(mpb.WithWaitGroup(&wg))
 
-	// Create a map to store bars for each goroutine
-	type runKey struct {
-		strategy, configPath, dataPath string
-	}
-	bars := make(map[runKey]*mpb.Bar)
-
-	// Pre-create all progress bars
-	for _, strategy := range b.strategies {
-		for _, configPath := range b.strategyConfigPaths {
-			for _, dataPath := range b.dataPaths {
-				// Initialize datasource to get count
-				datasource, err := datasource.NewDataSource(":memory:", b.log)
-				if err != nil {
-					return fmt.Errorf("failed to create data source: %w", err)
-				}
-				if err := datasource.Initialize(dataPath); err != nil {
-					return fmt.Errorf("failed to initialize data source: %w", err)
-				}
-				count, err := datasource.Count()
-				if err != nil {
-					return fmt.Errorf("failed to get count of data source: %w", err)
-				}
-
-				key := runKey{
-					strategy:   strategy.Name(),
-					configPath: configPath,
-					dataPath:   dataPath,
-				}
-
-				bars[key] = p.AddBar(int64(count),
-					mpb.PrependDecorators(
-						decor.Name(fmt.Sprintf("%s - %s", strategy.Name(), filepath.Base(dataPath)),
-							decor.WC{W: len(strategy.Name()) + len(filepath.Base(dataPath)) + 3}),
-					),
-					mpb.AppendDecorators(
-						decor.Percentage(),
-						decor.OnComplete(
-							decor.AverageETA(decor.ET_STYLE_GO),
-							"done",
-						),
-					),
-				)
-			}
-		}
+	// Create progress bars
+	bars, err := createProgressBars(p, b.strategies, b.strategyConfigPaths, b.dataPaths, b.log)
+	if err != nil {
+		return fmt.Errorf("failed to create progress bars: %w", err)
 	}
 
 	// Start the goroutines
@@ -318,6 +277,17 @@ func (b *BacktestEngineV1) Run() error {
 						errChan <- fmt.Errorf("failed to write results: %w", err)
 						return
 					}
+
+					stats, err := runState.state.GetStats(strategyContext)
+					if err != nil {
+						errChan <- fmt.Errorf("failed to get stats: %w", err)
+						return
+					}
+					if err := types.WriteTradeStats(filepath.Join(resultFolderPath, "stats.yaml"), stats); err != nil {
+						errChan <- fmt.Errorf("failed to write stats: %w", err)
+						return
+					}
+
 					if err := runState.state.Cleanup(); err != nil {
 						errChan <- fmt.Errorf("failed to cleanup state: %w", err)
 						return
