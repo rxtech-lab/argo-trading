@@ -1133,6 +1133,133 @@ func (suite *DuckDBTestSuite) TestClose() {
 	}
 }
 
+func (suite *DuckDBTestSuite) TestReadLastData() {
+	tests := []struct {
+		name         string
+		setupData    string
+		symbol       string
+		expectedData types.MarketData
+		expectError  bool
+	}{
+		{
+			name: "Read last data for existing symbol",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			symbol: "AAPL",
+			expectedData: types.MarketData{
+				Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+				Open:   101.5,
+				High:   103.0,
+				Low:    101.0,
+				Close:  102.5,
+				Volume: 2000.0,
+				Symbol: "AAPL",
+			},
+			expectError: false,
+		},
+		{
+			name: "Read last data for non-existent symbol",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			symbol:       "GOOGL",
+			expectedData: types.MarketData{},
+			expectError:  true,
+		},
+		{
+			name: "Read last data from empty table",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			symbol:       "AAPL",
+			expectedData: types.MarketData{},
+			expectError:  true,
+		},
+		{
+			name: "Read last data with multiple symbols",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'GOOGL', 200.0, 201.0, 199.0, 200.5, 2000.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			symbol: "AAPL",
+			expectedData: types.MarketData{
+				Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+				Open:   101.5,
+				High:   103.0,
+				Low:    101.0,
+				Close:  102.5,
+				Volume: 2000.0,
+				Symbol: "AAPL",
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.cleanupMarketData()
+
+			// Setup test data
+			_, err := suite.ds.db.Exec(tc.setupData)
+			suite.Require().NoError(err)
+
+			// Test ReadLastData
+			result, err := suite.ds.ReadLastData(tc.symbol)
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(tc.expectedData.Time.UTC(), result.Time.UTC(), "Time mismatch")
+			suite.Assert().Equal(tc.expectedData.Open, result.Open, "Open price mismatch")
+			suite.Assert().Equal(tc.expectedData.High, result.High, "High price mismatch")
+			suite.Assert().Equal(tc.expectedData.Low, result.Low, "Low price mismatch")
+			suite.Assert().Equal(tc.expectedData.Close, result.Close, "Close price mismatch")
+			suite.Assert().Equal(tc.expectedData.Volume, result.Volume, "Volume mismatch")
+			suite.Assert().Equal(tc.expectedData.Symbol, result.Symbol, "Symbol mismatch")
+		})
+	}
+}
+
 // Helper function to write test data to parquet file
 func writeTestDataToParquet(data []types.MarketData, filepath string) error {
 	// Create a temporary DuckDB database

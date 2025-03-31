@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/logger"
+	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"github.com/stretchr/testify/suite"
 )
@@ -530,4 +532,238 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	suite.Require().Equal(string(types.OrderTypeBuy), orderTypeStr, "Order type mismatch")
 	suite.Require().Equal(100.0, quantity, "Order quantity mismatch")
 	suite.Require().Equal(100.0, price, "Order price mismatch")
+}
+
+// MockDataSource implements datasource.DataSource for testing
+type MockDataSource struct {
+	lastData map[string]types.MarketData
+}
+
+func (m *MockDataSource) Initialize(path string) error                            { return nil }
+func (m *MockDataSource) ReadAll() func(yield func(types.MarketData, error) bool) { return nil }
+func (m *MockDataSource) ReadRange(start time.Time, end time.Time, interval datasource.Interval) ([]types.MarketData, error) {
+	return nil, nil
+}
+func (m *MockDataSource) ReadLastData(symbol string) (types.MarketData, error) {
+	if data, ok := m.lastData[symbol]; ok {
+		return data, nil
+	}
+	return types.MarketData{}, fmt.Errorf("no data for symbol %s", symbol)
+}
+func (m *MockDataSource) ExecuteSQL(query string, params ...interface{}) ([]datasource.SQLResult, error) {
+	return nil, nil
+}
+func (m *MockDataSource) Count() (int, error) { return 0, nil }
+func (m *MockDataSource) Close() error        { return nil }
+
+func (suite *BacktestStateTestSuite) TestGetStats() {
+	// Create mock data source
+	mockSource := &MockDataSource{
+		lastData: map[string]types.MarketData{
+			"AAPL": {
+				Symbol: "AAPL",
+				Close:  120.0,
+			},
+			"GOOGL": {
+				Symbol: "GOOGL",
+				Close:  2100.0,
+			},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		orders        []types.Order
+		expectedStats []types.TradeStats
+		expectError   bool
+	}{
+		{
+			name: "Single symbol with multiple trades",
+			orders: []types.Order{
+				{
+					Symbol:      "AAPL",
+					OrderType:   types.OrderTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+				{
+					Symbol:      "AAPL",
+					OrderType:   types.OrderTypeSell,
+					Quantity:    50,
+					Price:       110.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "AAPL",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   498.5, // ((50 * 110 -1)/50 - (100 * 100 + 1)/100)*50
+						TotalPnL:      1498,
+						UnrealizedPnL: 999.5, // ((50 * 120)/50 - (100 * 100 + 1)/100)*50
+						MaximumLoss:   0,
+						MaximumProfit: 498.5,
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        2,
+						NumberOfWinningTrades: 1,
+						NumberOfLosingTrades:  0,
+						WinRate:               0.5,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 2.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 1, // 1 hour between buy and sell
+						Max: 1,
+						Avg: 1,
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Multiple symbols with trades",
+			orders: []types.Order{
+				{
+					Symbol:      "AAPL",
+					OrderType:   types.OrderTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+				{
+					Symbol:      "GOOGL",
+					OrderType:   types.OrderTypeBuy,
+					Quantity:    50,
+					Price:       2000.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "AAPL",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   0,
+						TotalPnL:      1999,
+						UnrealizedPnL: 1999,
+						MaximumLoss:   0,
+						MaximumProfit: 0,
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        1,
+						NumberOfWinningTrades: 0,
+						NumberOfLosingTrades:  0,
+						WinRate:               0,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 1.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 0,
+						Max: 0,
+						Avg: 0,
+					},
+				},
+				{
+					Symbol: "GOOGL",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   0,
+						TotalPnL:      4999,
+						UnrealizedPnL: 4999,
+						MaximumLoss:   0,
+						MaximumProfit: 0,
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        1,
+						NumberOfWinningTrades: 0,
+						NumberOfLosingTrades:  0,
+						WinRate:               0,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 1.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 0,
+						Max: 0,
+						Avg: 0,
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:          "No trades",
+			orders:        []types.Order{},
+			expectedStats: []types.TradeStats{},
+			expectError:   false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			// Reset state before each test case
+			err := suite.state.Cleanup()
+			suite.Require().NoError(err)
+
+			// Process orders
+			for _, order := range tc.orders {
+				_, err := suite.state.Update([]types.Order{order})
+				suite.Require().NoError(err)
+			}
+
+			// Get stats
+			stats, err := suite.state.GetStats(strategy.StrategyContext{
+				DataSource: mockSource,
+			})
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(len(tc.expectedStats), len(stats), "Number of stats mismatch")
+
+			// Compare stats
+			for i, expected := range tc.expectedStats {
+				if i >= len(stats) {
+					suite.T().Fatalf("Expected stats[%d] but got no more stats", i)
+				}
+				actual := stats[i]
+				suite.Assert().Equal(expected.Symbol, actual.Symbol, "Symbol mismatch")
+				suite.Assert().Equal(expected.TradeResult.NumberOfTrades, actual.TradeResult.NumberOfTrades, "Number of trades mismatch")
+				suite.Assert().Equal(expected.TradeResult.NumberOfWinningTrades, actual.TradeResult.NumberOfWinningTrades, "Number of winning trades mismatch")
+				suite.Assert().Equal(expected.TradeResult.NumberOfLosingTrades, actual.TradeResult.NumberOfLosingTrades, "Number of losing trades mismatch")
+				suite.Assert().Equal(expected.TradeResult.WinRate, actual.TradeResult.WinRate, "Win rate mismatch")
+				suite.Assert().Equal(expected.TradePnl.TotalPnL, actual.TradePnl.TotalPnL, "Total profit loss mismatch")
+				suite.Assert().Equal(expected.TradePnl.RealizedPnL, actual.TradePnl.RealizedPnL, "Realized profit loss mismatch")
+				suite.Assert().Equal(expected.TradePnl.UnrealizedPnL, actual.TradePnl.UnrealizedPnL, "Unrealized profit loss mismatch")
+				suite.Assert().Equal(expected.TradeResult.MaxDrawdown, actual.TradeResult.MaxDrawdown, "Max drawdown mismatch")
+				suite.Assert().Equal(expected.TradePnl.MaximumLoss, actual.TradePnl.MaximumLoss, "Maximum loss mismatch")
+				suite.Assert().Equal(expected.TradePnl.MaximumProfit, actual.TradePnl.MaximumProfit, "Maximum profit mismatch")
+				suite.Assert().Equal(expected.TotalFees, actual.TotalFees, "Total fees mismatch")
+				suite.Assert().Equal(expected.TradeHoldingTime.Min, actual.TradeHoldingTime.Min, "Min holding time mismatch")
+				suite.Assert().Equal(expected.TradeHoldingTime.Max, actual.TradeHoldingTime.Max, "Max holding time mismatch")
+				suite.Assert().Equal(expected.TradeHoldingTime.Avg, actual.TradeHoldingTime.Avg, "Avg holding time mismatch")
+			}
+		})
+	}
 }
