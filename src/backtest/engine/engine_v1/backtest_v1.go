@@ -192,6 +192,14 @@ func (b *BacktestEngineV1) Run() error {
 		return err
 	}
 
+	// clean the results folder
+	// remove results folder if it exists
+	if _, err := os.Stat(b.resultsFolder); err == nil {
+		os.RemoveAll(b.resultsFolder)
+	}
+	// create results folder
+	os.MkdirAll(b.resultsFolder, 0755)
+
 	// Start the goroutines
 	for _, strategy := range b.strategies {
 		for _, configPath := range b.strategyConfigPaths {
