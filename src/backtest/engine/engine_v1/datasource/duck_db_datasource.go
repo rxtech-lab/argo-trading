@@ -143,32 +143,9 @@ func (d *DuckDBDataSource) ReadAll() func(yield func(types.MarketData, error) bo
 // ReadRange implements DataSource with optimized query.
 func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error) {
 	// Convert interval to minutes for aggregation
-	var intervalMinutes int
-	switch interval {
-	case Interval1m:
-		intervalMinutes = 1
-	case Interval5m:
-		intervalMinutes = 5
-	case Interval15m:
-		intervalMinutes = 15
-	case Interval30m:
-		intervalMinutes = 30
-	case Interval1h:
-		intervalMinutes = 60
-	case Interval4h:
-		intervalMinutes = 240
-	case Interval6h:
-		intervalMinutes = 360
-	case Interval8h:
-		intervalMinutes = 480
-	case Interval12h:
-		intervalMinutes = 720
-	case Interval1d:
-		intervalMinutes = 1440
-	case Interval1w:
-		intervalMinutes = 10080
-	default:
-		return nil, fmt.Errorf("unsupported interval: %s", interval)
+	intervalMinutes, err := getIntervalMinutes(interval)
+	if err != nil {
+		return nil, err
 	}
 
 	// Optimized query using materialized CTE and window functions
@@ -239,6 +216,175 @@ func (d *DuckDBDataSource) ReadRange(start time.Time, end time.Time, interval In
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return result, nil
+}
+
+// ReadRecordsFromStart reads number of records from the start time of the database
+func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, interval Interval) ([]types.MarketData, error) {
+	// Convert interval to minutes for aggregation
+	intervalMinutes, err := getIntervalMinutes(interval)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optimized query using materialized CTE and window functions
+	query := fmt.Sprintf(`
+		WITH time_buckets AS MATERIALIZED (
+			SELECT 
+				time_bucket(INTERVAL '%d minutes', time) as bucket_time,
+				symbol,
+				FIRST_VALUE(open) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time) as open,
+				MAX(high) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as high,
+				MIN(low) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as low,
+				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
+				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
+			FROM market_data 
+			WHERE time >= ?
+		)
+		SELECT DISTINCT
+			bucket_time as time,
+			symbol,
+			open,
+			high,
+			low,
+			close,
+			volume
+		FROM time_buckets
+		ORDER BY bucket_time ASC
+		LIMIT ?
+	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
+
+	// Use prepared statement for better performance
+	stmt, err := d.db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query: %w", err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(start, number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query market data: %w", err)
+	}
+	defer rows.Close()
+
+	// Pre-allocate slice with reasonable capacity
+	result := make([]types.MarketData, 0, number)
+	for rows.Next() {
+		var (
+			timestamp                      time.Time
+			open, high, low, close, volume float64
+			symbol                         string
+		)
+
+		err := rows.Scan(&timestamp, &symbol, &open, &high, &low, &close, &volume)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		marketData := types.MarketData{
+			Symbol: symbol,
+			Time:   timestamp,
+			Open:   open,
+			High:   high,
+			Low:    low,
+			Close:  close,
+			Volume: volume,
+		}
+
+		result = append(result, marketData)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return result, nil
+}
+
+// ReadRecordsFromEnd reads number of records from the end time of the database
+func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interval Interval) ([]types.MarketData, error) {
+	// Convert interval to minutes for aggregation
+	intervalMinutes, err := getIntervalMinutes(interval)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optimized query using materialized CTE and window functions
+	query := fmt.Sprintf(`
+		WITH time_buckets AS MATERIALIZED (
+			SELECT 
+				time_bucket(INTERVAL '%d minutes', time) as bucket_time,
+				symbol,
+				FIRST_VALUE(open) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time) as open,
+				MAX(high) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as high,
+				MIN(low) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as low,
+				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
+				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
+			FROM market_data 
+			WHERE time <= ?
+		)
+		SELECT DISTINCT
+			bucket_time as time,
+			symbol,
+			open,
+			high,
+			low,
+			close,
+			volume
+		FROM time_buckets
+		ORDER BY bucket_time DESC
+		LIMIT ?
+	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
+
+	// Use prepared statement for better performance
+	stmt, err := d.db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query: %w", err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(end, number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query market data: %w", err)
+	}
+	defer rows.Close()
+
+	// Pre-allocate slice with reasonable capacity
+	result := make([]types.MarketData, 0, number)
+	for rows.Next() {
+		var (
+			timestamp                      time.Time
+			open, high, low, close, volume float64
+			symbol                         string
+		)
+
+		err := rows.Scan(&timestamp, &symbol, &open, &high, &low, &close, &volume)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		marketData := types.MarketData{
+			Symbol: symbol,
+			Time:   timestamp,
+			Open:   open,
+			High:   high,
+			Low:    low,
+			Close:  close,
+			Volume: volume,
+		}
+
+		result = append(result, marketData)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	// Reverse the slice since we got it in DESC order
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
 	}
 
 	return result, nil

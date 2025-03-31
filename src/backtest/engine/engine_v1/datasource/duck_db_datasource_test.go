@@ -23,37 +23,42 @@ type DuckDBTestSuite struct {
 
 // SetupSuite runs once before all tests in the suite
 func (suite *DuckDBTestSuite) SetupSuite() {
-	db, err := sql.Open("duckdb", "")
-	suite.Require().NoError(err)
 	logger, err := logger.NewLogger()
 	suite.Require().NoError(err)
 	suite.logger = logger
-	suite.ds = &DuckDBDataSource{db: db, logger: suite.logger}
 }
 
 // TearDownSuite runs once after all tests in the suite
 func (suite *DuckDBTestSuite) TearDownSuite() {
-	if suite.ds != nil && suite.ds.db != nil {
-		suite.ds.db.Close()
-	}
+	// Nothing to do here as we handle cleanup in TearDownTest
 }
 
 // cleanupMarketData drops both the view and table if they exist
 func (suite *DuckDBTestSuite) cleanupMarketData() {
-	// Drop view first if it exists (ignore errors)
-	suite.ds.db.Exec("DROP VIEW IF EXISTS market_data")
-	// Drop table if it exists (ignore errors)
-	suite.ds.db.Exec("DROP TABLE IF EXISTS market_data_source")
+	if suite.ds != nil && suite.ds.db != nil {
+		// Drop view first if it exists (ignore errors)
+		suite.ds.db.Exec("DROP VIEW IF EXISTS market_data")
+		// Drop table if it exists (ignore errors)
+		suite.ds.db.Exec("DROP TABLE IF EXISTS market_data_source")
+	}
 }
 
 // SetupTest runs before each test
 func (suite *DuckDBTestSuite) SetupTest() {
+	// Create a new database connection for each test
+	db, err := sql.Open("duckdb", "")
+	suite.Require().NoError(err)
+	suite.ds = &DuckDBDataSource{db: db, logger: suite.logger}
 	suite.cleanupMarketData()
 }
 
 // TearDownTest runs after each test
 func (suite *DuckDBTestSuite) TearDownTest() {
 	suite.cleanupMarketData()
+	if suite.ds != nil && suite.ds.db != nil {
+		suite.ds.db.Close()
+		suite.ds = nil
+	}
 }
 
 // TestDuckDBDataSourceSuite runs the test suite
@@ -646,6 +651,484 @@ func (suite *DuckDBTestSuite) TestExecuteSQL() {
 					}
 				}
 			}
+		})
+	}
+}
+
+func (suite *DuckDBTestSuite) TestReadRecordsFromStart() {
+	tests := []struct {
+		name         string
+		setupData    string
+		start        time.Time
+		number       int
+		interval     Interval
+		expectedData []types.MarketData
+		expectError  bool
+	}{
+		{
+			name: "Read records from start with 1-minute interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:    time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+			number:   2,
+			interval: Interval1m,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read records from start with 1-minute interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:04:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:05:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:    time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+			number:   2,
+			interval: Interval1m,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 4, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read records from start with 5-minute interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0),
+			('2024-01-01 10:04:00'::TIMESTAMP, 'AAPL', 103.5, 105.0, 103.0, 104.5, 3000.0),
+			('2024-01-01 10:05:00'::TIMESTAMP, 'AAPL', 104.5, 106.0, 104.0, 105.5, 3500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			number:   2,
+			interval: Interval5m,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   105.0,
+					Low:    99.0,
+					Close:  104.5,
+					Volume: 10000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 5, 0, 0, time.UTC),
+					Open:   104.5,
+					High:   106.0,
+					Low:    104.0,
+					Close:  105.5,
+					Volume: 3500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read records with invalid interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:        time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			number:       2,
+			interval:     Interval("invalid"),
+			expectedData: nil,
+			expectError:  true,
+		},
+		{
+			name: "Read records from empty data",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:        time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			number:       2,
+			interval:     Interval1m,
+			expectedData: []types.MarketData{},
+			expectError:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.cleanupMarketData()
+
+			// Setup test data
+			_, err := suite.ds.db.Exec(tc.setupData)
+			suite.Require().NoError(err)
+
+			// Test ReadRecordsFromStart
+			results, err := suite.ds.ReadRecordsFromStart(tc.start, tc.number, tc.interval)
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(len(tc.expectedData), len(results), "Number of records mismatch")
+
+			if len(tc.expectedData) > 0 {
+				for i, expected := range tc.expectedData {
+					suite.Assert().Equal(expected.Time.UTC(), results[i].Time.UTC(), "Time mismatch")
+					suite.Assert().Equal(expected.Open, results[i].Open, "Open price mismatch")
+					suite.Assert().Equal(expected.High, results[i].High, "High price mismatch")
+					suite.Assert().Equal(expected.Low, results[i].Low, "Low price mismatch")
+					suite.Assert().Equal(expected.Close, results[i].Close, "Close price mismatch")
+					suite.Assert().Equal(expected.Volume, results[i].Volume, "Volume mismatch")
+					suite.Assert().Equal(expected.Symbol, results[i].Symbol, "Symbol mismatch")
+				}
+			}
+		})
+	}
+}
+
+func (suite *DuckDBTestSuite) TestReadRecordsFromEnd() {
+	tests := []struct {
+		name         string
+		setupData    string
+		end          time.Time
+		number       int
+		interval     Interval
+		expectedData []types.MarketData
+		expectError  bool
+	}{
+		{
+			name: "Read records from end with 1-minute interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:      time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+			number:   2,
+			interval: Interval1m,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+					Open:   102.5,
+					High:   104.0,
+					Low:    102.0,
+					Close:  103.5,
+					Volume: 2500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read records from end with 1-minute interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 09:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 09:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:      time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+			number:   3,
+			interval: Interval1m,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 9, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+					Open:   102.5,
+					High:   104.0,
+					Low:    102.0,
+					Close:  103.5,
+					Volume: 2500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read records from end with 5-minute interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0),
+			('2024-01-01 10:04:00'::TIMESTAMP, 'AAPL', 103.5, 105.0, 103.0, 104.5, 3000.0),
+			('2024-01-01 10:05:00'::TIMESTAMP, 'AAPL', 104.5, 106.0, 104.0, 105.5, 3500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:      time.Date(2024, 1, 1, 10, 5, 0, 0, time.UTC),
+			number:   2,
+			interval: Interval5m,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   105.0,
+					Low:    99.0,
+					Close:  104.5,
+					Volume: 10000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 5, 0, 0, time.UTC),
+					Open:   104.5,
+					High:   106.0,
+					Low:    104.0,
+					Close:  105.5,
+					Volume: 3500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Read records with invalid interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:          time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			number:       2,
+			interval:     Interval("invalid"),
+			expectedData: nil,
+			expectError:  true,
+		},
+		{
+			name: "Read records from empty data",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:          time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			number:       2,
+			interval:     Interval1m,
+			expectedData: []types.MarketData{},
+			expectError:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.cleanupMarketData()
+
+			// Setup test data
+			_, err := suite.ds.db.Exec(tc.setupData)
+			suite.Require().NoError(err)
+
+			// Test ReadRecordsFromEnd
+			results, err := suite.ds.ReadRecordsFromEnd(tc.end, tc.number, tc.interval)
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(len(tc.expectedData), len(results), "Number of records mismatch")
+
+			if len(tc.expectedData) > 0 {
+				for i, expected := range tc.expectedData {
+					suite.Assert().Equal(expected.Time.UTC(), results[i].Time.UTC(), "Time mismatch")
+					suite.Assert().Equal(expected.Open, results[i].Open, "Open price mismatch")
+					suite.Assert().Equal(expected.High, results[i].High, "High price mismatch")
+					suite.Assert().Equal(expected.Low, results[i].Low, "Low price mismatch")
+					suite.Assert().Equal(expected.Close, results[i].Close, "Close price mismatch")
+					suite.Assert().Equal(expected.Volume, results[i].Volume, "Volume mismatch")
+					suite.Assert().Equal(expected.Symbol, results[i].Symbol, "Symbol mismatch")
+				}
+			}
+		})
+	}
+}
+
+func (suite *DuckDBTestSuite) TestClose() {
+	tests := []struct {
+		name        string
+		setupData   string
+		expectError bool
+	}{
+		{
+			name: "Close valid database connection",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			expectError: false,
+		},
+		{
+			name:        "Close nil database connection",
+			setupData:   "",
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.cleanupMarketData()
+
+			if tc.setupData != "" {
+				_, err := suite.ds.db.Exec(tc.setupData)
+				suite.Require().NoError(err)
+			}
+
+			err := suite.ds.Close()
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+
+			// Verify that the connection is closed by trying to execute a query
+			_, err = suite.ds.db.Exec("SELECT 1")
+			suite.Assert().Error(err)
 		})
 	}
 }
