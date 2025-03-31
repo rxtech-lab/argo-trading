@@ -186,7 +186,10 @@ func (b *BacktestEngineV1) Run() error {
 		EndTime:     b.config.EndTime,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create progress bars: %w", err)
+		b.log.Error("Failed to create progress bars",
+			zap.Error(err),
+		)
+		return err
 	}
 
 	// Start the goroutines
