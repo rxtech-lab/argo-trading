@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test and Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests with coverage
+        run: |
+          # Create test output directory
+          mkdir -p test-results
+
+          # Run tests with detailed output and save to file, capturing the exit code
+          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./... 2>&1 | tee test-results/test-output.log
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+
+          # Generate coverage report
+          go tool cover -func=coverage.txt > test-results/coverage-report.txt
+
+          # Exit with the test exit code
+          exit $TEST_EXIT_CODE
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.txt
+          retention-days: 7
+
+      - name: Show test output on failure
+        if: failure()
+        run: |
+          echo "::group::Test Output"
+          cat test-results/test-output.log
+          echo "::endgroup::"
+
+          echo "::group::Coverage Report"
+          cat test-results/coverage-report.txt
+          echo "::endgroup::"
