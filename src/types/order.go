@@ -38,5 +38,6 @@ type Order struct {
 	// like "buy_signal", "sell_signal", "stop_loss", "take_profit", etc.
 	Reason Reason `yaml:"reason" json:"reason" csv:"reason"`
 	// StrategyName is the name of the strategy that created this order
-	StrategyName string `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name"`
+	StrategyName string  `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name"`
+	Fee          float64 `yaml:"fee" json:"fee" csv:"fee"`
 }

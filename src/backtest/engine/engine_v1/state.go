@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/shopspring/decimal"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"go.uber.org/zap"
@@ -16,6 +18,8 @@ type BacktestState struct {
 	db     *sql.DB
 	logger *logger.Logger
 }
+
+// CalculatePNL calculates the profit/loss for a trade
 
 func NewBacktestState(logger *logger.Logger) *BacktestState {
 	db, err := sql.Open("duckdb", ":memory:")
@@ -81,21 +85,6 @@ func (b *BacktestState) Initialize() error {
 		return fmt.Errorf("failed to create trades table: %w", err)
 	}
 
-	// Create positions table
-	_, err = b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS positions (
-			strategy_name TEXT,
-			symbol TEXT,
-			quantity DOUBLE,
-			average_price DOUBLE,
-			open_timestamp TIMESTAMP,
-			PRIMARY KEY (symbol)
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create positions table: %w", err)
-	}
-
 	return nil
 }
 
@@ -103,11 +92,10 @@ func (b *BacktestState) Initialize() error {
 type UpdateResult struct {
 	Order         types.Order
 	Trade         types.Trade
-	Position      types.Position
 	IsNewPosition bool
 }
 
-// Update processes orders and updates trades and positions
+// Update processes orders and updates trades
 func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 	results := make([]UpdateResult, 0, len(orders))
 
@@ -137,24 +125,21 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		// Get current position
-		var currentPosition types.Position
-		err = tx.QueryRow(`
-			SELECT symbol, quantity, average_price, open_timestamp
-			FROM positions 
-			WHERE symbol = ?
-		`, order.Symbol).Scan(&currentPosition.Symbol, &currentPosition.Quantity, &currentPosition.AveragePrice, &currentPosition.OpenTimestamp)
-
-		if err != nil && err != sql.ErrNoRows {
+		currentPosition, err := b.GetPosition(order.Symbol)
+		if err != nil {
 			tx.Rollback()
-			return nil, fmt.Errorf("failed to query position: %w", err)
+			return nil, fmt.Errorf("failed to get position: %w", err)
 		}
 
 		// Calculate PnL if closing position
-		var pnl float64
+		var pnl float64 = 0
 		if order.OrderType == types.OrderTypeSell && currentPosition.Quantity > 0 {
-			pnl = (order.Price - currentPosition.AveragePrice) * order.Quantity
-		} else if order.OrderType == types.OrderTypeBuy && currentPosition.Quantity < 0 {
-			pnl = (currentPosition.AveragePrice - order.Price) * order.Quantity
+			// For sell orders, calculate PnL using decimal arithmetic
+			avgEntryPrice := currentPosition.GetAverageEntryPrice()
+			entryDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(avgEntryPrice))
+			exitDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(order.Price)).Sub(decimal.NewFromFloat(order.Fee))
+			resultDec := exitDec.Sub(entryDec)
+			pnl, _ = resultDec.Float64()
 		}
 
 		// Create trade record
@@ -169,11 +154,12 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				IsCompleted:  order.IsCompleted,
 				Reason:       order.Reason,
 				StrategyName: order.StrategyName,
+				Fee:          order.Fee,
 			},
 			ExecutedAt:    order.Timestamp,
 			ExecutedQty:   order.Quantity,
 			ExecutedPrice: order.Price,
-			Commission:    0.0,
+			Fee:           order.Fee,
 			PnL:           pnl,
 		}
 
@@ -188,79 +174,19 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			orderID, trade.Order.Symbol, trade.Order.OrderType, trade.Order.Quantity, trade.Order.Price,
 			trade.Order.Timestamp, trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
 			order.StrategyName, trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
-			trade.Commission, trade.PnL,
+			trade.Fee, trade.PnL,
 		)
 		if err != nil {
 			tx.Rollback()
 			return nil, fmt.Errorf("failed to insert trade: %w", err)
 		}
 
-		// Update position and track if it's a new position
-		isNewPosition := false
-		var finalPosition types.Position
-
-		if order.OrderType == types.OrderTypeBuy {
-			if currentPosition.Quantity == 0 {
-				// New position
-				isNewPosition = true
-				finalPosition = types.Position{
-					Symbol:        order.Symbol,
-					Quantity:      order.Quantity,
-					AveragePrice:  order.Price,
-					OpenTimestamp: order.Timestamp,
-					StrategyName:  order.StrategyName,
-				}
-				_, err = tx.Exec(`
-					INSERT INTO positions (symbol, quantity, average_price, open_timestamp, strategy_name)
-					VALUES (?, ?, ?, ?, ?)
-				`, finalPosition.Symbol, finalPosition.Quantity, finalPosition.AveragePrice, finalPosition.OpenTimestamp, finalPosition.StrategyName)
-			} else {
-				// Update existing position
-				newQuantity := currentPosition.Quantity + order.Quantity
-				newAvgPrice := (currentPosition.AveragePrice*currentPosition.Quantity + order.Price*order.Quantity) / newQuantity
-				finalPosition = types.Position{
-					Symbol:        order.Symbol,
-					Quantity:      newQuantity,
-					AveragePrice:  newAvgPrice,
-					OpenTimestamp: currentPosition.OpenTimestamp,
-					StrategyName:  order.StrategyName,
-				}
-				_, err = tx.Exec(`
-					UPDATE positions 
-					SET quantity = ?, average_price = ?, strategy_name = ?
-					WHERE symbol = ?
-				`, finalPosition.Quantity, finalPosition.AveragePrice, finalPosition.StrategyName, finalPosition.Symbol)
-			}
-		} else if order.OrderType == types.OrderTypeSell {
-			if currentPosition.Quantity == order.Quantity {
-				// Close position
-				_, err = tx.Exec(`DELETE FROM positions WHERE symbol = ?`, order.Symbol)
-				finalPosition = types.Position{} // Empty position indicates closed
-			} else {
-				// Update position
-				newQuantity := currentPosition.Quantity - order.Quantity
-				finalPosition = types.Position{
-					Symbol:        order.Symbol,
-					Quantity:      newQuantity,
-					AveragePrice:  currentPosition.AveragePrice,
-					OpenTimestamp: currentPosition.OpenTimestamp,
-					StrategyName:  order.StrategyName,
-				}
-				_, err = tx.Exec(`
-					UPDATE positions 
-					SET quantity = ?, strategy_name = ?
-					WHERE symbol = ?
-				`, finalPosition.Quantity, finalPosition.StrategyName, finalPosition.Symbol)
-			}
-		}
-
-		if err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("failed to update position: %w", err)
-		}
+		// Determine if this is a new position
+		isNewPosition := order.OrderType == types.OrderTypeBuy && currentPosition.Quantity == 0
 
 		// Commit transaction
-		if err := tx.Commit(); err != nil {
+		err = tx.Commit()
+		if err != nil {
 			return nil, fmt.Errorf("failed to commit transaction: %w", err)
 		}
 
@@ -268,7 +194,6 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		results = append(results, UpdateResult{
 			Order:         order,
 			Trade:         trade,
-			Position:      finalPosition,
 			IsNewPosition: isNewPosition,
 		})
 	}
@@ -276,18 +201,72 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 	return results, nil
 }
 
-// GetPosition returns the current position for a symbol
+// GetPosition retrieves the current position for a symbol by calculating from trades
 func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
+	// Calculate position information from trades
 	var position types.Position
 	err := b.db.QueryRow(`
-		SELECT symbol, quantity, average_price, open_timestamp 
-		FROM positions 
-		WHERE symbol = ?
-	`, symbol).Scan(&position.Symbol, &position.Quantity, &position.AveragePrice, &position.OpenTimestamp)
+		WITH buy_trades AS (
+			SELECT 
+				SUM(executed_qty) as total_in_qty,
+				SUM(commission) as total_in_fee,
+				SUM(executed_qty * executed_price) as total_in_amount,
+				MIN(executed_at) as first_trade_time
+			FROM trades 
+			WHERE symbol = ? AND order_type = ?
+		),
+		sell_trades AS (
+			SELECT 
+				SUM(executed_qty) as total_out_qty,
+				SUM(commission) as total_out_fee,
+				SUM(executed_qty * executed_price) as total_out_amount
+			FROM trades 
+			WHERE symbol = ? AND order_type = ?
+		)
+		SELECT 
+			? as symbol,
+			COALESCE(b.total_in_qty, 0) - COALESCE(s.total_out_qty, 0) as quantity,
+			COALESCE(b.total_in_qty, 0) as total_in_quantity,
+			COALESCE(s.total_out_qty, 0) as total_out_quantity,
+			COALESCE(b.total_in_amount, 0) as total_in_amount,
+			COALESCE(s.total_out_amount, 0) as total_out_amount,
+			COALESCE(b.total_in_fee, 0) as total_in_fee,
+			COALESCE(s.total_out_fee, 0) as total_out_fee,
+			COALESCE(b.first_trade_time, CURRENT_TIMESTAMP) as open_timestamp,
+			MAX(t.strategy_name) as strategy_name
+		FROM trades t
+		LEFT JOIN buy_trades b ON 1=1
+		LEFT JOIN sell_trades s ON 1=1
+		WHERE t.symbol = ?
+		GROUP BY b.total_in_qty, s.total_out_qty, b.total_in_amount, s.total_out_amount, b.total_in_fee, s.total_out_fee, b.first_trade_time
+	`, symbol, types.OrderTypeBuy, symbol, types.OrderTypeSell, symbol, symbol).Scan(
+		&position.Symbol,
+		&position.Quantity,
+		&position.TotalInQuantity,
+		&position.TotalOutQuantity,
+		&position.TotalInAmount,
+		&position.TotalOutAmount,
+		&position.TotalInFee,
+		&position.TotalOutFee,
+		&position.OpenTimestamp,
+		&position.StrategyName,
+	)
 
 	if err == sql.ErrNoRows {
-		return types.Position{}, nil
+		return types.Position{
+			Symbol:           symbol,
+			Quantity:         0,
+			TotalInQuantity:  0,
+			TotalOutQuantity: 0,
+			TotalInAmount:    0,
+			TotalOutAmount:   0,
+			TotalInFee:       0,
+			TotalOutFee:      0,
+			OpenTimestamp:    time.Time{},
+			StrategyName:     "",
+		}, nil
 	}
+
 	if err != nil {
 		return types.Position{}, fmt.Errorf("failed to query position: %w", err)
 	}
@@ -327,7 +306,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 			&trade.ExecutedAt,
 			&trade.ExecutedQty,
 			&trade.ExecutedPrice,
-			&trade.Commission,
+			&trade.Fee,
 			&trade.PnL,
 		)
 		if err != nil {
@@ -348,7 +327,6 @@ func (b *BacktestState) Cleanup() error {
 	// Drop and recreate tables
 	_, err := b.db.Exec(`
 		DROP TABLE IF EXISTS trades;
-		DROP TABLE IF EXISTS positions;
 		DROP TABLE IF EXISTS orders;
 		DROP SEQUENCE IF EXISTS order_id_seq;
 	`)
@@ -374,13 +352,6 @@ func (b *BacktestState) Write(path string) error {
 		return fmt.Errorf("failed to export trades to Parquet: %w", err)
 	}
 
-	// Export positions to Parquet
-	positionsPath := filepath.Join(path, "positions.parquet")
-	_, err = b.db.Exec(fmt.Sprintf(`COPY positions TO '%s' (FORMAT PARQUET)`, positionsPath))
-	if err != nil {
-		return fmt.Errorf("failed to export positions to Parquet: %w", err)
-	}
-
 	// Export orders to Parquet
 	ordersPath := filepath.Join(path, "orders.parquet")
 	_, err = b.db.Exec(fmt.Sprintf(`COPY orders TO '%s' (FORMAT PARQUET)`, ordersPath))
@@ -390,7 +361,6 @@ func (b *BacktestState) Write(path string) error {
 
 	b.logger.Info("Successfully exported backtest results to Parquet files",
 		zap.String("trades", tradesPath),
-		zap.String("positions", positionsPath),
 		zap.String("orders", ordersPath),
 	)
 	return nil
