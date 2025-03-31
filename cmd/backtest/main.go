@@ -12,7 +12,7 @@ func main() {
 	engine := engine.NewBacktestEngineV1()
 
 	// read config from config/backtest_config.yaml
-	config, err := os.ReadFile("config/backtest_config.yaml")
+	config, err := os.ReadFile("config/backtest-engine-v1-config.yaml")
 	if err != nil {
 		log.Fatalf("Failed to read config: %v", err)
 	}
