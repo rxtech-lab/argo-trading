@@ -445,6 +445,50 @@ func (d *DuckDBDataSource) ExecuteSQL(query string, params ...interface{}) ([]SQ
 	return result, nil
 }
 
+// ReadLastData implements DataSource.
+// Returns the most recent market data for the specified symbol.
+func (d *DuckDBDataSource) ReadLastData(symbol string) (types.MarketData, error) {
+	d.logger.Debug("Reading last data for symbol", zap.String("symbol", symbol))
+
+	query := `
+		SELECT time, symbol, open, high, low, close, volume 
+		FROM market_data 
+		WHERE symbol = ?
+		ORDER BY time DESC
+		LIMIT 1
+	`
+
+	stmt, err := d.db.Prepare(query)
+	if err != nil {
+		return types.MarketData{}, fmt.Errorf("failed to prepare query: %w", err)
+	}
+	defer stmt.Close()
+
+	var (
+		timestamp                      time.Time
+		open, high, low, close, volume float64
+		symbolResult                   string
+	)
+
+	err = stmt.QueryRow(symbol).Scan(&timestamp, &symbolResult, &open, &high, &low, &close, &volume)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return types.MarketData{}, fmt.Errorf("no data found for symbol: %s", symbol)
+		}
+		return types.MarketData{}, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	return types.MarketData{
+		Symbol: symbolResult,
+		Time:   timestamp,
+		Open:   open,
+		High:   high,
+		Low:    low,
+		Close:  close,
+		Volume: volume,
+	}, nil
+}
+
 // Close implements DataSource.
 func (d *DuckDBDataSource) Close() error {
 	if d.db != nil {

@@ -35,9 +35,10 @@ type DataSource interface {
 	ReadAll() func(yield func(types.MarketData, error) bool)
 	// ReadRange reads a range of data from the data source and yields it to the caller
 	ReadRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error)
+	// ReadLastData reads the last data from the data source for a specific symbol
+	ReadLastData(symbol string) (types.MarketData, error)
 	// ExecuteSQL executes a raw SQL query and returns the results as SQLResult
 	ExecuteSQL(query string, params ...interface{}) ([]SQLResult, error)
-
 	// Count returns the number of rows in the data source
 	Count() (int, error)
 	// Close closes the data source and releases any resources
