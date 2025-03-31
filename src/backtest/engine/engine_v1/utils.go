@@ -51,6 +51,10 @@ func createProgressBars(config ProgressBarConfig) (map[runKey]*mpb.Bar, error) {
 					return nil, fmt.Errorf("failed to get count of data source: %w", err)
 				}
 
+				if count == 0 {
+					return nil, fmt.Errorf("no data found for strategy %s, config %s, data %s", strategy.Name(), configPath, dataPath)
+				}
+
 				key := runKey{
 					strategy:   strategy.Name(),
 					configPath: configPath,

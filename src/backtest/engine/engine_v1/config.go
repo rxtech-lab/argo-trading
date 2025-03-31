@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -51,7 +52,8 @@ func (c *BacktestEngineV1Config) GenerateSchema() (*jsonschema.Schema, error) {
 		ExpandedStruct:             true,
 		AllowAdditionalProperties:  false,
 		Mapper: func(t reflect.Type) *jsonschema.Schema {
-			if t.String() == "github.com/moznion/go-optional.Option[time.Time]" {
+			fmt.Println("t", t.String())
+			if t.String() == "optional.Option[time.Time]" {
 				return &jsonschema.Schema{
 					Type:   "string",
 					Format: "date-time",
