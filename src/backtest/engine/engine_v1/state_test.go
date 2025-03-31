@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/strategy"
@@ -539,9 +540,11 @@ type MockDataSource struct {
 	lastData map[string]types.MarketData
 }
 
-func (m *MockDataSource) Initialize(path string) error                            { return nil }
-func (m *MockDataSource) ReadAll() func(yield func(types.MarketData, error) bool) { return nil }
-func (m *MockDataSource) ReadRange(start time.Time, end time.Time, interval datasource.Interval) ([]types.MarketData, error) {
+func (m *MockDataSource) Initialize(path string) error { return nil }
+func (m *MockDataSource) ReadAll(start, end optional.Option[time.Time]) func(yield func(types.MarketData, error) bool) {
+	return nil
+}
+func (m *MockDataSource) GetRange(start time.Time, end time.Time, interval datasource.Interval) ([]types.MarketData, error) {
 	return nil, nil
 }
 func (m *MockDataSource) ReadLastData(symbol string) (types.MarketData, error) {
@@ -553,8 +556,10 @@ func (m *MockDataSource) ReadLastData(symbol string) (types.MarketData, error) {
 func (m *MockDataSource) ExecuteSQL(query string, params ...interface{}) ([]datasource.SQLResult, error) {
 	return nil, nil
 }
-func (m *MockDataSource) Count() (int, error) { return 0, nil }
-func (m *MockDataSource) Close() error        { return nil }
+func (m *MockDataSource) Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error) {
+	return 0, nil
+}
+func (m *MockDataSource) Close() error { return nil }
 
 func (suite *BacktestStateTestSuite) TestGetStats() {
 	// Create mock data source

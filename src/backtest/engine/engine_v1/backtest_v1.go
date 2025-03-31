@@ -175,9 +175,16 @@ func (b *BacktestEngineV1) Run() error {
 
 	// Create progress container
 	p := mpb.New(mpb.WithWaitGroup(&wg))
-
 	// Create progress bars
-	bars, err := createProgressBars(p, b.strategies, b.strategyConfigPaths, b.dataPaths, b.log)
+	bars, err := createProgressBars(ProgressBarConfig{
+		Progress:    p,
+		Strategies:  b.strategies,
+		ConfigPaths: b.strategyConfigPaths,
+		DataPaths:   b.dataPaths,
+		Logger:      b.log,
+		StartTime:   b.config.StartTime,
+		EndTime:     b.config.EndTime,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create progress bars: %w", err)
 	}
@@ -224,7 +231,8 @@ func (b *BacktestEngineV1) Run() error {
 						return
 					}
 
-					resultFolderPath := filepath.Join(b.resultsFolder, fmt.Sprintf("%s_%s_%s", strategy.Name(), filepath.Base(configPath), filepath.Base(dataPath)))
+					resultFolderPath := getResultFolder(configPath, dataPath, b, strategy)
+
 					b.log.Debug("Running strategy",
 						zap.String("strategy", strategy.Name()),
 						zap.String("config", configPath),
@@ -252,7 +260,7 @@ func (b *BacktestEngineV1) Run() error {
 						return
 					}
 
-					for data, err := range datasource.ReadAll() {
+					for data, err := range datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
 						if err != nil {
 							errChan <- fmt.Errorf("failed to read data: %w", err)
 							return

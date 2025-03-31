@@ -44,7 +44,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 	startTime := marketData.Time.Add(-bb.lookback)
 	endTime := marketData.Time
 
-	historicalData, err := ctx.DataSource.ReadRange(startTime, endTime, datasource.Interval1m)
+	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
 	if err != nil {
 		return types.Signal{}, err
 	}
