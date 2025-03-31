@@ -15,10 +15,10 @@ func main() {
 	// Set up ticker and date range
 	ticker := "AAPL"
 	startDate := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	endDate := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC)
 
 	// Download data to DuckDB
-	dbPath, err := client.Download(ticker, "data/market_data.duckdb", startDate, endDate, 15, models.Second)
+	dbPath, err := client.Download(ticker, "data/market_data.duckdb", startDate, endDate, 1, models.Minute)
 	if err != nil {
 		log.Fatalf("Failed to download data: %v", err)
 	}

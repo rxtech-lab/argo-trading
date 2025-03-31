@@ -3,7 +3,6 @@ package indicator
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/sirily11/argo-trading-go/src/types"
 )
@@ -72,13 +71,4 @@ func (r *IndicatorRegistry) RemoveIndicator(name types.Indicator) error {
 
 	delete(r.indicators, name)
 	return nil
-}
-
-// DefaultRegistry is the global indicator registry
-var DefaultRegistry = NewIndicatorRegistry()
-
-func RegisterIndicators(startTime, endTime time.Time) {
-	DefaultRegistry.RegisterIndicator(NewRSI(startTime, endTime, 14))
-	DefaultRegistry.RegisterIndicator(NewMACD(startTime, endTime, 12, 26, 9))
-	DefaultRegistry.RegisterIndicator(NewTrendStrength(startTime, endTime, 5, 20))
 }
