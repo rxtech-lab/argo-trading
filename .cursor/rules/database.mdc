@@ -1,0 +1,6 @@
+---
+description: 
+globs: *.go
+alwaysApply: false
+---
+This code is using duckdb for data processing.

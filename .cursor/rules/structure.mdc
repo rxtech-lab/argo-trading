@@ -1,0 +1,9 @@
+---
+description: 
+globs: *.go,*.md
+alwaysApply: false
+---
+# Code structure
+
+src/backtest contains the back test engine for our strategy. Back test engine also uses `src/backtest/engine/engine_v1/datasource/datasource.go` to get the market data which download from `cmd/download`. Indicators are located in `src/indicator`. These indicators are calculated base on the historical data from `datasource`. Out backtest system also embedded a `src/trading` trading system that simulates trading. However, we can replace with real trading system in real trading as well as datasources.
+Types are located in `src/types` and utility methods are located in `src/utils`.

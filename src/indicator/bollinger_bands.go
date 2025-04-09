@@ -25,7 +25,7 @@ type BollingerBands struct {
 }
 
 // NewBollingerBands creates a new Bollinger Bands indicator
-func NewBollingerBands(period int, stdDev float64, lookback time.Duration) *BollingerBands {
+func NewBollingerBands(period int, stdDev float64, lookback time.Duration) Indicator {
 	return &BollingerBands{
 		period:   period,
 		stdDev:   stdDev,
@@ -36,6 +36,50 @@ func NewBollingerBands(period int, stdDev float64, lookback time.Duration) *Boll
 // Name returns the name of the indicator
 func (bb *BollingerBands) Name() types.Indicator {
 	return types.IndicatorBollingerBands
+}
+
+// RawValue implements Indicator. It calculates the middle Bollinger Band (SMA)
+// for the given market data point.
+// It expects types.MarketData as the first parameter and IndicatorContext as the second.
+func (bb *BollingerBands) RawValue(params ...any) (float64, error) {
+	// thinking process:
+	// 1. Validate and extract parameters. RawValue needs market data and context.
+	// 2. Fetch historical data required for calculation.
+	// 3. Calculate the Bollinger Bands using the existing helper function.
+	// 4. Return the middle band value.
+
+	if len(params) < 2 {
+		return 0, fmt.Errorf("RawValue requires at least 2 parameters: types.MarketData and IndicatorContext")
+	}
+
+	marketData, ok := params[0].(types.MarketData)
+	if !ok {
+		return 0, fmt.Errorf("first parameter must be of type types.MarketData")
+	}
+
+	ctx, ok := params[1].(IndicatorContext)
+	if !ok {
+		return 0, fmt.Errorf("second parameter must be of type IndicatorContext")
+	}
+
+	// Get historical data for the lookback period
+	startTime := marketData.Time.Add(-bb.lookback)
+	endTime := marketData.Time
+
+	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get historical data: %w", err)
+	}
+
+	// Calculate Bollinger Bands
+	_, middle, _, err := bb.calculateBands(historicalData)
+	if err != nil {
+		// Return 0 and the error (e.g., InsufficientDataError)
+		return 0, err
+	}
+
+	// Return the middle band value
+	return middle, nil
 }
 
 // GetSignal generates trading signals based on Bollinger Bands

@@ -1,8 +1,6 @@
 package cache
 
 import (
-	"sync"
-
 	"github.com/moznion/go-optional"
 )
 
@@ -21,7 +19,6 @@ type RangeFilterState struct {
 
 type CacheV1 struct {
 	RangeFilterState optional.Option[RangeFilterState]
-	mu               sync.RWMutex
 }
 
 func NewCacheV1() Cache {
@@ -32,7 +29,5 @@ func NewCacheV1() Cache {
 
 // Reset implements cache.Cache.
 func (c *CacheV1) Reset() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.RangeFilterState = optional.None[RangeFilterState]()
 }

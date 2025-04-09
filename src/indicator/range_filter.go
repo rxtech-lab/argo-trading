@@ -3,9 +3,11 @@ package indicator
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/cache"
+	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
 
@@ -17,7 +19,7 @@ type RangeFilter struct {
 }
 
 // NewRangeFilter creates a new Range Filter indicator.
-func NewRangeFilter(period int, multiplier float64) *RangeFilter {
+func NewRangeFilter(period int, multiplier float64) Indicator {
 	if period <= 0 {
 		period = 100 // Use default if invalid
 	}
@@ -37,7 +39,59 @@ func (rf *RangeFilter) Name() types.Indicator {
 
 // GetSignal calculates the Range Filter signal based on market data and stored state.
 func (rf *RangeFilter) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
+	// Calculate the Range Filter values
+	filterData, err := rf.calculateFilter(marketData, ctx)
+	if err != nil {
+		return types.Signal{}, err
+	}
+
+	// Determine Signal Type
+	signalType := types.SignalTypeNoAction
+	reason := "No trend detected or uninitialized"
+	if filterData.initialized { // Only generate signals after initialization
+		reason = "No trend detected"
+		if filterData.upward > 0 {
+			signalType = types.SignalTypeBuyLong
+			reason = fmt.Sprintf("Range Filter upward trend (filt=%.4f > prevFilt=%.4f)", filterData.filt, filterData.prevFilt)
+		} else if filterData.downward > 0 {
+			signalType = types.SignalTypeSellShort
+			reason = fmt.Sprintf("Range Filter downward trend (filt=%.4f < prevFilt=%.4f)", filterData.filt, filterData.prevFilt)
+		}
+	}
+
+	// Create Signal struct
+	signal := types.Signal{
+		Time:   marketData.Time,
+		Type:   signalType,
+		Name:   string(rf.Name()),
+		Reason: reason,
+		RawValue: map[string]float64{
+			"filter":         filterData.filt,
+			"smooth_range":   filterData.smrng,
+			"upward_count":   filterData.upward,
+			"downward_count": filterData.downward,
+		},
+		Symbol: marketData.Symbol,
+	}
+
+	return signal, nil
+}
+
+// RangeFilterData holds the calculated filter values
+type RangeFilterData struct {
+	filt        float64
+	smrng       float64
+	prevFilt    float64
+	upward      float64
+	downward    float64
+	initialized bool
+}
+
+// calculateFilter performs the actual Range Filter calculation
+// This shared function is used by both GetSignal and RawValue
+func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx IndicatorContext) (RangeFilterData, error) {
 	src := marketData.Close
+	result := RangeFilterData{}
 
 	// Initialize state if needed
 	if ctx.Cache.RangeFilterState.IsNone() {
@@ -50,7 +104,7 @@ func (rf *RangeFilter) GetSignal(marketData types.MarketData, ctx IndicatorConte
 
 	value, err := ctx.Cache.RangeFilterState.Take()
 	if err != nil {
-		return types.Signal{}, err
+		return result, err
 	}
 	if value.Symbol != marketData.Symbol {
 		ctx.Cache.RangeFilterState = optional.Some(cache.RangeFilterState{
@@ -75,54 +129,51 @@ func (rf *RangeFilter) GetSignal(marketData types.MarketData, ctx IndicatorConte
 			smrng = 0             // Initially zero
 			currentUpward = 0     // Reset counts on initialization
 			currentDownward = 0   // Reset counts on initialization
+			result.initialized = true
 		}
 	} else {
+		result.initialized = true
 		// Calculate smoothed average range (smrng) using EMA calculations
 		absChange := math.Abs(src - value.PrevSource)
 
 		// Get EMA indicators from registry
 		shortEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorEMA)
 		if err != nil {
-			return types.Signal{}, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
+			return result, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
 		}
 
 		// Use type assertion to get the EMA indicator
 		shortEMA, ok := shortEMAIndicator.(*EMA)
 		if !ok {
-			return types.Signal{}, fmt.Errorf("indicator is not an EMA indicator")
+			return result, fmt.Errorf("indicator is not an EMA indicator")
 		}
 
 		// Clone for long EMA
 		longEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorEMA)
 		if err != nil {
-			return types.Signal{}, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
+			return result, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
 		}
 
 		longEMA, ok := longEMAIndicator.(*EMA)
 		if !ok {
-			return types.Signal{}, fmt.Errorf("indicator is not an EMA indicator")
+			return result, fmt.Errorf("indicator is not an EMA indicator")
 		}
 
-		// Configure periods
-		shortEMA.Period = rf.Period
-		longEMA.Period = rf.Period*2 - 1
-
-		// Create a context for each EMA calculation
-		absChangeCtx := IndicatorContext{
-			DataSource:        ctx.DataSource,
-			IndicatorRegistry: ctx.IndicatorRegistry,
-			Cache:             ctx.Cache,
-		}
-
-		// Calculate both EMAs
-		shortEMAValue, err := shortEMA.CalculateEMAFromSQL(marketData.Symbol, marketData.Time, absChangeCtx)
+		// Calculate both EMAs using RawValue with the period parameter
+		shortEMAPeriod := rf.Period
+		shortEMAValue, err := shortEMA.RawValue(marketData.Symbol, marketData.Time, ctx, shortEMAPeriod)
 		if err != nil {
-			return types.Signal{}, fmt.Errorf("failed to calculate EMA of absolute changes: %w", err)
+			return result, fmt.Errorf("failed to calculate short EMA (period %d): %w", shortEMAPeriod, err)
 		}
 
-		longEMAValue, err := longEMA.CalculateEMAFromSQL(marketData.Symbol, marketData.Time, absChangeCtx)
+		longEMAPeriod := rf.Period*2 - 1
+		// Ensure long period is at least 1
+		if longEMAPeriod < 1 {
+			longEMAPeriod = 1
+		}
+		longEMAValue, err := longEMA.RawValue(marketData.Symbol, marketData.Time, ctx, longEMAPeriod)
 		if err != nil {
-			return types.Signal{}, fmt.Errorf("failed to calculate EMA of smooth range: %w", err)
+			return result, fmt.Errorf("failed to calculate long EMA (period %d): %w", longEMAPeriod, err)
 		}
 
 		// Apply absolute change to calculate the smooth range
@@ -151,38 +202,9 @@ func (rf *RangeFilter) GetSignal(marketData types.MarketData, ctx IndicatorConte
 		} else if filt < prevFilt {
 			currentUpward = 0
 			currentDownward = value.Downward + 1
-		} else {
-			// currentUpward and currentDownward retain their current state values
 		}
-	}
 
-	// Determine Signal Type
-	signalType := types.SignalTypeNoAction
-	reason := "No trend detected or uninitialized"
-	if value.Initialized { // Only generate signals after initialization
-		reason = "No trend detected"
-		if currentUpward > 0 {
-			signalType = types.SignalTypeBuyLong
-			reason = fmt.Sprintf("Range Filter upward trend (filt=%.4f > prevFilt=%.4f)", filt, value.PrevFilt)
-		} else if currentDownward > 0 {
-			signalType = types.SignalTypeSellShort
-			reason = fmt.Sprintf("Range Filter downward trend (filt=%.4f < prevFilt=%.4f)", filt, value.PrevFilt)
-		}
-	}
-
-	// Create Signal struct
-	signal := types.Signal{
-		Time:   marketData.Time,
-		Type:   signalType,
-		Name:   string(rf.Name()),
-		Reason: reason,
-		RawValue: map[string]float64{
-			"filter":         filt,
-			"smooth_range":   smrng,
-			"upward_count":   currentUpward,
-			"downward_count": currentDownward,
-		},
-		Symbol: marketData.Symbol,
+		result.prevFilt = prevFilt
 	}
 
 	// --- Update state variables for saving ---
@@ -192,5 +214,89 @@ func (rf *RangeFilter) GetSignal(marketData types.MarketData, ctx IndicatorConte
 	value.Downward = currentDownward
 	ctx.Cache.RangeFilterState = optional.Some(value)
 
-	return signal, nil
+	// Set the results
+	result.filt = filt
+	result.smrng = smrng
+	result.upward = currentUpward
+	result.downward = currentDownward
+
+	return result, nil
+}
+
+// RawValue implements the Indicator interface.
+// It returns the current filter value for the given parameters.
+// Parameters expected:
+// - symbol (string)
+// - currentTime (time.Time)
+// - ctx (IndicatorContext)
+// - optional period (int) - if provided, overrides the default Period
+func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
+	// Validate and extract parameters
+	if len(params) < 3 {
+		return 0, fmt.Errorf("RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
+	}
+
+	symbol, ok := params[0].(string)
+	if !ok {
+		return 0, fmt.Errorf("first parameter must be of type string (symbol)")
+	}
+
+	currentTime, ok := params[1].(time.Time)
+	if !ok {
+		return 0, fmt.Errorf("second parameter must be of type time.Time")
+	}
+
+	ctx, ok := params[2].(IndicatorContext)
+	if !ok {
+		return 0, fmt.Errorf("third parameter must be of type IndicatorContext")
+	}
+
+	// Check if we have a custom period parameter
+	origPeriod := rf.Period
+	if len(params) > 3 {
+		if customPeriod, ok := params[3].(int); ok && customPeriod > 0 {
+			// Temporarily override the period for this calculation
+			rf.Period = customPeriod
+			// Restore the original period when we're done
+			defer func() { rf.Period = origPeriod }()
+		}
+	}
+
+	// Get market data
+	var marketData types.MarketData
+	var err error
+
+	// If a specific time is provided, get data up to that time
+	if !currentTime.IsZero() {
+		// Get data from a range ending at currentTime
+		endTime := currentTime
+		startTime := endTime.Add(-time.Hour * 24) // Get last 24 hours of data
+
+		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get historical data: %w", err)
+		}
+
+		if len(historicalData) == 0 {
+			return 0, fmt.Errorf("no historical data available for the specified time range")
+		}
+
+		// Use the last data point
+		marketData = historicalData[len(historicalData)-1]
+	} else {
+		// Get the latest data if no specific time provided
+		marketData, err = ctx.DataSource.ReadLastData(symbol)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get latest market data: %w", err)
+		}
+	}
+
+	// Use the shared calculation function
+	filterData, err := rf.calculateFilter(marketData, ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to calculate Range Filter: %w", err)
+	}
+
+	// Return the filter value
+	return filterData.filt, nil
 }

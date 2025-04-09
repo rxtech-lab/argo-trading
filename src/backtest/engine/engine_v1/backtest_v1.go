@@ -16,6 +16,7 @@ import (
 	"github.com/sirily11/argo-trading-go/src/logger"
 	s "github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
+	"github.com/sirily11/argo-trading-go/src/utils"
 	"github.com/vbauerster/mpb/v8"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
@@ -356,9 +357,9 @@ func (b *BacktestEngineV1) executeOrdersWithState(marketData types.MarketData, s
 		}
 
 		quantity := 0.0
-		if executeOrder.OrderType == types.OrderTypeBuy {
+		if executeOrder.Side == types.PurchaseTypeBuy {
 			// calculate the quantity by the current balance / price
-			quantity = float64(CalculateMaxQuantity(runState.balance, price, commissionFeeHandler))
+			quantity = float64(utils.CalculateMaxQuantity(runState.balance, price, commissionFeeHandler))
 		} else {
 			quantity = position.Quantity
 		}
@@ -367,7 +368,7 @@ func (b *BacktestEngineV1) executeOrdersWithState(marketData types.MarketData, s
 		if position.Quantity == 0 {
 			pendingOrder := types.Order{
 				Symbol:       executeOrder.Symbol,
-				OrderType:    executeOrder.OrderType,
+				Side:         executeOrder.Side,
 				Quantity:     quantity,
 				Price:        (marketData.High + marketData.Low) / 2,
 				Timestamp:    marketData.Time,

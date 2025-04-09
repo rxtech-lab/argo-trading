@@ -4,6 +4,7 @@ import (
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/cache"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/indicator"
+	"github.com/sirily11/argo-trading-go/src/trading"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
 
@@ -16,6 +17,8 @@ type StrategyContext struct {
 	GetPosition func(symbol string) (types.Position, error)
 	// Cache is the cache of the strategy
 	Cache cache.Cache
+	// Trading System is used to place orders
+	TradingSystem trading.TradingSystem
 }
 
 // TradingStrategy interface defines methods that any trading strategy must implement

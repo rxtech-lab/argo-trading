@@ -1,18 +1,19 @@
 package engine
 
 import (
-	"database/sql"
 	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/alifiroozi80/duckdb"
 	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"github.com/stretchr/testify/suite"
+	"gorm.io/gorm"
 )
 
 // BacktestStateTestSuite is a test suite for BacktestState
@@ -33,8 +34,13 @@ func (suite *BacktestStateTestSuite) SetupSuite() {
 
 // TearDownSuite runs once after all tests in the suite
 func (suite *BacktestStateTestSuite) TearDownSuite() {
-	if suite.state != nil && suite.state.db != nil {
-		suite.state.db.Close()
+	if suite.state != nil {
+		// Get the SQL DB from GORM and close it
+		sqlDB, err := suite.state.db.DB()
+		if err == nil {
+			sqlDB.Close()
+		}
+		suite.state = nil
 	}
 }
 
@@ -76,7 +82,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			orders: []types.Order{
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       100.0,
 					Fee:         1.0,
@@ -110,7 +116,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			orders: []types.Order{
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       100.0,
 					Fee:         1.0,
@@ -122,7 +128,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 				},
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeSell,
+					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
 					Price:       110.0,
 					Fee:         1.0,
@@ -163,7 +169,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			orders: []types.Order{
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       100.0,
 					Fee:         1.0,
@@ -175,7 +181,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 				},
 				{
 					Symbol:    "AAPL",
-					OrderType: types.OrderTypeSell,
+					Side:      types.PurchaseTypeSell,
 					Quantity:  50,
 					Price:     110.0,
 					Fee:       1.0,
@@ -213,7 +219,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			orders: []types.Order{
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       100.0,
 					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
@@ -227,7 +233,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 				},
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       90.0,
 					Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
@@ -241,7 +247,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 				},
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       80.0,
 					Timestamp:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
@@ -255,7 +261,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 				},
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeSell,
+					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
 					Price:       110.0,
 					Timestamp:   time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC),
@@ -269,7 +275,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 				},
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeSell,
+					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
 					Price:       120.0,
 					Timestamp:   time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC),
@@ -283,7 +289,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 				},
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeSell,
+					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
 					Price:       130.0,
 					Timestamp:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
@@ -402,7 +408,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			for i, result := range allResults {
 				// Verify order
 				suite.Assert().Equal(tc.orders[i].Symbol, result.Order.Symbol, "Result order symbol mismatch")
-				suite.Assert().Equal(tc.orders[i].OrderType, result.Order.OrderType, "Result order type mismatch")
+				suite.Assert().Equal(tc.orders[i].Side, result.Order.Side, "Result order type mismatch")
 				suite.Assert().Equal(tc.orders[i].Quantity, result.Order.Quantity, "Result order quantity mismatch")
 				suite.Assert().Equal(tc.orders[i].Price, result.Order.Price, "Result order price mismatch")
 				suite.Assert().Equal(tc.orders[i].Timestamp.UTC(), result.Order.Timestamp.UTC(), "Result order timestamp mismatch")
@@ -413,13 +419,13 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 
 				// Verify trade
 				suite.Assert().Equal(tc.orders[i].Symbol, result.Trade.Order.Symbol, "Result trade symbol mismatch")
-				suite.Assert().Equal(tc.orders[i].OrderType, result.Trade.Order.OrderType, "Result trade type mismatch")
+				suite.Assert().Equal(tc.orders[i].Side, result.Trade.Order.Side, "Result trade type mismatch")
 				suite.Assert().Equal(tc.orders[i].Quantity, result.Trade.ExecutedQty, "Result trade quantity mismatch")
 				suite.Assert().Equal(tc.orders[i].Price, result.Trade.ExecutedPrice, "Result trade price mismatch")
 				suite.Assert().Equal(tc.orders[i].Timestamp.UTC(), result.Trade.ExecutedAt.UTC(), "Result trade timestamp mismatch")
 
 				// Verify IsNewPosition
-				if i == 0 && tc.orders[i].OrderType == types.OrderTypeBuy {
+				if i == 0 && tc.orders[i].Side == types.PurchaseTypeBuy {
 					suite.Assert().True(result.IsNewPosition, "Expected IsNewPosition to be true for first buy order")
 				} else {
 					suite.Assert().False(result.IsNewPosition, "Expected IsNewPosition to be false for subsequent orders")
@@ -437,7 +443,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	orders := []types.Order{
 		{
 			Symbol:      "AAPL",
-			OrderType:   types.OrderTypeBuy,
+			Side:        types.PurchaseTypeBuy,
 			Quantity:    100,
 			Price:       100.0,
 			Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
@@ -450,7 +456,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 		},
 		{
 			Symbol:      "AAPL",
-			OrderType:   types.OrderTypeSell,
+			Side:        types.PurchaseTypeSell,
 			Quantity:    50,
 			Price:       110.0,
 			Timestamp:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
@@ -473,7 +479,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	err := suite.state.Write(tmpDir)
 	suite.Require().NoError(err)
 
-	// Verify that all three files were created
+	// Verify that the files were created
 	tradesPath := filepath.Join(tmpDir, "trades.parquet")
 	ordersPath := filepath.Join(tmpDir, "orders.parquet")
 
@@ -481,26 +487,30 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	suite.Require().FileExists(tradesPath, "trades.parquet file should exist")
 	suite.Require().FileExists(ordersPath, "orders.parquet file should exist")
 
-	// Verify the data in the files using DuckDB
-	db, err := sql.Open("duckdb", ":memory:")
+	// Verify the data in the files using DuckDB and GORM
+	verifyDB, err := gorm.Open(duckdb.Open(":memory:"), &gorm.Config{})
 	suite.Require().NoError(err)
-	defer db.Close()
+
+	// Get the SQL DB from GORM
+	sqlDB, err := verifyDB.DB()
+	suite.Require().NoError(err)
+	defer sqlDB.Close()
 
 	// Read and verify trades
-	_, err = db.Exec(fmt.Sprintf("CREATE VIEW trades AS SELECT * FROM read_parquet('%s')", tradesPath))
+	_, err = sqlDB.Exec(fmt.Sprintf("CREATE VIEW trades AS SELECT * FROM read_parquet('%s')", tradesPath))
 	suite.Require().NoError(err)
 
 	var tradeCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM trades").Scan(&tradeCount)
+	err = sqlDB.QueryRow("SELECT COUNT(*) FROM trades").Scan(&tradeCount)
 	suite.Require().NoError(err)
 	suite.Require().Equal(2, tradeCount, "Should have 2 trades")
 
 	// Read and verify orders
-	_, err = db.Exec(fmt.Sprintf("CREATE VIEW orders AS SELECT * FROM read_parquet('%s')", ordersPath))
+	_, err = sqlDB.Exec(fmt.Sprintf("CREATE VIEW orders AS SELECT * FROM read_parquet('%s')", ordersPath))
 	suite.Require().NoError(err)
 
 	var orderCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM orders").Scan(&orderCount)
+	err = sqlDB.QueryRow("SELECT COUNT(*) FROM orders").Scan(&orderCount)
 	suite.Require().NoError(err)
 	suite.Require().Equal(2, orderCount, "Should have 2 orders")
 
@@ -509,7 +519,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	var orderTypeStr string
 	var quantity float64
 	var price float64
-	err = db.QueryRow(`
+	err = sqlDB.QueryRow(`
 		SELECT symbol, order_type, quantity, price 
 		FROM trades 
 		ORDER BY timestamp ASC 
@@ -517,12 +527,12 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	`).Scan(&symbol, &orderTypeStr, &quantity, &price)
 	suite.Require().NoError(err)
 	suite.Require().Equal("AAPL", symbol, "Trade symbol mismatch")
-	suite.Require().Equal(string(types.OrderTypeBuy), orderTypeStr, "Trade order type mismatch")
+	suite.Require().Equal(string(types.PurchaseTypeBuy), orderTypeStr, "Trade order type mismatch")
 	suite.Require().Equal(100.0, quantity, "Trade quantity mismatch")
 	suite.Require().Equal(100.0, price, "Trade price mismatch")
 
 	// Verify data in orders
-	err = db.QueryRow(`
+	err = sqlDB.QueryRow(`
 		SELECT symbol, order_type, quantity, price 
 		FROM orders 
 		ORDER BY timestamp ASC 
@@ -530,7 +540,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	`).Scan(&symbol, &orderTypeStr, &quantity, &price)
 	suite.Require().NoError(err)
 	suite.Require().Equal("AAPL", symbol, "Order symbol mismatch")
-	suite.Require().Equal(string(types.OrderTypeBuy), orderTypeStr, "Order type mismatch")
+	suite.Require().Equal(string(types.PurchaseTypeBuy), orderTypeStr, "Order type mismatch")
 	suite.Require().Equal(100.0, quantity, "Order quantity mismatch")
 	suite.Require().Equal(100.0, price, "Order price mismatch")
 }
@@ -560,6 +570,12 @@ func (m *MockDataSource) Count(start optional.Option[time.Time], end optional.Op
 	return 0, nil
 }
 func (m *MockDataSource) Close() error { return nil }
+func (m *MockDataSource) ReadRecordsFromStart(start time.Time, number int, interval datasource.Interval) ([]types.MarketData, error) {
+	return nil, nil
+}
+func (m *MockDataSource) ReadRecordsFromEnd(end time.Time, number int, interval datasource.Interval) ([]types.MarketData, error) {
+	return nil, nil
+}
 
 func (suite *BacktestStateTestSuite) TestGetStats() {
 	// Create mock data source
@@ -587,7 +603,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			orders: []types.Order{
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       100.0,
 					Fee:         1.0,
@@ -599,7 +615,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				},
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeSell,
+					Side:        types.PurchaseTypeSell,
 					Quantity:    50,
 					Price:       110.0,
 					Fee:         1.0,
@@ -642,7 +658,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			orders: []types.Order{
 				{
 					Symbol:      "AAPL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
 					Price:       100.0,
 					Fee:         1.0,
@@ -654,7 +670,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				},
 				{
 					Symbol:      "GOOGL",
-					OrderType:   types.OrderTypeBuy,
+					Side:        types.PurchaseTypeBuy,
 					Quantity:    50,
 					Price:       2000.0,
 					Fee:         1.0,
