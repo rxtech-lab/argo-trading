@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sirily11/argo-trading-go/src/backtest/engine"
+	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/cache"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/commission_fee"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/indicator"
@@ -30,10 +31,13 @@ type BacktestEngineV1 struct {
 	indicatorRegistry   *indicator.IndicatorRegistry
 	state               *BacktestState
 	balance             float64
+	cache               cache.Cache
 }
 
 func NewBacktestEngineV1() engine.Engine {
-	return &BacktestEngineV1{}
+	return &BacktestEngineV1{
+		cache: cache.NewCacheV1(),
+	}
 }
 
 // Initialize implements engine.Engine.

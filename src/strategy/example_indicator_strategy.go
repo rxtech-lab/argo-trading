@@ -45,7 +45,7 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 		return nil, err
 	}
 
-	if signal.Type == types.SignalTypeBuy {
+	if signal.Type == types.SignalTypeBuyLong {
 		if hasPosition {
 			return []types.ExecuteOrder{}, nil
 		}
@@ -62,7 +62,7 @@ func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.M
 		}, nil
 	}
 
-	if signal.Type == types.SignalTypeSell {
+	if signal.Type == types.SignalTypeSellLong {
 		if !hasPosition {
 			return []types.ExecuteOrder{}, nil
 		}

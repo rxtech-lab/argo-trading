@@ -70,7 +70,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 	if currentPrice < lower {
 		return types.Signal{
 			Time:     marketData.Time,
-			Type:     types.SignalTypeBuy,
+			Type:     types.SignalTypeBuyLong,
 			Name:     "Bollinger Bands",
 			Reason:   "Price below lower band",
 			RawValue: map[string]float64{"upper": upper, "middle": middle, "lower": lower},
@@ -81,7 +81,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 	if currentPrice > upper {
 		return types.Signal{
 			Time:     marketData.Time,
-			Type:     types.SignalTypeSell,
+			Type:     types.SignalTypeSellLong,
 			Name:     "Bollinger Bands",
 			Reason:   "Price above upper band",
 			RawValue: map[string]float64{"upper": upper, "middle": middle, "lower": lower},
