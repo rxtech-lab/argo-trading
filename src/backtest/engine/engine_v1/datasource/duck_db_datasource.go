@@ -1,20 +1,48 @@
 package datasource
 
 import (
-	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb"
+	"github.com/alifiroozi80/duckdb"
 	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
+// MarketDataModel represents the market data in the database
+type MarketDataModel struct {
+	Time   time.Time `gorm:"column:time;primaryKey"`
+	Symbol string    `gorm:"column:symbol;primaryKey"`
+	Open   float64   `gorm:"column:open"`
+	High   float64   `gorm:"column:high"`
+	Low    float64   `gorm:"column:low"`
+	Close  float64   `gorm:"column:close"`
+	Volume float64   `gorm:"column:volume"`
+}
+
+// TableName sets the table name for MarketDataModel
+func (MarketDataModel) TableName() string {
+	return "market_data"
+}
+
+// ToMarketData converts a MarketDataModel to types.MarketData
+func (m MarketDataModel) ToMarketData() types.MarketData {
+	return types.MarketData{
+		Symbol: m.Symbol,
+		Time:   m.Time,
+		Open:   m.Open,
+		High:   m.High,
+		Low:    m.Low,
+		Close:  m.Close,
+		Volume: m.Volume,
+	}
+}
+
 type DuckDBDataSource struct {
-	db     *sql.DB
+	db     *gorm.DB
 	logger *logger.Logger
 }
 
@@ -23,13 +51,19 @@ type DuckDBDataSource struct {
 // This is distinct from Initialize() which loads market data into the database.
 // Returns a DataSource interface and any error encountered during creation.
 func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
-	db, err := sql.Open("duckdb", path)
+	// Configure GORM with DuckDB
+	db, err := gorm.Open(duckdb.Open(path), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
 
 	// Set DuckDB-specific optimizations
-	_, err = db.Exec(`
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = sqlDB.Exec(`
 		SET memory_limit='8GB';
 		SET threads=4;
 		SET temp_directory='./temp';
@@ -45,13 +79,18 @@ func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 func (d *DuckDBDataSource) Initialize(path string) error {
 	d.logger.Debug("Initializing DuckDB data source", zap.String("path", path))
 
-	// Create a view from the parquet file
+	// Create a view from the parquet file using raw SQL since it's a DuckDB-specific feature
+	sqlDB, err := d.db.DB()
+	if err != nil {
+		return err
+	}
+
 	query := fmt.Sprintf(`
 		CREATE VIEW market_data AS 
 		SELECT * FROM read_parquet('%s');
 	`, path)
 
-	_, err := d.db.Exec(query)
+	_, err = sqlDB.Exec(query)
 	if err != nil {
 		return err
 	}
@@ -60,40 +99,22 @@ func (d *DuckDBDataSource) Initialize(path string) error {
 
 // Count implements DataSource.
 func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error) {
-	var count int
-	query := "SELECT COUNT(*) FROM market_data"
-	var params []interface{}
-	paramCount := 0
+	var count int64
+	query := d.db.Model(&MarketDataModel{})
 
 	if start.IsSome() {
-		paramCount++
-		query += fmt.Sprintf(" WHERE time >= $%d", paramCount)
-		params = append(params, start.Unwrap())
+		query = query.Where("time >= ?", start.Unwrap())
 	}
 
 	if end.IsSome() {
-		paramCount++
-		if paramCount == 1 {
-			query += " WHERE"
-		} else {
-			query += " AND"
-		}
-		query += fmt.Sprintf(" time <= $%d", paramCount)
-		params = append(params, end.Unwrap())
+		query = query.Where("time <= ?", end.Unwrap())
 	}
 
-	var rows *sql.Row
-	if len(params) > 0 {
-		rows = d.db.QueryRow(query, params...)
-	} else {
-		rows = d.db.QueryRow(query)
-	}
-
-	err := rows.Scan(&count)
+	err := query.Count(&count).Error
 	if err != nil {
 		return 0, err
 	}
-	return count, nil
+	return int(count), nil
 }
 
 // ReadAll implements DataSource with batch processing.
@@ -104,97 +125,43 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 		d.logger.Debug("Reading all data from DuckDB with batch processing")
 
 		// Build the base query
-		query := `
-			SELECT time, symbol, open, high, low, close, volume 
-			FROM market_data 
-		`
+		query := d.db.Model(&MarketDataModel{}).Order("time ASC")
 
 		// Add time range conditions if provided
-		var conditions []string
-		var params []interface{}
-		paramCount := 0
-
 		if start.IsSome() {
-			paramCount++
-			conditions = append(conditions, fmt.Sprintf("time >= $%d", paramCount))
-			params = append(params, start.Unwrap())
+			query = query.Where("time >= ?", start.Unwrap())
 		}
 
 		if end.IsSome() {
-			paramCount++
-			conditions = append(conditions, fmt.Sprintf("time <= $%d", paramCount))
-			params = append(params, end.Unwrap())
+			query = query.Where("time <= ?", end.Unwrap())
 		}
 
-		if len(conditions) > 0 {
-			query += " WHERE " + strings.Join(conditions, " AND ")
-		}
+		// Initialize variables for paging
+		offset := 0
+		hasMore := true
 
-		query += " ORDER BY time ASC"
-
-		// Use a prepared statement for better performance
-		stmt, err := d.db.Prepare(query)
-		if err != nil {
-			yield(types.MarketData{}, err)
-			return
-		}
-		defer stmt.Close()
-
-		var rows *sql.Rows
-		if len(params) > 0 {
-			rows, err = stmt.Query(params...)
-		} else {
-			rows, err = stmt.Query()
-		}
-		if err != nil {
-			yield(types.MarketData{}, err)
-			return
-		}
-		defer rows.Close()
-
-		// Process rows in batches
-		batch := make([]types.MarketData, 0, batchSize)
-		for rows.Next() {
-			var (
-				timestamp                      time.Time
-				open, high, low, close, volume float64
-				symbol                         string
-			)
-
-			err := rows.Scan(&timestamp, &symbol, &open, &high, &low, &close, &volume)
-			if err != nil {
-				yield(types.MarketData{}, err)
+		for hasMore {
+			var marketDataModels []MarketDataModel
+			result := query.Limit(batchSize).Offset(offset).Find(&marketDataModels)
+			if result.Error != nil {
+				yield(types.MarketData{}, result.Error)
 				return
 			}
 
-			marketData := types.MarketData{
-				Symbol: symbol,
-				Time:   timestamp,
-				Open:   open,
-				High:   high,
-				Low:    low,
-				Close:  close,
-				Volume: volume,
+			// If fewer records than batch size were returned, this is the last batch
+			if len(marketDataModels) < batchSize {
+				hasMore = false
 			}
 
-			batch = append(batch, marketData)
-
-			// Process batch when it reaches the batch size
-			if len(batch) >= batchSize {
-				for _, data := range batch {
-					if !yield(data, nil) {
-						return
-					}
+			// Process this batch
+			for _, model := range marketDataModels {
+				if !yield(model.ToMarketData(), nil) {
+					return
 				}
-				batch = batch[:0] // Reset slice while keeping capacity
 			}
-		}
 
-		// Process remaining rows
-		for _, data := range batch {
-			if !yield(data, nil) {
-				return
-			}
+			// Prepare for next batch
+			offset += batchSize
 		}
 	}
 }
@@ -203,6 +170,11 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error) {
 	// Convert interval to minutes for aggregation
 	intervalMinutes, err := getIntervalMinutes(interval)
+	if err != nil {
+		return nil, err
+	}
+
+	sqlDB, err := d.db.DB()
 	if err != nil {
 		return nil, err
 	}
@@ -233,14 +205,8 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Int
 		ORDER BY bucket_time ASC
 	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
 
-	// Use prepared statement for better performance
-	stmt, err := d.db.Prepare(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare query: %w", err)
-	}
-	defer stmt.Close()
-
-	rows, err := stmt.Query(start, end)
+	// Execute raw SQL since DuckDB has specific functions that aren't part of standard SQL
+	rows, err := sqlDB.Query(query, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query market data: %w", err)
 	}
@@ -288,6 +254,11 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 		return nil, err
 	}
 
+	sqlDB, err := d.db.DB()
+	if err != nil {
+		return nil, err
+	}
+
 	// Optimized query using materialized CTE and window functions
 	query := fmt.Sprintf(`
 		WITH time_buckets AS MATERIALIZED (
@@ -315,14 +286,8 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 		LIMIT ?
 	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
 
-	// Use prepared statement for better performance
-	stmt, err := d.db.Prepare(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare query: %w", err)
-	}
-	defer stmt.Close()
-
-	rows, err := stmt.Query(start, number)
+	// Execute raw SQL
+	rows, err := sqlDB.Query(query, start, number)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query market data: %w", err)
 	}
@@ -370,6 +335,11 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 		return nil, err
 	}
 
+	sqlDB, err := d.db.DB()
+	if err != nil {
+		return nil, err
+	}
+
 	// Optimized query using materialized CTE and window functions
 	query := fmt.Sprintf(`
 		WITH time_buckets AS MATERIALIZED (
@@ -397,14 +367,8 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 		LIMIT ?
 	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
 
-	// Use prepared statement for better performance
-	stmt, err := d.db.Prepare(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare query: %w", err)
-	}
-	defer stmt.Close()
-
-	rows, err := stmt.Query(end, number)
+	// Execute raw SQL
+	rows, err := sqlDB.Query(query, end, number)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query market data: %w", err)
 	}
@@ -453,14 +417,13 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 func (d *DuckDBDataSource) ExecuteSQL(query string, params ...interface{}) ([]SQLResult, error) {
 	d.logger.Debug("Executing SQL query", zap.String("query", query))
 
-	// Use prepared statement for better performance
-	stmt, err := d.db.Prepare(query)
+	sqlDB, err := d.db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare query: %w", err)
+		return nil, err
 	}
-	defer stmt.Close()
 
-	rows, err := stmt.Query(params...)
+	// Execute raw SQL query
+	rows, err := sqlDB.Query(query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -509,49 +472,31 @@ func (d *DuckDBDataSource) ExecuteSQL(query string, params ...interface{}) ([]SQ
 func (d *DuckDBDataSource) ReadLastData(symbol string) (types.MarketData, error) {
 	d.logger.Debug("Reading last data for symbol", zap.String("symbol", symbol))
 
-	query := `
-		SELECT time, symbol, open, high, low, close, volume 
-		FROM market_data 
-		WHERE symbol = ?
-		ORDER BY time DESC
-		LIMIT 1
-	`
+	var marketData MarketDataModel
+	result := d.db.Model(&MarketDataModel{}).
+		Where("symbol = ?", symbol).
+		Order("time DESC").
+		Limit(1).
+		First(&marketData)
 
-	stmt, err := d.db.Prepare(query)
-	if err != nil {
-		return types.MarketData{}, fmt.Errorf("failed to prepare query: %w", err)
-	}
-	defer stmt.Close()
-
-	var (
-		timestamp                      time.Time
-		open, high, low, close, volume float64
-		symbolResult                   string
-	)
-
-	err = stmt.QueryRow(symbol).Scan(&timestamp, &symbolResult, &open, &high, &low, &close, &volume)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
 			return types.MarketData{}, fmt.Errorf("no data found for symbol: %s", symbol)
 		}
-		return types.MarketData{}, fmt.Errorf("failed to scan row: %w", err)
+		return types.MarketData{}, fmt.Errorf("failed to query market data: %w", result.Error)
 	}
 
-	return types.MarketData{
-		Symbol: symbolResult,
-		Time:   timestamp,
-		Open:   open,
-		High:   high,
-		Low:    low,
-		Close:  close,
-		Volume: volume,
-	}, nil
+	return marketData.ToMarketData(), nil
 }
 
 // Close implements DataSource.
 func (d *DuckDBDataSource) Close() error {
 	if d.db != nil {
-		return d.db.Close()
+		sqlDB, err := d.db.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.Close()
 	}
 	return nil
 }

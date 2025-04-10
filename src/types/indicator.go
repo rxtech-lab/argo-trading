@@ -12,4 +12,6 @@ const (
 	IndicatorCCI                   Indicator = "cci"
 	IndicatorAO                    Indicator = "ao"
 	IndicatorTrendStrength         Indicator = "trend_strength"
+	IndicatorRangeFilter           Indicator = "range_filter"
+	IndicatorEMA                   Indicator = "ema"
 )
