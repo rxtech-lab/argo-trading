@@ -1,0 +1,20 @@
+---
+description: 
+globs: *.go
+alwaysApply: false
+---
+# Generate code requirement
+
+When generating code, describe why you write the go like this, either it is required by the user or you think it is best pratice. For example:
+
+```go
+
+// user ask to use optional as return type
+// and also in this function, we should not return the error, exit the code as error occured.
+// Remember, to check the optional cases while processing.
+func Calculate() optional.Option[int] {
+    
+}
+```
+
+Remember, also list your thinking process as comment inside the code for future reference.

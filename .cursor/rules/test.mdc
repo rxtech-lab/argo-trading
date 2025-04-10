@@ -1,0 +1,74 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Write test along with code 
+
+Always write test when you implement a new feature as well as new file. Use table test and test suite to write the test like below.
+
+```go
+package engine
+
+import (
+	"database/sql"
+	"fmt"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/moznion/go-optional"
+	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
+	"github.com/sirily11/argo-trading-go/src/logger"
+	"github.com/sirily11/argo-trading-go/src/strategy"
+	"github.com/sirily11/argo-trading-go/src/types"
+	"github.com/stretchr/testify/suite"
+)
+
+// BacktestStateTestSuite is a test suite for BacktestState
+type BacktestStateTestSuite struct {
+	suite.Suite
+	state  *BacktestState
+	logger *logger.Logger
+}
+
+// SetupSuite runs once before all tests in the suite
+func (suite *BacktestStateTestSuite) SetupSuite() {
+	logger, err := logger.NewLogger()
+	suite.Require().NoError(err)
+	suite.logger = logger
+	suite.state = NewBacktestState(suite.logger)
+	suite.Require().NotNil(suite.state)
+}
+
+// TearDownSuite runs once after all tests in the suite
+func (suite *BacktestStateTestSuite) TearDownSuite() {
+	if suite.state != nil && suite.state.db != nil {
+		suite.state.db.Close()
+	}
+}
+
+// SetupTest runs before each test
+func (suite *BacktestStateTestSuite) SetupTest() {
+	// Initialize the state before each test
+	err := suite.state.Initialize()
+	suite.Require().NoError(err)
+}
+
+// TearDownTest runs after each test
+func (suite *BacktestStateTestSuite) TearDownTest() {
+	// Cleanup the state after each test
+	err := suite.state.Cleanup()
+	suite.Require().NoError(err)
+}
+
+// TestBacktestStateSuite runs the test suite
+func TestBacktestStateSuite(t *testing.T) {
+	suite.Run(t, new(BacktestStateTestSuite))
+}
+```
+
+
+# Run tests after implementation
+
+Always run `go test ./...` when implementing a new feature. Fix the bug accordingly.
