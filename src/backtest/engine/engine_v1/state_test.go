@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/logger"
@@ -75,6 +76,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			name: "Single entry with fee",
 			orders: []types.Order{
 				{
+					OrderID:     "order1",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -89,6 +91,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			},
 			expectedTrades: []types.Trade{
 				{
+					Order: types.Order{
+						OrderID:     "order1",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeBuy,
+						Quantity:    100,
+						Price:       100.0,
+						Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 100.0,
@@ -109,6 +123,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			name: "Single entry and exit with fee",
 			orders: []types.Order{
 				{
+					OrderID:     "order1",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -121,6 +136,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					},
 				},
 				{
+					OrderID:     "order2",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
@@ -135,6 +151,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			},
 			expectedTrades: []types.Trade{
 				{
+					Order: types.Order{
+						OrderID:     "order1",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeBuy,
+						Quantity:    100,
+						Price:       100.0,
+						Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 100.0,
@@ -142,6 +170,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					PnL:           0,
 				},
 				{
+					Order: types.Order{
+						OrderID:     "order2",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeSell,
+						Quantity:    100,
+						Price:       110.0,
+						Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 110.0,
@@ -162,6 +202,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			name: "Single entry and partial close with fee",
 			orders: []types.Order{
 				{
+					OrderID:     "order1",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -174,6 +215,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					},
 				},
 				{
+					OrderID:   "order2",
 					Symbol:    "AAPL",
 					Side:      types.PurchaseTypeSell,
 					Quantity:  50,
@@ -184,6 +226,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			},
 			expectedTrades: []types.Trade{
 				{
+					Order: types.Order{
+						OrderID:     "order1",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeBuy,
+						Quantity:    100,
+						Price:       100.0,
+						Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 100.0,
@@ -191,6 +245,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					PnL:           0,
 				},
 				{
+					Order: types.Order{
+						OrderID:     "order2",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeSell,
+						Quantity:    50,
+						Price:       110.0,
+						Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					ExecutedQty:   50,
 					ExecutedPrice: 110.0,
@@ -212,6 +278,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			name: "Multiple entry and close long position with fee",
 			orders: []types.Order{
 				{
+					OrderID:     "order1",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -226,6 +293,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					Fee:          1.0,
 				},
 				{
+					OrderID:     "order2",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -240,6 +308,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					Fee:          1.0,
 				},
 				{
+					OrderID:     "order3",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -254,6 +323,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					Fee:          1.0,
 				},
 				{
+					OrderID:     "order4",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
@@ -268,6 +338,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					Fee:          1.0,
 				},
 				{
+					OrderID:     "order5",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
@@ -282,6 +353,7 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					Fee:          1.0,
 				},
 				{
+					OrderID:     "order6",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeSell,
 					Quantity:    100,
@@ -298,6 +370,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 			},
 			expectedTrades: []types.Trade{
 				{
+					Order: types.Order{
+						OrderID:     "order1",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeBuy,
+						Quantity:    100,
+						Price:       100.0,
+						Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 100.0,
@@ -305,6 +389,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					PnL:           0,
 				},
 				{
+					Order: types.Order{
+						OrderID:     "order2",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeBuy,
+						Quantity:    100,
+						Price:       90.0,
+						Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 90.0,
@@ -312,6 +408,18 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					PnL:           0,
 				},
 				{
+					Order: types.Order{
+						OrderID:     "order3",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeBuy,
+						Quantity:    100,
+						Price:       80.0,
+						Timestamp:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 80.0,
@@ -319,28 +427,61 @@ func (suite *BacktestStateTestSuite) TestUpdate() {
 					PnL:           0,
 				},
 				{
+					Order: types.Order{
+						OrderID:     "order4",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeSell,
+						Quantity:    100,
+						Price:       110.0,
+						Timestamp:   time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 110.0,
 					Fee:           1.0,
-					// ((110*100-1)/100 - (100*100+1 + 90*100+1 + 80*100+1)/300) * 100
-					PnL: 1998,
+					PnL:           1998,
 				},
 				{
+					Order: types.Order{
+						OrderID:     "order5",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeSell,
+						Quantity:    100,
+						Price:       120.0,
+						Timestamp:   time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 120.0,
 					Fee:           1.0,
-					//  ((120*100-1)/100 - (100*100+1 + 90*100+1 + 80*100+1)/300) * 100
-					PnL: 2998,
+					PnL:           2998,
 				},
 				{
+					Order: types.Order{
+						OrderID:     "order6",
+						Symbol:      "AAPL",
+						Side:        types.PurchaseTypeSell,
+						Quantity:    100,
+						Price:       130.0,
+						Timestamp:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
+						IsCompleted: true,
+						Reason: types.Reason{
+							Reason: "test",
+						},
+					},
 					ExecutedAt:    time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
 					ExecutedQty:   100,
 					ExecutedPrice: 130.0,
 					Fee:           1.0,
-					// ((130*100-1)/100 -  (100*100+1 + 90*100+1 + 80*100+1)/300) * 100
-					PnL: 3998,
+					PnL:           3998,
 				},
 			},
 			expectedPosition: ExpectPosition{
@@ -436,6 +577,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	// Create some test data
 	orders := []types.Order{
 		{
+			OrderID:     "order1",
 			Symbol:      "AAPL",
 			Side:        types.PurchaseTypeBuy,
 			Quantity:    100,
@@ -449,6 +591,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 			StrategyName: "test_strategy",
 		},
 		{
+			OrderID:     "order2",
 			Symbol:      "AAPL",
 			Side:        types.PurchaseTypeSell,
 			Quantity:    50,
@@ -586,6 +729,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			name: "Single symbol with multiple trades",
 			orders: []types.Order{
 				{
+					OrderID:     "order1",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -598,6 +742,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 				},
 				{
+					OrderID:     "order2",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeSell,
 					Quantity:    50,
@@ -641,6 +786,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			name: "Multiple symbols with trades",
 			orders: []types.Order{
 				{
+					OrderID:     "order1",
 					Symbol:      "AAPL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    100,
@@ -653,6 +799,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 				},
 				{
+					OrderID:     "order2",
 					Symbol:      "GOOGL",
 					Side:        types.PurchaseTypeBuy,
 					Quantity:    50,
@@ -769,6 +916,504 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				suite.Assert().Equal(expected.TradeHoldingTime.Max, actual.TradeHoldingTime.Max, "Max holding time mismatch")
 				suite.Assert().Equal(expected.TradeHoldingTime.Avg, actual.TradeHoldingTime.Avg, "Avg holding time mismatch")
 			}
+		})
+	}
+}
+
+func (suite *BacktestStateTestSuite) TestGetOrderById() {
+
+	tests := []struct {
+		name        string
+		orders      []types.Order
+		expected    optional.Option[types.Order]
+		expectError bool
+		isExisting  bool
+	}{
+		{
+			name: "Existing order",
+			orders: []types.Order{
+				{
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "test message",
+					},
+					StrategyName: "test_strategy",
+				},
+			},
+			isExisting:  true,
+			expectError: false,
+		},
+		{
+			name: "Non-existing order",
+			orders: []types.Order{
+				{
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "test message",
+					},
+					StrategyName: "test_strategy",
+				},
+			},
+			expectError: false,
+			isExisting:  false,
+		},
+	}
+
+	existingOrderID := ""
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			// Reset state before each test case
+			err := suite.state.Cleanup()
+			suite.Require().NoError(err)
+
+			// Process orders and store generated order IDs
+			for _, order := range tc.orders {
+				results, err := suite.state.Update([]types.Order{order})
+				existingOrderID = results[0].Order.OrderID
+				suite.Require().NoError(err)
+				suite.Require().Len(results, 1)
+			}
+
+			// For the first test case, we'll look up the existing order
+			// For the second test case, we'll look up a non-existent order
+			var orderID string
+			if tc.isExisting {
+				orderID = existingOrderID
+			} else {
+				orderID = uuid.New().String()
+			}
+
+			// Get order by ID
+			result, err := suite.state.GetOrderById(orderID)
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+
+			if tc.name == "Existing order" {
+				suite.Assert().True(result.IsSome(), "Expected order to exist")
+				actualOrder := result.Unwrap()
+
+				// Verify the order details match the input order (except for the generated ID)
+				suite.Assert().Equal(tc.orders[0].Symbol, actualOrder.Symbol, "Symbol mismatch")
+				suite.Assert().Equal(tc.orders[0].Side, actualOrder.Side, "Side mismatch")
+				suite.Assert().Equal(tc.orders[0].Quantity, actualOrder.Quantity, "Quantity mismatch")
+				suite.Assert().Equal(tc.orders[0].Price, actualOrder.Price, "Price mismatch")
+				suite.Assert().Equal(tc.orders[0].Timestamp.UTC(), actualOrder.Timestamp.UTC(), "Timestamp mismatch")
+				suite.Assert().Equal(tc.orders[0].IsCompleted, actualOrder.IsCompleted, "IsCompleted mismatch")
+				suite.Assert().Equal(tc.orders[0].Reason.Reason, actualOrder.Reason.Reason, "Reason mismatch")
+				suite.Assert().Equal(tc.orders[0].Reason.Message, actualOrder.Reason.Message, "Message mismatch")
+				suite.Assert().Equal(tc.orders[0].StrategyName, actualOrder.StrategyName, "Strategy name mismatch")
+			} else {
+				suite.Assert().False(result.IsSome(), "Expected order to not exist")
+			}
+		})
+	}
+}
+
+func (suite *BacktestStateTestSuite) TestGetAllPositions() {
+	tests := []struct {
+		name        string
+		orders      []types.Order
+		expected    []types.Position
+		expectError bool
+	}{
+		{
+			name: "Single open position",
+			orders: []types.Order{
+				{
+					OrderID:     "order1",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			expected: []types.Position{
+				{
+					Symbol:           "AAPL",
+					Quantity:         100,
+					TotalInQuantity:  100,
+					TotalOutQuantity: 0,
+					TotalInAmount:    10000.0,
+					TotalOutAmount:   0,
+					TotalInFee:       1.0,
+					TotalOutFee:      0,
+					OpenTimestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					StrategyName:     "",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Multiple open positions",
+			orders: []types.Order{
+				{
+					OrderID:     "order1",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+				{
+					OrderID:     "order2",
+					Symbol:      "GOOGL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    50,
+					Price:       2000.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			expected: []types.Position{
+				{
+					Symbol:           "AAPL",
+					Quantity:         100,
+					TotalInQuantity:  100,
+					TotalOutQuantity: 0,
+					TotalInAmount:    10000.0,
+					TotalOutAmount:   0,
+					TotalInFee:       1.0,
+					TotalOutFee:      0,
+					OpenTimestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					StrategyName:     "",
+				},
+				{
+					Symbol:           "GOOGL",
+					Quantity:         50,
+					TotalInQuantity:  50,
+					TotalOutQuantity: 0,
+					TotalInAmount:    100000.0,
+					TotalOutAmount:   0,
+					TotalInFee:       1.0,
+					TotalOutFee:      0,
+					OpenTimestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					StrategyName:     "",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Closed position",
+			orders: []types.Order{
+				{
+					OrderID:     "order1",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+				{
+					OrderID:     "order2",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeSell,
+					Quantity:    100,
+					Price:       110.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			expected:    []types.Position{},
+			expectError: false,
+		},
+		{
+			name:        "No positions",
+			orders:      []types.Order{},
+			expected:    []types.Position{},
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			// Reset state before each test case
+			err := suite.state.Cleanup()
+			suite.Require().NoError(err)
+
+			// Process orders
+			for _, order := range tc.orders {
+				_, err := suite.state.Update([]types.Order{order})
+				suite.Require().NoError(err)
+			}
+
+			// Get all positions
+			positions, err := suite.state.GetAllPositions()
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(len(tc.expected), len(positions), "Number of positions mismatch")
+
+			// Compare positions
+			for i, expected := range tc.expected {
+				if i >= len(positions) {
+					suite.T().Fatalf("Expected positions[%d] but got no more positions", i)
+				}
+				actual := positions[i]
+				suite.Assert().Equal(expected.Symbol, actual.Symbol, "Symbol mismatch")
+				suite.Assert().Equal(expected.Quantity, actual.Quantity, "Quantity mismatch")
+				suite.Assert().Equal(expected.TotalInQuantity, actual.TotalInQuantity, "Total in quantity mismatch")
+				suite.Assert().Equal(expected.TotalOutQuantity, actual.TotalOutQuantity, "Total out quantity mismatch")
+				suite.Assert().Equal(expected.TotalInAmount, actual.TotalInAmount, "Total in amount mismatch")
+				suite.Assert().Equal(expected.TotalOutAmount, actual.TotalOutAmount, "Total out amount mismatch")
+				suite.Assert().Equal(expected.TotalInFee, actual.TotalInFee, "Total in fee mismatch")
+				suite.Assert().Equal(expected.TotalOutFee, actual.TotalOutFee, "Total out fee mismatch")
+				suite.Assert().Equal(expected.OpenTimestamp.UTC(), actual.OpenTimestamp.UTC(), "Open timestamp mismatch")
+				suite.Assert().Equal(expected.StrategyName, actual.StrategyName, "Strategy name mismatch")
+			}
+		})
+	}
+}
+
+func (suite *BacktestStateTestSuite) TestGetPosition() {
+	tests := []struct {
+		name        string
+		orders      []types.Order
+		symbol      string
+		expected    types.Position
+		expectError bool
+	}{
+		{
+			name: "Single buy order",
+			orders: []types.Order{
+				{
+					OrderID:     "order1",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			symbol: "AAPL",
+			expected: types.Position{
+				Symbol:           "AAPL",
+				Quantity:         100,
+				TotalInQuantity:  100,
+				TotalOutQuantity: 0,
+				TotalInAmount:    10000.0,
+				TotalOutAmount:   0,
+				TotalInFee:       1.0,
+				TotalOutFee:      0,
+				OpenTimestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				StrategyName:     "",
+			},
+			expectError: false,
+		},
+		{
+			name: "Multiple buys and sells",
+			orders: []types.Order{
+				{
+					OrderID:     "order1",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+				{
+					OrderID:     "order2",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    50,
+					Price:       110.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+				{
+					OrderID:     "order3",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeSell,
+					Quantity:    75,
+					Price:       120.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			symbol: "AAPL",
+			expected: types.Position{
+				Symbol:           "AAPL",
+				Quantity:         75,  // 100 + 50 - 75
+				TotalInQuantity:  150, // 100 + 50
+				TotalOutQuantity: 75,
+				TotalInAmount:    15500.0, // (100 * 100) + (50 * 110)
+				TotalOutAmount:   9000.0,  // 75 * 120
+				TotalInFee:       2.0,     // 1 + 1
+				TotalOutFee:      1.0,
+				OpenTimestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				StrategyName:     "",
+			},
+			expectError: false,
+		},
+		{
+			name: "Fully closed position",
+			orders: []types.Order{
+				{
+					OrderID:     "order1",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+				{
+					OrderID:     "order2",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeSell,
+					Quantity:    100,
+					Price:       110.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			symbol: "AAPL",
+			expected: types.Position{
+				Symbol:           "AAPL",
+				Quantity:         0,
+				TotalInQuantity:  100,
+				TotalOutQuantity: 100,
+				TotalInAmount:    10000.0,
+				TotalOutAmount:   11000.0,
+				TotalInFee:       1.0,
+				TotalOutFee:      1.0,
+				OpenTimestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				StrategyName:     "",
+			},
+			expectError: false,
+		},
+		{
+			name: "Non-existent symbol",
+			orders: []types.Order{
+				{
+					OrderID:     "order1",
+					Symbol:      "AAPL",
+					Side:        types.PurchaseTypeBuy,
+					Quantity:    100,
+					Price:       100.0,
+					Fee:         1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true,
+					Reason: types.Reason{
+						Reason: "test",
+					},
+				},
+			},
+			symbol: "GOOGL",
+			expected: types.Position{
+				Symbol:           "GOOGL",
+				Quantity:         0,
+				TotalInQuantity:  0,
+				TotalOutQuantity: 0,
+				TotalInAmount:    0,
+				TotalOutAmount:   0,
+				TotalInFee:       0,
+				TotalOutFee:      0,
+				OpenTimestamp:    time.Time{},
+				StrategyName:     "",
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			// Reset state before each test case
+			err := suite.state.Cleanup()
+			suite.Require().NoError(err)
+
+			// Process orders
+			for _, order := range tc.orders {
+				_, err := suite.state.Update([]types.Order{order})
+				suite.Require().NoError(err)
+			}
+
+			// Get position
+			position, err := suite.state.GetPosition(tc.symbol)
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(tc.expected.Symbol, position.Symbol, "Symbol mismatch")
+			suite.Assert().Equal(tc.expected.Quantity, position.Quantity, "Quantity mismatch")
+			suite.Assert().Equal(tc.expected.TotalInQuantity, position.TotalInQuantity, "Total in quantity mismatch")
+			suite.Assert().Equal(tc.expected.TotalOutQuantity, position.TotalOutQuantity, "Total out quantity mismatch")
+			suite.Assert().Equal(tc.expected.TotalInAmount, position.TotalInAmount, "Total in amount mismatch")
+			suite.Assert().Equal(tc.expected.TotalOutAmount, position.TotalOutAmount, "Total out amount mismatch")
+			suite.Assert().Equal(tc.expected.TotalInFee, position.TotalInFee, "Total in fee mismatch")
+			suite.Assert().Equal(tc.expected.TotalOutFee, position.TotalOutFee, "Total out fee mismatch")
+			suite.Assert().Equal(tc.expected.OpenTimestamp.UTC(), position.OpenTimestamp.UTC(), "Open timestamp mismatch")
+			suite.Assert().Equal(tc.expected.StrategyName, position.StrategyName, "Strategy name mismatch")
 		})
 	}
 }
