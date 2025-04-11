@@ -1,19 +1,18 @@
 package engine
 
 import (
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/alifiroozi80/duckdb"
 	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/gorm"
 )
 
 // BacktestStateTestSuite is a test suite for BacktestState
@@ -34,13 +33,8 @@ func (suite *BacktestStateTestSuite) SetupSuite() {
 
 // TearDownSuite runs once after all tests in the suite
 func (suite *BacktestStateTestSuite) TearDownSuite() {
-	if suite.state != nil {
-		// Get the SQL DB from GORM and close it
-		sqlDB, err := suite.state.db.DB()
-		if err == nil {
-			sqlDB.Close()
-		}
-		suite.state = nil
+	if suite.state != nil && suite.state.db != nil {
+		suite.state.db.Close()
 	}
 }
 
@@ -479,7 +473,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	err := suite.state.Write(tmpDir)
 	suite.Require().NoError(err)
 
-	// Verify that the files were created
+	// Verify that all three files were created
 	tradesPath := filepath.Join(tmpDir, "trades.parquet")
 	ordersPath := filepath.Join(tmpDir, "orders.parquet")
 
@@ -487,30 +481,26 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	suite.Require().FileExists(tradesPath, "trades.parquet file should exist")
 	suite.Require().FileExists(ordersPath, "orders.parquet file should exist")
 
-	// Verify the data in the files using DuckDB and GORM
-	verifyDB, err := gorm.Open(duckdb.Open(":memory:"), &gorm.Config{})
+	// Verify the data in the files using DuckDB
+	db, err := sql.Open("duckdb", ":memory:")
 	suite.Require().NoError(err)
-
-	// Get the SQL DB from GORM
-	sqlDB, err := verifyDB.DB()
-	suite.Require().NoError(err)
-	defer sqlDB.Close()
+	defer db.Close()
 
 	// Read and verify trades
-	_, err = sqlDB.Exec(fmt.Sprintf("CREATE VIEW trades AS SELECT * FROM read_parquet('%s')", tradesPath))
+	_, err = db.Exec(fmt.Sprintf("CREATE VIEW trades AS SELECT * FROM read_parquet('%s')", tradesPath))
 	suite.Require().NoError(err)
 
 	var tradeCount int
-	err = sqlDB.QueryRow("SELECT COUNT(*) FROM trades").Scan(&tradeCount)
+	err = db.QueryRow("SELECT COUNT(*) FROM trades").Scan(&tradeCount)
 	suite.Require().NoError(err)
 	suite.Require().Equal(2, tradeCount, "Should have 2 trades")
 
 	// Read and verify orders
-	_, err = sqlDB.Exec(fmt.Sprintf("CREATE VIEW orders AS SELECT * FROM read_parquet('%s')", ordersPath))
+	_, err = db.Exec(fmt.Sprintf("CREATE VIEW orders AS SELECT * FROM read_parquet('%s')", ordersPath))
 	suite.Require().NoError(err)
 
 	var orderCount int
-	err = sqlDB.QueryRow("SELECT COUNT(*) FROM orders").Scan(&orderCount)
+	err = db.QueryRow("SELECT COUNT(*) FROM orders").Scan(&orderCount)
 	suite.Require().NoError(err)
 	suite.Require().Equal(2, orderCount, "Should have 2 orders")
 
@@ -519,7 +509,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	var orderTypeStr string
 	var quantity float64
 	var price float64
-	err = sqlDB.QueryRow(`
+	err = db.QueryRow(`
 		SELECT symbol, order_type, quantity, price 
 		FROM trades 
 		ORDER BY timestamp ASC 
@@ -532,7 +522,7 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	suite.Require().Equal(100.0, price, "Trade price mismatch")
 
 	// Verify data in orders
-	err = sqlDB.QueryRow(`
+	err = db.QueryRow(`
 		SELECT symbol, order_type, quantity, price 
 		FROM orders 
 		ORDER BY timestamp ASC 
@@ -570,12 +560,6 @@ func (m *MockDataSource) Count(start optional.Option[time.Time], end optional.Op
 	return 0, nil
 }
 func (m *MockDataSource) Close() error { return nil }
-func (m *MockDataSource) ReadRecordsFromStart(start time.Time, number int, interval datasource.Interval) ([]types.MarketData, error) {
-	return nil, nil
-}
-func (m *MockDataSource) ReadRecordsFromEnd(end time.Time, number int, interval datasource.Interval) ([]types.MarketData, error) {
-	return nil, nil
-}
 
 func (suite *BacktestStateTestSuite) TestGetStats() {
 	// Create mock data source

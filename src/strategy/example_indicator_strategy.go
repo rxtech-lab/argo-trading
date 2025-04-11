@@ -24,7 +24,6 @@ func (s *ExampleIndicatorStrategy) Initialize(config string) error {
 }
 
 // ProcessData processes new market data and generates signals
-func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.MarketData, param string) ([]types.ExecuteOrder, error) {
-
-	return []types.ExecuteOrder{}, nil
+func (s *ExampleIndicatorStrategy) ProcessData(ctx StrategyContext, data types.MarketData) error {
+	return nil
 }
