@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/logger"
@@ -16,6 +17,7 @@ import (
 type DuckDBDataSource struct {
 	db     *sql.DB
 	logger *logger.Logger
+	sq     squirrel.StatementBuilderType
 }
 
 // NewDataSource creates a new DuckDB data source instance with the specified database path.
@@ -38,14 +40,18 @@ func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 		return nil, fmt.Errorf("failed to set DuckDB optimizations: %w", err)
 	}
 
-	return &DuckDBDataSource{db: db, logger: logger}, nil
+	return &DuckDBDataSource{
+		db:     db,
+		logger: logger,
+		sq:     squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar),
+	}, nil
 }
 
 // Initialize implements DataSource.
 func (d *DuckDBDataSource) Initialize(path string) error {
 	d.logger.Debug("Initializing DuckDB data source", zap.String("path", path))
 
-	// Create a view from the parquet file
+	// Create a view from the parquet file - using raw SQL as Squirrel doesn't support CREATE VIEW
 	query := fmt.Sprintf(`
 		CREATE VIEW market_data AS 
 		SELECT * FROM read_parquet('%s');
@@ -60,6 +66,7 @@ func (d *DuckDBDataSource) Initialize(path string) error {
 
 // Count implements DataSource.
 func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error) {
+	// Use raw SQL query for Count as it's simpler for this case
 	var count int
 	query := "SELECT COUNT(*) FROM market_data"
 	var params []interface{}
@@ -67,7 +74,12 @@ func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.
 
 	if start.IsSome() {
 		paramCount++
-		query += fmt.Sprintf(" WHERE time >= $%d", paramCount)
+		if paramCount == 1 {
+			query += " WHERE"
+		} else {
+			query += " AND"
+		}
+		query += fmt.Sprintf(" time >= $%d", paramCount)
 		params = append(params, start.Unwrap())
 	}
 
@@ -103,10 +115,10 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 	return func(yield func(types.MarketData, error) bool) {
 		d.logger.Debug("Reading all data from DuckDB with batch processing")
 
-		// Build the base query
+		// Build the base query using raw SQL for better compatibility
 		query := `
 			SELECT time, symbol, open, high, low, close, volume 
-			FROM market_data 
+			FROM market_data
 		`
 
 		// Add time range conditions if provided
@@ -208,6 +220,7 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Int
 	}
 
 	// Optimized query using materialized CTE and window functions
+	// Using raw SQL since Squirrel doesn't directly support window functions and complex CTEs
 	query := fmt.Sprintf(`
 		WITH time_buckets AS MATERIALIZED (
 			SELECT 
@@ -219,7 +232,7 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Int
 				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
 				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
 			FROM market_data 
-			WHERE time >= ? AND time <= ?
+			WHERE time >= $1 AND time <= $2
 		)
 		SELECT DISTINCT
 			bucket_time as time,
@@ -289,6 +302,7 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 	}
 
 	// Optimized query using materialized CTE and window functions
+	// Using raw SQL since Squirrel doesn't directly support window functions and complex CTEs
 	query := fmt.Sprintf(`
 		WITH time_buckets AS MATERIALIZED (
 			SELECT 
@@ -300,7 +314,7 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
 				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
 			FROM market_data 
-			WHERE time >= ?
+			WHERE time >= $1
 		)
 		SELECT DISTINCT
 			bucket_time as time,
@@ -312,7 +326,7 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 			volume
 		FROM time_buckets
 		ORDER BY bucket_time ASC
-		LIMIT ?
+		LIMIT $2
 	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
 
 	// Use prepared statement for better performance
@@ -371,6 +385,7 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 	}
 
 	// Optimized query using materialized CTE and window functions
+	// Using raw SQL since Squirrel doesn't directly support window functions and complex CTEs
 	query := fmt.Sprintf(`
 		WITH time_buckets AS MATERIALIZED (
 			SELECT 
@@ -382,7 +397,7 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
 				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
 			FROM market_data 
-			WHERE time <= ?
+			WHERE time <= $1
 		)
 		SELECT DISTINCT
 			bucket_time as time,
@@ -394,7 +409,7 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 			volume
 		FROM time_buckets
 		ORDER BY bucket_time DESC
-		LIMIT ?
+		LIMIT $2
 	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
 
 	// Use prepared statement for better performance
@@ -509,10 +524,11 @@ func (d *DuckDBDataSource) ExecuteSQL(query string, params ...interface{}) ([]SQ
 func (d *DuckDBDataSource) ReadLastData(symbol string) (types.MarketData, error) {
 	d.logger.Debug("Reading last data for symbol", zap.String("symbol", symbol))
 
+	// Using raw SQL for simplicity and reliability
 	query := `
 		SELECT time, symbol, open, high, low, close, volume 
 		FROM market_data 
-		WHERE symbol = ?
+		WHERE symbol = $1
 		ORDER BY time DESC
 		LIMIT 1
 	`

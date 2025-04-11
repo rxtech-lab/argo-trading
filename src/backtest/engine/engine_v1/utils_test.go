@@ -24,8 +24,8 @@ func (m *MockStrategy) Initialize(config string) error {
 	return nil
 }
 
-func (m *MockStrategy) ProcessData(ctx strategy.StrategyContext, data types.MarketData, targetSymbol string) ([]types.ExecuteOrder, error) {
-	return nil, nil
+func (m *MockStrategy) ProcessData(ctx strategy.StrategyContext, data types.MarketData) error {
+	return nil
 }
 
 // UtilsTestSuite is a test suite for utils package

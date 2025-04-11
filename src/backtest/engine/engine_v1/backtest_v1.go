@@ -14,7 +14,9 @@ import (
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/indicator"
 	"github.com/sirily11/argo-trading-go/src/logger"
+	"github.com/sirily11/argo-trading-go/src/marker"
 	s "github.com/sirily11/argo-trading-go/src/strategy"
+	"github.com/sirily11/argo-trading-go/src/trading"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"github.com/sirily11/argo-trading-go/src/utils"
 	"github.com/vbauerster/mpb/v8"
@@ -30,6 +32,8 @@ type BacktestEngineV1 struct {
 	resultsFolder       string
 	log                 *logger.Logger
 	indicatorRegistry   *indicator.IndicatorRegistry
+	marker              *marker.Marker
+	tradingSystem       *trading.TradingSystem
 	state               *BacktestState
 	balance             float64
 	cache               cache.Cache
@@ -267,7 +271,8 @@ func (b *BacktestEngineV1) Run() error {
 					strategyContext := s.StrategyContext{
 						DataSource:        datasource,
 						IndicatorRegistry: b.indicatorRegistry,
-						GetPosition:       runState.state.GetPosition,
+						Marker:            b.marker,
+						TradingSystem:     b.tradingSystem,
 					}
 
 					// Initialize the data source with the given data path
@@ -282,14 +287,9 @@ func (b *BacktestEngineV1) Run() error {
 							return
 						}
 						// run the strategy
-						executeOrders, err := strategy.ProcessData(strategyContext, data, data.Symbol)
+						err = strategy.ProcessData(strategyContext, data)
 						if err != nil {
 							errChan <- fmt.Errorf("failed to process data: %w", err)
-							return
-						}
-						_, err = b.executeOrdersWithState(data, strategy, executeOrders, runState)
-						if err != nil {
-							errChan <- fmt.Errorf("failed to execute orders: %w", err)
 							return
 						}
 						// Update progress bar
