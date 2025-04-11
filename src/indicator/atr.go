@@ -5,22 +5,20 @@ import (
 	"math"
 	"time"
 
+	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
 
 // ATR represents the Average True Range indicator
 type ATR struct {
-	Period int
+	period int
 }
 
-// NewATR creates a new ATR indicator
-func NewATR(period int) Indicator {
-	if period <= 0 {
-		period = 14 // Default period
-	}
+// NewATR creates a new ATR indicator with default configuration
+func NewATR() Indicator {
 	return &ATR{
-		Period: period,
+		period: 14, // Default period
 	}
 }
 
@@ -29,9 +27,26 @@ func (a *ATR) Name() types.Indicator {
 	return types.IndicatorATR
 }
 
+// Config configures the ATR indicator with the given parameters
+// Expected parameters: period (int)
+func (a *ATR) Config(params ...any) error {
+	if len(params) != 1 {
+		return fmt.Errorf("Config expects 1 parameter: period (int)")
+	}
+	period, ok := params[0].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for period parameter, expected int")
+	}
+	if period <= 0 {
+		return fmt.Errorf("period must be a positive integer, got %d", period)
+	}
+	a.period = period
+	return nil
+}
+
 // GetSignal calculates the ATR signal
 func (a *ATR) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
-	atrValue, err := a.RawValue(marketData.Symbol, marketData.Time, ctx, a.Period)
+	atrValue, err := a.RawValue(marketData.Symbol, marketData.Time, ctx, a.period)
 	if err != nil {
 		return types.Signal{}, err
 	}
@@ -76,7 +91,7 @@ func (a *ATR) RawValue(params ...any) (float64, error) {
 	if !currentTime.IsZero() {
 		endTime := currentTime
 		startTime := endTime.Add(-time.Hour * 24)
-		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get historical data: %w", err)
 		}
@@ -107,7 +122,7 @@ func (a *ATR) RawValue(params ...any) (float64, error) {
 	}
 
 	// Calculate ATR using EMA
-	atrValue, err := emaIndicator.RawValue(marketData.Symbol, marketData.Time, ctx, a.Period, tr)
+	atrValue, err := emaIndicator.RawValue(marketData.Symbol, marketData.Time, ctx, a.period, tr)
 	if err != nil {
 		return 0, fmt.Errorf("failed to calculate ATR: %w", err)
 	}

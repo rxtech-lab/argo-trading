@@ -20,4 +20,5 @@ type Indicator interface {
 	Name() types.Indicator
 	// RawValue returns the raw value of the indicator
 	RawValue(params ...any) (float64, error)
+	Config(params ...any) error
 }

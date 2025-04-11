@@ -33,7 +33,9 @@ func (suite *EMATestSuite) SetupSuite() {
 	suite.dataSource = dataSource
 
 	// Initialize EMA with a default period
-	suite.ema = NewEMA(20).(*EMA)
+	ema := NewEMA()
+	ema.Config(20)
+	suite.ema = ema.(*EMA)
 	suite.Require().NotNil(suite.ema)
 
 	// Create market_data table
@@ -79,7 +81,7 @@ func (m *databaseMockDataSource) Initialize(path string) error { return nil }
 func (m *databaseMockDataSource) ReadAll(start, end optional.Option[time.Time]) func(yield func(types.MarketData, error) bool) {
 	return nil
 }
-func (m *databaseMockDataSource) GetRange(start time.Time, end time.Time, interval datasource.Interval) ([]types.MarketData, error) {
+func (m *databaseMockDataSource) GetRange(start time.Time, end time.Time, interval optional.Option[datasource.Interval]) ([]types.MarketData, error) {
 	return nil, nil
 }
 func (m *databaseMockDataSource) ReadLastData(symbol string) (types.MarketData, error) {

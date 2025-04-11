@@ -211,16 +211,27 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 	}
 }
 
-// GetRange implements DataSource with optimized query.
-func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Interval) ([]types.MarketData, error) {
-	// Convert interval to minutes for aggregation
-	intervalMinutes, err := getIntervalMinutes(interval)
-	if err != nil {
-		return nil, err
+// buildGetRangeQuery constructs the SQL query for GetRange method
+func (d *DuckDBDataSource) buildGetRangeQuery(start time.Time, end time.Time, intervalMinutes optional.Option[int]) (string, []interface{}, error) {
+	// If no interval is specified, use a simple query with squirrel
+	if !intervalMinutes.IsSome() {
+		query, args, err := d.sq.
+			Select("time", "symbol", "open", "high", "low", "close", "volume").
+			From("market_data").
+			Where(squirrel.And{
+				squirrel.GtOrEq{"time": start},
+				squirrel.LtOrEq{"time": end},
+			}).
+			OrderBy("time ASC").
+			ToSql()
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to build query: %w", err)
+		}
+		return query, args, nil
 	}
 
-	// Optimized query using materialized CTE and window functions
-	// Using raw SQL since Squirrel doesn't directly support window functions and complex CTEs
+	// For interval case, use raw SQL with window functions
+	minutes := intervalMinutes.Unwrap()
 	query := fmt.Sprintf(`
 		WITH time_buckets AS MATERIALIZED (
 			SELECT 
@@ -244,7 +255,28 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Int
 			volume
 		FROM time_buckets
 		ORDER BY bucket_time ASC
-	`, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes, intervalMinutes)
+	`, minutes, minutes, minutes, minutes, minutes, minutes)
+
+	return query, []interface{}{start, end}, nil
+}
+
+// GetRange implements DataSource with optimized query.
+func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval optional.Option[Interval]) ([]types.MarketData, error) {
+	// Convert interval to minutes for aggregation
+	var intervalMinutes optional.Option[int]
+	if interval.IsSome() {
+		minutes, err := getIntervalMinutes(interval.Unwrap())
+		if err != nil {
+			return nil, err
+		}
+		intervalMinutes = optional.Some(minutes)
+	}
+
+	// Build the query
+	query, args, err := d.buildGetRangeQuery(start, end, intervalMinutes)
+	if err != nil {
+		return nil, err
+	}
 
 	// Use prepared statement for better performance
 	stmt, err := d.db.Prepare(query)
@@ -253,7 +285,7 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval Int
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(start, end)
+	rows, err := stmt.Query(args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query market data: %w", err)
 	}

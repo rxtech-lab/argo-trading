@@ -4,32 +4,24 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
 
 // MACD represents the Moving Average Convergence Divergence indicator
 type MACD struct {
-	FastPeriod   int
-	SlowPeriod   int
-	SignalPeriod int
+	fastPeriod   int
+	slowPeriod   int
+	signalPeriod int
 }
 
-// NewMACD creates a new MACD indicator
-func NewMACD(fastPeriod, slowPeriod, signalPeriod int) Indicator {
-	if fastPeriod <= 0 {
-		fastPeriod = 12 // Default fast period
-	}
-	if slowPeriod <= 0 {
-		slowPeriod = 26 // Default slow period
-	}
-	if signalPeriod <= 0 {
-		signalPeriod = 9 // Default signal period
-	}
+// NewMACD creates a new MACD indicator with default configuration
+func NewMACD() Indicator {
 	return &MACD{
-		FastPeriod:   fastPeriod,
-		SlowPeriod:   slowPeriod,
-		SignalPeriod: signalPeriod,
+		fastPeriod:   12, // Default fast period
+		slowPeriod:   26, // Default slow period
+		signalPeriod: 9,  // Default signal period
 	}
 }
 
@@ -38,9 +30,46 @@ func (m *MACD) Name() types.Indicator {
 	return types.IndicatorMACD
 }
 
+// Config configures the MACD indicator with the given parameters
+// Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int)
+func (m *MACD) Config(params ...any) error {
+	if len(params) != 3 {
+		return fmt.Errorf("Config expects 3 parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int)")
+	}
+
+	fastPeriod, ok := params[0].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for fastPeriod parameter, expected int")
+	}
+	if fastPeriod <= 0 {
+		return fmt.Errorf("fastPeriod must be a positive integer, got %d", fastPeriod)
+	}
+
+	slowPeriod, ok := params[1].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for slowPeriod parameter, expected int")
+	}
+	if slowPeriod <= 0 {
+		return fmt.Errorf("slowPeriod must be a positive integer, got %d", slowPeriod)
+	}
+
+	signalPeriod, ok := params[2].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for signalPeriod parameter, expected int")
+	}
+	if signalPeriod <= 0 {
+		return fmt.Errorf("signalPeriod must be a positive integer, got %d", signalPeriod)
+	}
+
+	m.fastPeriod = fastPeriod
+	m.slowPeriod = slowPeriod
+	m.signalPeriod = signalPeriod
+	return nil
+}
+
 // GetSignal calculates the MACD signal
 func (m *MACD) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
-	macdValue, err := m.RawValue(marketData.Symbol, marketData.Time, ctx, m.FastPeriod, m.SlowPeriod, m.SignalPeriod)
+	macdValue, err := m.RawValue(marketData.Symbol, marketData.Time, ctx, m.fastPeriod, m.slowPeriod, m.signalPeriod)
 	if err != nil {
 		return types.Signal{}, err
 	}
@@ -95,7 +124,7 @@ func (m *MACD) RawValue(params ...any) (float64, error) {
 	if !currentTime.IsZero() {
 		endTime := currentTime
 		startTime := endTime.Add(-time.Hour * 24)
-		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get historical data: %w", err)
 		}
@@ -121,12 +150,12 @@ func (m *MACD) RawValue(params ...any) (float64, error) {
 		return 0, fmt.Errorf("failed to get EMA indicator: %w", err)
 	}
 
-	fastValue, err := fastEMA.RawValue(marketData.Symbol, marketData.Time, ctx, m.FastPeriod)
+	fastValue, err := fastEMA.RawValue(marketData.Symbol, marketData.Time, ctx, m.fastPeriod)
 	if err != nil {
 		return 0, fmt.Errorf("failed to calculate fast EMA: %w", err)
 	}
 
-	slowValue, err := slowEMA.RawValue(marketData.Symbol, marketData.Time, ctx, m.SlowPeriod)
+	slowValue, err := slowEMA.RawValue(marketData.Symbol, marketData.Time, ctx, m.slowPeriod)
 	if err != nil {
 		return 0, fmt.Errorf("failed to calculate slow EMA: %w", err)
 	}
