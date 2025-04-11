@@ -14,4 +14,6 @@ const (
 	IndicatorTrendStrength         Indicator = "trend_strength"
 	IndicatorRangeFilter           Indicator = "range_filter"
 	IndicatorEMA                   Indicator = "ema"
+	IndicatorWaddahAttar           Indicator = "waddah_attar"
+	IndicatorATR                   Indicator = "atr"
 )
