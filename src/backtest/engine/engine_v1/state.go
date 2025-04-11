@@ -1,146 +1,30 @@
 package engine
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/alifiroozi80/duckdb"
+	_ "github.com/marcboeker/go-duckdb"
 	"github.com/shopspring/decimal"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/strategy"
 	"github.com/sirily11/argo-trading-go/src/types"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
-// OrderModel represents an order in the database
-type OrderModel struct {
-	OrderID      int64     `gorm:"column:order_id;primaryKey;autoIncrement"`
-	Symbol       string    `gorm:"column:symbol"`
-	OrderType    string    `gorm:"column:order_type"`
-	Quantity     float64   `gorm:"column:quantity"`
-	Price        float64   `gorm:"column:price"`
-	Timestamp    time.Time `gorm:"column:timestamp"`
-	IsCompleted  bool      `gorm:"column:is_completed"`
-	Reason       string    `gorm:"column:reason"`
-	Message      string    `gorm:"column:message"`
-	StrategyName string    `gorm:"column:strategy_name"`
-}
-
-// TableName sets the table name for OrderModel
-func (OrderModel) TableName() string {
-	return "orders"
-}
-
-// ToOrder converts OrderModel to types.Order
-func (o OrderModel) ToOrder() types.Order {
-	return types.Order{
-		OrderID:      fmt.Sprintf("%d", o.OrderID),
-		Symbol:       o.Symbol,
-		Side:         types.PurchaseType(o.OrderType),
-		Quantity:     o.Quantity,
-		Price:        o.Price,
-		Timestamp:    o.Timestamp,
-		IsCompleted:  o.IsCompleted,
-		Reason:       types.Reason{Reason: o.Reason, Message: o.Message},
-		StrategyName: o.StrategyName,
-	}
-}
-
-// FromOrder creates OrderModel from types.Order
-func OrderModelFromOrder(order types.Order) OrderModel {
-	return OrderModel{
-		Symbol:       order.Symbol,
-		OrderType:    string(order.Side),
-		Quantity:     order.Quantity,
-		Price:        order.Price,
-		Timestamp:    order.Timestamp,
-		IsCompleted:  order.IsCompleted,
-		Reason:       order.Reason.Reason,
-		Message:      order.Reason.Message,
-		StrategyName: order.StrategyName,
-	}
-}
-
-// TradeModel represents a trade in the database
-type TradeModel struct {
-	OrderID       int64     `gorm:"column:order_id;primaryKey"`
-	Symbol        string    `gorm:"column:symbol"`
-	OrderType     string    `gorm:"column:order_type"`
-	Quantity      float64   `gorm:"column:quantity"`
-	Price         float64   `gorm:"column:price"`
-	Timestamp     time.Time `gorm:"column:timestamp"`
-	IsCompleted   bool      `gorm:"column:is_completed"`
-	Reason        string    `gorm:"column:reason"`
-	Message       string    `gorm:"column:message"`
-	StrategyName  string    `gorm:"column:strategy_name"`
-	ExecutedAt    time.Time `gorm:"column:executed_at"`
-	ExecutedQty   float64   `gorm:"column:executed_qty"`
-	ExecutedPrice float64   `gorm:"column:executed_price"`
-	Commission    float64   `gorm:"column:commission"`
-	PnL           float64   `gorm:"column:pnl"`
-}
-
-// TableName sets the table name for TradeModel
-func (TradeModel) TableName() string {
-	return "trades"
-}
-
-// ToTrade converts TradeModel to types.Trade
-func (t TradeModel) ToTrade() types.Trade {
-	return types.Trade{
-		Order: types.Order{
-			OrderID:      fmt.Sprintf("%d", t.OrderID),
-			Symbol:       t.Symbol,
-			Side:         types.PurchaseType(t.OrderType),
-			Quantity:     t.Quantity,
-			Price:        t.Price,
-			Timestamp:    t.Timestamp,
-			IsCompleted:  t.IsCompleted,
-			Reason:       types.Reason{Reason: t.Reason, Message: t.Message},
-			StrategyName: t.StrategyName,
-			Fee:          t.Commission,
-		},
-		ExecutedAt:    t.ExecutedAt,
-		ExecutedQty:   t.ExecutedQty,
-		ExecutedPrice: t.ExecutedPrice,
-		Fee:           t.Commission,
-		PnL:           t.PnL,
-	}
-}
-
-// FromTrade creates TradeModel from types.Trade
-func TradeModelFromTrade(trade types.Trade, orderID int64) TradeModel {
-	return TradeModel{
-		OrderID:       orderID,
-		Symbol:        trade.Order.Symbol,
-		OrderType:     string(trade.Order.Side),
-		Quantity:      trade.Order.Quantity,
-		Price:         trade.Order.Price,
-		Timestamp:     trade.Order.Timestamp,
-		IsCompleted:   trade.Order.IsCompleted,
-		Reason:        trade.Order.Reason.Reason,
-		Message:       trade.Order.Reason.Message,
-		StrategyName:  trade.Order.StrategyName,
-		ExecutedAt:    trade.ExecutedAt,
-		ExecutedQty:   trade.ExecutedQty,
-		ExecutedPrice: trade.ExecutedPrice,
-		Commission:    trade.Fee,
-		PnL:           trade.PnL,
-	}
-}
-
 type BacktestState struct {
-	db     *gorm.DB
+	db     *sql.DB
 	logger *logger.Logger
 }
 
+// CalculatePNL calculates the profit/loss for a trade
+
 func NewBacktestState(logger *logger.Logger) *BacktestState {
-	// Initialize GORM with DuckDB in-memory database
-	db, err := gorm.Open(duckdb.Open(":memory:"), &gorm.Config{})
+	db, err := sql.Open("duckdb", ":memory:")
 	if err != nil {
 		logger.Error("Failed to open database", zap.Error(err))
 		return nil
@@ -154,20 +38,14 @@ func NewBacktestState(logger *logger.Logger) *BacktestState {
 
 // Initialize creates the necessary tables for tracking trades and positions
 func (b *BacktestState) Initialize() error {
-	// Create tables using raw SQL since GORM AutoMigrate doesn't work well with DuckDB
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
 	// Create sequence for order IDs
-	_, err = sqlDB.Exec(`CREATE SEQUENCE IF NOT EXISTS order_id_seq`)
+	_, err := b.db.Exec(`CREATE SEQUENCE IF NOT EXISTS order_id_seq`)
 	if err != nil {
 		return fmt.Errorf("failed to create sequence: %w", err)
 	}
 
 	// Create orders table with sequence-based order_id
-	_, err = sqlDB.Exec(`
+	_, err = b.db.Exec(`
 		CREATE TABLE IF NOT EXISTS orders (
 			order_id INTEGER PRIMARY KEY DEFAULT nextval('order_id_seq'),
 			symbol TEXT,
@@ -186,9 +64,9 @@ func (b *BacktestState) Initialize() error {
 	}
 
 	// Create trades table
-	_, err = sqlDB.Exec(`
+	_, err = b.db.Exec(`
 		CREATE TABLE IF NOT EXISTS trades (
-			order_id INTEGER PRIMARY KEY,
+			order_id INTEGER,
 			symbol TEXT,
 			order_type TEXT,
 			quantity DOUBLE,
@@ -224,14 +102,8 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 	results := make([]UpdateResult, 0, len(orders))
 
 	for _, order := range orders {
-		// Use raw SQL approach since GORM has issues with the sequence
-		sqlDB, err := b.db.DB()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get SQL DB: %w", err)
-		}
-
 		// Start transaction
-		tx, err := sqlDB.Begin()
+		tx, err := b.db.Begin()
 		if err != nil {
 			return nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
@@ -320,7 +192,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			return nil, fmt.Errorf("failed to commit transaction: %w", err)
 		}
 
-		// Add result to return list
+		// Add result
 		results = append(results, UpdateResult{
 			Order:         order,
 			Trade:         trade,
@@ -333,14 +205,9 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 
 // GetPosition retrieves the current position for a symbol by calculating from trades
 func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return types.Position{}, fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
-	// Calculate position information from trades using raw SQL (complex aggregations)
+	// Calculate position information from trades
 	var position types.Position
-	err = sqlDB.QueryRow(`
+	err := b.db.QueryRow(`
 		WITH buy_trades AS (
 			SELECT 
 				SUM(executed_qty) as total_in_qty,
@@ -387,8 +254,7 @@ func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
 		&position.StrategyName,
 	)
 
-	if err != nil {
-		// If no records found, return empty position
+	if err == sql.ErrNoRows {
 		return types.Position{
 			Symbol:           symbol,
 			Quantity:         0,
@@ -403,17 +269,16 @@ func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
 		}, nil
 	}
 
+	if err != nil {
+		return types.Position{}, fmt.Errorf("failed to query position: %w", err)
+	}
+
 	return position, nil
 }
 
 // GetAllTrades returns all trades from the database
 func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
-	rows, err := sqlDB.Query(`
+	rows, err := b.db.Query(`
 		SELECT 
 			order_id, symbol, order_type, quantity, price, timestamp,
 			is_completed, reason, message, strategy_name,
@@ -429,9 +294,8 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 	var trades []types.Trade
 	for rows.Next() {
 		var trade types.Trade
-		var orderIDInt int64
 		err := rows.Scan(
-			&orderIDInt,
+			&trade.Order.OrderID,
 			&trade.Order.Symbol,
 			&trade.Order.Side,
 			&trade.Order.Quantity,
@@ -450,7 +314,6 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan trade: %w", err)
 		}
-		trade.Order.OrderID = fmt.Sprintf("%d", orderIDInt)
 		trades = append(trades, trade)
 	}
 
@@ -463,13 +326,8 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 
 // Cleanup resets the database state
 func (b *BacktestState) Cleanup() error {
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
-	// Drop and recreate tables using raw SQL
-	_, err = sqlDB.Exec(`
+	// Drop and recreate tables
+	_, err := b.db.Exec(`
 		DROP TABLE IF EXISTS trades;
 		DROP TABLE IF EXISTS orders;
 		DROP SEQUENCE IF EXISTS order_id_seq;
@@ -489,21 +347,16 @@ func (b *BacktestState) Write(path string) error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
 	// Export trades to Parquet
 	tradesPath := filepath.Join(path, "trades.parquet")
-	_, err = sqlDB.Exec(fmt.Sprintf(`COPY trades TO '%s' (FORMAT PARQUET)`, tradesPath))
+	_, err := b.db.Exec(fmt.Sprintf(`COPY trades TO '%s' (FORMAT PARQUET)`, tradesPath))
 	if err != nil {
 		return fmt.Errorf("failed to export trades to Parquet: %w", err)
 	}
 
 	// Export orders to Parquet
 	ordersPath := filepath.Join(path, "orders.parquet")
-	_, err = sqlDB.Exec(fmt.Sprintf(`COPY orders TO '%s' (FORMAT PARQUET)`, ordersPath))
+	_, err = b.db.Exec(fmt.Sprintf(`COPY orders TO '%s' (FORMAT PARQUET)`, ordersPath))
 	if err != nil {
 		return fmt.Errorf("failed to export orders to Parquet: %w", err)
 	}
@@ -517,13 +370,8 @@ func (b *BacktestState) Write(path string) error {
 
 // calculateTradeResult calculates the trade result statistics for a symbol
 func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return types.TradeResult{}, fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
 	var result types.TradeResult
-	err = sqlDB.QueryRow(`
+	err := b.db.QueryRow(`
 		WITH trade_stats AS (
 			SELECT 
 				COUNT(*) as total_trades,
@@ -557,14 +405,9 @@ func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, 
 
 // calculateTradeHoldingTime calculates the holding time statistics for a symbol
 func (b *BacktestState) calculateTradeHoldingTime(symbol string) (types.TradeHoldingTime, error) {
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return types.TradeHoldingTime{}, fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
 	var holdingTime types.TradeHoldingTime
 	var avgDuration float64
-	err = sqlDB.QueryRow(`
+	err := b.db.QueryRow(`
 		WITH buy_trades AS (
 			SELECT executed_at
 			FROM trades
@@ -600,14 +443,9 @@ func (b *BacktestState) calculateTradeHoldingTime(symbol string) (types.TradeHol
 
 // calculateTotalFees calculates the total fees for a symbol
 func (b *BacktestState) calculateTotalFees(symbol string) (float64, error) {
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
 	var totalFees float64
-	err = sqlDB.QueryRow(`
-		SELECT COALESCE(SUM(commission), 0)
+	err := b.db.QueryRow(`
+		SELECT SUM(commission)
 		FROM trades
 		WHERE symbol = ?
 	`, symbol).Scan(&totalFees)
@@ -619,13 +457,8 @@ func (b *BacktestState) calculateTotalFees(symbol string) (float64, error) {
 
 // GetStats returns the statistics of the backtest
 func (b *BacktestState) GetStats(ctx strategy.StrategyContext) ([]types.TradeStats, error) {
-	sqlDB, err := b.db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SQL DB: %w", err)
-	}
-
 	// Get all unique symbols that have trades
-	rows, err := sqlDB.Query(`
+	rows, err := b.db.Query(`
 		SELECT DISTINCT symbol
 		FROM trades
 		ORDER BY symbol
@@ -635,21 +468,13 @@ func (b *BacktestState) GetStats(ctx strategy.StrategyContext) ([]types.TradeSta
 	}
 	defer rows.Close()
 
-	var symbols []string
+	var stats []types.TradeStats
 	for rows.Next() {
 		var symbol string
 		if err := rows.Scan(&symbol); err != nil {
 			return nil, fmt.Errorf("failed to scan symbol: %w", err)
 		}
-		symbols = append(symbols, symbol)
-	}
 
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating symbols: %w", err)
-	}
-
-	var stats []types.TradeStats
-	for _, symbol := range symbols {
 		// Calculate trade result
 		tradeResult, err := b.calculateTradeResult(symbol)
 		if err != nil {
@@ -695,7 +520,7 @@ func (b *BacktestState) GetStats(ctx strategy.StrategyContext) ([]types.TradeSta
 
 		// Calculate maximum loss and maximum profit
 		var maxLoss, maxProfit float64
-		err = sqlDB.QueryRow(`
+		err = b.db.QueryRow(`
 			SELECT 
 				COALESCE(MIN(pnl), 0) as max_loss,
 				COALESCE(MAX(pnl), 0) as max_profit
@@ -715,6 +540,10 @@ func (b *BacktestState) GetStats(ctx strategy.StrategyContext) ([]types.TradeSta
 			TradeHoldingTime: holdingTime,
 			TradePnl:         tradePnl,
 		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating symbols: %w", err)
 	}
 
 	return stats, nil
