@@ -17,6 +17,7 @@ const (
 	OrderStatusFilled    OrderStatus = "FILLED"
 	OrderStatusCancelled OrderStatus = "CANCELLED"
 	OrderStatusRejected  OrderStatus = "REJECTED"
+	OrderStatusFailed    OrderStatus = "Failed"
 )
 
 const (
@@ -47,12 +48,14 @@ type ExecuteOrderTakeProfitOrStopLoss struct {
 }
 
 type ExecuteOrder struct {
-	Symbol    string       `yaml:"symbol" json:"symbol" csv:"symbol"`
-	Side      PurchaseType `yaml:"side" json:"side" csv:"side"`
-	OrderType OrderType    `yaml:"order_type" json:"order_type" csv:"order_type"`
-	Reason    Reason       `yaml:"reason" json:"reason" csv:"reason"`
-	Price     float64      `yaml:"price" json:"price" csv:"price"`
-	Quantity  float64      `yaml:"quantity" json:"quantity" csv:"quantity"`
+	ID           string       `yaml:"id" json:"id" csv:"id" validate:"required,uuid"`
+	Symbol       string       `yaml:"symbol" json:"symbol" csv:"symbol" validate:"required"`
+	Side         PurchaseType `yaml:"side" json:"side" csv:"side" validate:"required,oneof=BUY SELL"`
+	OrderType    OrderType    `yaml:"order_type" json:"order_type" csv:"order_type" validate:"required,oneof=MARKET LIMIT"`
+	Reason       Reason       `yaml:"reason" json:"reason" csv:"reason" validate:"required"`
+	Price        float64      `yaml:"price" json:"price" csv:"price" validate:"required,gt=0"`
+	StrategyName string       `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name" validate:"required"`
+	Quantity     float64      `yaml:"quantity" json:"quantity" csv:"quantity" validate:"required,gt=0"`
 	// TakeProfit is the take profit order. Can be nil if not set.
 	TakeProfit optional.Option[ExecuteOrderTakeProfitOrStopLoss] `yaml:"take_profit" json:"take_profit" csv:"take_profit"`
 	// StopLoss is the stop loss order. Can be nil if not set.
@@ -60,13 +63,14 @@ type ExecuteOrder struct {
 }
 
 type Order struct {
-	OrderID     string       `yaml:"order_id" json:"order_id" csv:"order_id"`
-	Symbol      string       `yaml:"symbol" json:"symbol" csv:"symbol"`
-	Side        PurchaseType `yaml:"side" json:"side" csv:"side"`
-	Quantity    float64      `yaml:"quantity" json:"quantity" csv:"quantity"`
-	Price       float64      `yaml:"price" json:"price" csv:"price"`
-	Timestamp   time.Time    `yaml:"timestamp" json:"timestamp" csv:"timestamp"`
-	IsCompleted bool         `yaml:"is_completed" json:"is_completed" csv:"is_completed"`
+	OrderID   string       `yaml:"order_id" json:"order_id" csv:"order_id"`
+	Symbol    string       `yaml:"symbol" json:"symbol" csv:"symbol"`
+	Side      PurchaseType `yaml:"side" json:"side" csv:"side"`
+	Quantity  float64      `yaml:"quantity" json:"quantity" csv:"quantity"`
+	Price     float64      `yaml:"price" json:"price" csv:"price"`
+	Timestamp time.Time    `yaml:"timestamp" json:"timestamp" csv:"timestamp"`
+	// IsCompleted is true if the order has been filled or cancelled
+	IsCompleted bool `yaml:"is_completed" json:"is_completed" csv:"is_completed"`
 	// Reason is the reason for the order
 	// It can be used to store the reason for the order
 	// like "buy_signal", "sell_signal", "stop_loss", "take_profit", etc.
