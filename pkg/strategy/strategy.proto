@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package strategy;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/sirily11/argo-trading-go/pkg/strategy";
+
+// MarketData represents the market data for a single point in time
+message MarketData {
+  string symbol = 1;
+  double price = 2;
+  double volume = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// StrategyContext contains all the context needed for strategy execution
+message StrategyContext {
+  // DataSource provides the market data as well as the historical data
+  string data_source = 1;
+  // IndicatorRegistry is the registry of all indicators
+  string indicator_registry = 2;
+  // Cache is the cache of the strategy
+  string cache = 3;
+  // Trading System is used to place orders
+  string trading_system = 4;
+  // Marker is used to mark a point in time with a signal and a reason
+  string marker = 5;
+}
+
+// HostFunctions defines the functions that the host provides to the plugin
+// go:plugin type=host
+service HostFunctions {
+  // GetHistoricalData retrieves historical market data
+  rpc GetHistoricalData(HistoricalDataRequest) returns (HistoricalDataResponse) {}
+  // PlaceOrder places an order through the trading system
+  rpc PlaceOrder(OrderRequest) returns (OrderResponse) {}
+  // MarkSignal marks a point in time with a signal and reason
+  rpc MarkSignal(SignalRequest) returns (SignalResponse) {}
+}
+
+// HistoricalDataRequest is used to request historical data
+message HistoricalDataRequest {
+  string symbol = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+}
+
+// HistoricalDataResponse contains the historical data
+message HistoricalDataResponse {
+  repeated MarketData data = 1;
+}
+
+// OrderRequest is used to place an order
+message OrderRequest {
+  string symbol = 1;
+  string order_type = 2;
+  double quantity = 3;
+  double price = 4;
+}
+
+// OrderResponse contains the order response
+message OrderResponse {
+  string order_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+// SignalRequest is used to mark a signal
+message SignalRequest {
+  string symbol = 1;
+  string signal_type = 2;
+  string reason = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// SignalResponse contains the signal response
+message SignalResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// TradingStrategy defines the interface for trading strategies
+// go:plugin type=plugin version=1
+service TradingStrategy {
+  // Initialize sets up the strategy with a configuration string
+  rpc Initialize(InitializeRequest) returns (InitializeResponse) {}
+  // ProcessData processes new market data and generates signals
+  rpc ProcessData(ProcessDataRequest) returns (ProcessDataResponse) {}
+  // Name returns the name of the strategy
+  rpc Name(NameRequest) returns (NameResponse) {}
+}
+
+// InitializeRequest contains the configuration for strategy initialization
+message InitializeRequest {
+  string config = 1;
+}
+
+// InitializeResponse contains the initialization response
+message InitializeResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// ProcessDataRequest contains the market data to process
+message ProcessDataRequest {
+  StrategyContext context = 1;
+  MarketData data = 2;
+}
+
+// ProcessDataResponse contains the processing response
+message ProcessDataResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// NameRequest is an empty request for getting the strategy name
+message NameRequest {}
+
+// NameResponse contains the strategy name
+message NameResponse {
+  string name = 1;
+} 
