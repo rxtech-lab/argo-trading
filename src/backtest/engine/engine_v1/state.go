@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/google/uuid"
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/moznion/go-optional"
 	"github.com/shopspring/decimal"
 	"github.com/sirily11/argo-trading-go/src/logger"
 	"github.com/sirily11/argo-trading-go/src/strategy"
@@ -47,10 +49,10 @@ func (b *BacktestState) Initialize() error {
 		return fmt.Errorf("failed to create sequence: %w", err)
 	}
 
-	// Create orders table with sequence-based order_id
+	// Create orders table with string-based order_id
 	_, err = b.db.Exec(`
 		CREATE TABLE IF NOT EXISTS orders (
-			order_id INTEGER PRIMARY KEY DEFAULT nextval('order_id_seq'),
+			order_id TEXT PRIMARY KEY,
 			symbol TEXT,
 			order_type TEXT,
 			quantity DOUBLE,
@@ -69,7 +71,7 @@ func (b *BacktestState) Initialize() error {
 	// Create trades table
 	_, err = b.db.Exec(`
 		CREATE TABLE IF NOT EXISTS trades (
-			order_id INTEGER,
+			order_id TEXT,
 			symbol TEXT,
 			order_type TEXT,
 			quantity DOUBLE,
@@ -105,29 +107,28 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 	results := make([]UpdateResult, 0, len(orders))
 
 	for _, order := range orders {
+		orderID := uuid.New().String()
 		// Start transaction
 		tx, err := b.db.Begin()
 		if err != nil {
 			return nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
 
-		// Insert order and get the auto-generated order_id
+		// Insert order
 		insertQuery := b.sq.
 			Insert("orders").
 			Columns(
-				"symbol", "order_type", "quantity", "price", "timestamp",
+				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 				"is_completed", "reason", "message", "strategy_name",
 			).
 			Values(
-				order.Symbol, order.Side, order.Quantity, order.Price,
+				orderID, order.Symbol, order.Side, order.Quantity, order.Price,
 				order.Timestamp, order.IsCompleted, order.Reason.Reason, order.Reason.Message,
 				order.StrategyName,
 			).
-			Suffix("RETURNING order_id").
 			RunWith(tx)
 
-		var orderID int64
-		err = insertQuery.QueryRow().Scan(&orderID)
+		_, err = insertQuery.Exec()
 		if err != nil {
 			tx.Rollback()
 			return nil, fmt.Errorf("failed to insert order: %w", err)
@@ -154,7 +155,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		// Create trade record
 		trade := types.Trade{
 			Order: types.Order{
-				OrderID:      fmt.Sprintf("%d", orderID),
+				OrderID:      orderID,
 				Symbol:       order.Symbol,
 				Side:         order.Side,
 				Quantity:     order.Quantity,
@@ -204,6 +205,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		// Add result
+		order.OrderID = orderID
 		results = append(results, UpdateResult{
 			Order:         order,
 			Trade:         trade,
@@ -581,4 +583,112 @@ func (b *BacktestState) GetStats(ctx strategy.StrategyContext) ([]types.TradeSta
 	}
 
 	return stats, nil
+}
+
+// GetOrderById returns an order by its id
+func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Order], error) {
+	query := b.sq.
+		Select("*").
+		From("orders").
+		Where(squirrel.Eq{"order_id": orderID}).
+		RunWith(b.db)
+
+	var order types.Order
+	err := query.QueryRow().Scan(
+		&order.OrderID,
+		&order.Symbol,
+		&order.Side,
+		&order.Quantity,
+		&order.Price,
+		&order.Timestamp,
+		&order.IsCompleted,
+		&order.Reason.Reason,
+		&order.Reason.Message,
+		&order.StrategyName,
+	)
+	if err != nil {
+		// check if error is no rows in result set
+		if err == sql.ErrNoRows {
+			return optional.None[types.Order](), nil
+		}
+		return optional.None[types.Order](), fmt.Errorf("failed to get order by id: %w", err)
+	}
+	return optional.Some(order), nil
+}
+
+// GetAllPositions returns all positions from the database by calculating from trades
+func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
+	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex case
+	query := `
+		WITH buy_trades AS (
+			SELECT 
+				symbol,
+				SUM(executed_qty) as total_in_qty,
+				SUM(commission) as total_in_fee,
+				SUM(executed_qty * executed_price) as total_in_amount,
+				MIN(executed_at) as first_trade_time,
+				MAX(strategy_name) as strategy_name
+			FROM trades 
+			WHERE order_type = ?
+			GROUP BY symbol
+		),
+		sell_trades AS (
+			SELECT 
+				symbol,
+				SUM(executed_qty) as total_out_qty,
+				SUM(commission) as total_out_fee,
+				SUM(executed_qty * executed_price) as total_out_amount
+			FROM trades 
+			WHERE order_type = ?
+			GROUP BY symbol
+		)
+		SELECT 
+			COALESCE(b.symbol, s.symbol) as symbol,
+			COALESCE(b.total_in_qty, 0) - COALESCE(s.total_out_qty, 0) as quantity,
+			COALESCE(b.total_in_qty, 0) as total_in_quantity,
+			COALESCE(s.total_out_qty, 0) as total_out_quantity,
+			COALESCE(b.total_in_amount, 0) as total_in_amount,
+			COALESCE(s.total_out_amount, 0) as total_out_amount,
+			COALESCE(b.total_in_fee, 0) as total_in_fee,
+			COALESCE(s.total_out_fee, 0) as total_out_fee,
+			COALESCE(b.first_trade_time, CURRENT_TIMESTAMP) as open_timestamp,
+			COALESCE(b.strategy_name, '') as strategy_name
+		FROM buy_trades b
+		FULL OUTER JOIN sell_trades s ON b.symbol = s.symbol
+		WHERE COALESCE(b.total_in_qty, 0) - COALESCE(s.total_out_qty, 0) != 0
+		ORDER BY symbol
+	`
+
+	rows, err := b.db.Query(query, types.PurchaseTypeBuy, types.PurchaseTypeSell)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query positions: %w", err)
+	}
+	defer rows.Close()
+
+	var positions []types.Position
+	for rows.Next() {
+		var position types.Position
+		err := rows.Scan(
+			&position.Symbol,
+			&position.Quantity,
+			&position.TotalInQuantity,
+			&position.TotalOutQuantity,
+			&position.TotalInAmount,
+			&position.TotalOutAmount,
+			&position.TotalInFee,
+			&position.TotalOutFee,
+			&position.OpenTimestamp,
+			&position.StrategyName,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan position: %w", err)
+		}
+		positions = append(positions, position)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating positions: %w", err)
+	}
+
+	return positions, nil
 }
