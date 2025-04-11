@@ -4,6 +4,7 @@ import (
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/cache"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/indicator"
+	"github.com/sirily11/argo-trading-go/src/marker"
 	"github.com/sirily11/argo-trading-go/src/trading"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
@@ -13,12 +14,12 @@ type StrategyContext struct {
 	DataSource datasource.DataSource
 	// IndicatorRegistry is the registry of all indicators
 	IndicatorRegistry *indicator.IndicatorRegistry
-	// GetPosition returns the current position of the symbol
-	GetPosition func(symbol string) (types.Position, error)
 	// Cache is the cache of the strategy
-	Cache cache.Cache
+	Cache *cache.Cache
 	// Trading System is used to place orders
-	TradingSystem trading.TradingSystem
+	TradingSystem *trading.TradingSystem
+	// Marker is used to mark a point in time with a signal and a reason
+	Marker *marker.Marker
 }
 
 // TradingStrategy interface defines methods that any trading strategy must implement
@@ -27,11 +28,9 @@ type TradingStrategy interface {
 	// Initialize sets up the strategy with a configuration string and initial context
 	// The trading system is responsible for decoding the config string
 	Initialize(config string) error
-
 	// ProcessData processes new market data and generates signals
 	// It receives a context object with all necessary information to make decisions
-	ProcessData(ctx StrategyContext, data types.MarketData, targetSymbol string) ([]types.ExecuteOrder, error)
-
+	ProcessData(ctx StrategyContext, data types.MarketData) error
 	// Name returns the name of the strategy
 	Name() string
 }
