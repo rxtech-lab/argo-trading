@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/logger"
@@ -49,7 +50,7 @@ func (suite *DuckDBTestSuite) SetupTest() {
 	// Create a new database connection for each test
 	db, err := sql.Open("duckdb", "")
 	suite.Require().NoError(err)
-	suite.ds = &DuckDBDataSource{db: db, logger: suite.logger}
+	suite.ds = &DuckDBDataSource{db: db, logger: suite.logger, sq: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)}
 	suite.cleanupMarketData()
 }
 
@@ -393,7 +394,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 		setupData    string
 		start        time.Time
 		end          time.Time
-		interval     Interval
+		interval     optional.Option[Interval]
 		expectedData []types.MarketData
 		expectError  bool
 	}{
@@ -415,7 +416,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
 			start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			end:      time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
-			interval: Interval1m,
+			interval: optional.Some(Interval1m),
 			expectedData: []types.MarketData{
 				{
 					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
@@ -467,7 +468,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
 			start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			end:      time.Date(2024, 1, 1, 10, 5, 0, 0, time.UTC),
-			interval: Interval5m,
+			interval: optional.Some(Interval5m),
 			expectedData: []types.MarketData{
 				{
 					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
@@ -495,7 +496,7 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
 			start:        time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			end:          time.Date(2024, 1, 1, 10, 5, 0, 0, time.UTC),
-			interval:     Interval5m,
+			interval:     optional.None[Interval](),
 			expectedData: []types.MarketData{},
 			expectError:  false,
 		},
@@ -513,9 +514,79 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
 			start:        time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			end:          time.Date(2024, 1, 1, 10, 5, 0, 0, time.UTC),
-			interval:     Interval("invalid"),
+			interval:     optional.Some(Interval("invalid")),
 			expectedData: nil,
 			expectError:  true,
+		},
+		{
+			name: "Read data with nil interval",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0),
+			('2024-01-01 10:04:00'::TIMESTAMP, 'AAPL', 103.5, 105.0, 103.0, 104.5, 3000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			end:      time.Date(2024, 1, 1, 10, 4, 0, 0, time.UTC),
+			interval: optional.None[Interval](),
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   101.0,
+					Low:    99.0,
+					Close:  100.5,
+					Volume: 1000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+					Open:   102.5,
+					High:   104.0,
+					Low:    102.0,
+					Close:  103.5,
+					Volume: 2500.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 4, 0, 0, time.UTC),
+					Open:   103.5,
+					High:   105.0,
+					Low:    103.0,
+					Close:  104.5,
+					Volume: 3000.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
 		},
 	}
 
@@ -529,7 +600,8 @@ func (suite *DuckDBTestSuite) TestReadRange() {
 			suite.Require().NoError(err)
 
 			// Test ReadRange
-			results, err := suite.ds.GetRange(tc.start, tc.end, tc.interval)
+			var results []types.MarketData
+			results, err = suite.ds.GetRange(tc.start, tc.end, tc.interval)
 			if tc.expectError {
 				suite.Assert().Error(err)
 				return

@@ -14,27 +14,49 @@ import (
 // --- RangeFilter Indicator ---
 // The indicator struct itself holds configuration parameters and state.
 type RangeFilter struct {
-	Period     int
-	Multiplier float64
+	period     int
+	multiplier float64
 }
 
-// NewRangeFilter creates a new Range Filter indicator.
-func NewRangeFilter(period int, multiplier float64) Indicator {
-	if period <= 0 {
-		period = 100 // Use default if invalid
-	}
-	if multiplier <= 0 {
-		multiplier = 3.0 // Use default if invalid
-	}
+// NewRangeFilter creates a new Range Filter indicator with default configuration.
+func NewRangeFilter() Indicator {
 	return &RangeFilter{
-		Period:     period,
-		Multiplier: multiplier,
+		period:     100, // Default period
+		multiplier: 3.0, // Default multiplier
 	}
 }
 
 // Name returns the name of the indicator.
 func (rf *RangeFilter) Name() types.Indicator {
 	return types.IndicatorRangeFilter
+}
+
+// Config configures the Range Filter indicator with the given parameters
+// Expected parameters: period (int), multiplier (float64)
+func (rf *RangeFilter) Config(params ...any) error {
+	if len(params) != 2 {
+		return fmt.Errorf("Config expects 2 parameters: period (int), multiplier (float64)")
+	}
+
+	period, ok := params[0].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for period parameter, expected int")
+	}
+	if period <= 0 {
+		return fmt.Errorf("period must be a positive integer, got %d", period)
+	}
+
+	multiplier, ok := params[1].(float64)
+	if !ok {
+		return fmt.Errorf("invalid type for multiplier parameter, expected float64")
+	}
+	if multiplier <= 0 {
+		return fmt.Errorf("multiplier must be a positive number, got %f", multiplier)
+	}
+
+	rf.period = period
+	rf.multiplier = multiplier
+	return nil
 }
 
 // GetSignal calculates the Range Filter signal based on market data and stored state.
@@ -160,13 +182,13 @@ func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx Indicato
 		}
 
 		// Calculate both EMAs using RawValue with the period parameter
-		shortEMAPeriod := rf.Period
+		shortEMAPeriod := rf.period
 		shortEMAValue, err := shortEMA.RawValue(marketData.Symbol, marketData.Time, ctx, shortEMAPeriod)
 		if err != nil {
 			return result, fmt.Errorf("failed to calculate short EMA (period %d): %w", shortEMAPeriod, err)
 		}
 
-		longEMAPeriod := rf.Period*2 - 1
+		longEMAPeriod := rf.period*2 - 1
 		// Ensure long period is at least 1
 		if longEMAPeriod < 1 {
 			longEMAPeriod = 1
@@ -177,7 +199,7 @@ func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx Indicato
 		}
 
 		// Apply absolute change to calculate the smooth range
-		smrng = absChange * (shortEMAValue*0.4 + longEMAValue*0.6) * rf.Multiplier
+		smrng = absChange * (shortEMAValue*0.4 + longEMAValue*0.6) * rf.multiplier
 
 		// Calculate filter value (filt)
 		prevFilt := value.PrevFilt
@@ -252,13 +274,13 @@ func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 	}
 
 	// Check if we have a custom period parameter
-	origPeriod := rf.Period
+	origPeriod := rf.period
 	if len(params) > 3 {
 		if customPeriod, ok := params[3].(int); ok && customPeriod > 0 {
 			// Temporarily override the period for this calculation
-			rf.Period = customPeriod
+			rf.period = customPeriod
 			// Restore the original period when we're done
-			defer func() { rf.Period = origPeriod }()
+			defer func() { rf.period = origPeriod }()
 		}
 	}
 
@@ -272,7 +294,7 @@ func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 		endTime := currentTime
 		startTime := endTime.Add(-time.Hour * 24) // Get last 24 hours of data
 
-		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get historical data: %w", err)
 		}

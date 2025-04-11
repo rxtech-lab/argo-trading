@@ -13,42 +13,82 @@ import (
 
 // WaddahAttar represents the Waddah Attar Explosion indicator
 type WaddahAttar struct {
-	FastPeriod   int
-	SlowPeriod   int
-	SignalPeriod int
-	ATRPeriod    int
-	Multiplier   float64
+	fastPeriod   int
+	slowPeriod   int
+	signalPeriod int
+	atrPeriod    int
+	multiplier   float64
 }
 
-// NewWaddahAttar creates a new Waddah Attar Explosion indicator
-func NewWaddahAttar(fastPeriod, slowPeriod, signalPeriod, atrPeriod int, multiplier float64) Indicator {
-	if fastPeriod <= 0 {
-		fastPeriod = 20 // Default fast period
-	}
-	if slowPeriod <= 0 {
-		slowPeriod = 40 // Default slow period
-	}
-	if signalPeriod <= 0 {
-		signalPeriod = 9 // Default signal period
-	}
-	if atrPeriod <= 0 {
-		atrPeriod = 14 // Default ATR period
-	}
-	if multiplier <= 0 {
-		multiplier = 150.0 // Default multiplier
-	}
+// NewWaddahAttar creates a new Waddah Attar Explosion indicator with default configuration
+func NewWaddahAttar() Indicator {
 	return &WaddahAttar{
-		FastPeriod:   fastPeriod,
-		SlowPeriod:   slowPeriod,
-		SignalPeriod: signalPeriod,
-		ATRPeriod:    atrPeriod,
-		Multiplier:   multiplier,
+		fastPeriod:   20,    // Default fast period
+		slowPeriod:   40,    // Default slow period
+		signalPeriod: 9,     // Default signal period
+		atrPeriod:    14,    // Default ATR period
+		multiplier:   150.0, // Default multiplier
 	}
 }
 
 // Name returns the name of the indicator
 func (wa *WaddahAttar) Name() types.Indicator {
 	return types.IndicatorWaddahAttar
+}
+
+// Config configures the Waddah Attar indicator with the given parameters
+// Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64)
+func (wa *WaddahAttar) Config(params ...any) error {
+	if len(params) != 5 {
+		return fmt.Errorf("Config expects 5 parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64)")
+	}
+
+	fastPeriod, ok := params[0].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for fastPeriod parameter, expected int")
+	}
+	if fastPeriod <= 0 {
+		return fmt.Errorf("fastPeriod must be a positive integer, got %d", fastPeriod)
+	}
+
+	slowPeriod, ok := params[1].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for slowPeriod parameter, expected int")
+	}
+	if slowPeriod <= 0 {
+		return fmt.Errorf("slowPeriod must be a positive integer, got %d", slowPeriod)
+	}
+
+	signalPeriod, ok := params[2].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for signalPeriod parameter, expected int")
+	}
+	if signalPeriod <= 0 {
+		return fmt.Errorf("signalPeriod must be a positive integer, got %d", signalPeriod)
+	}
+
+	atrPeriod, ok := params[3].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for atrPeriod parameter, expected int")
+	}
+	if atrPeriod <= 0 {
+		return fmt.Errorf("atrPeriod must be a positive integer, got %d", atrPeriod)
+	}
+
+	multiplier, ok := params[4].(float64)
+	if !ok {
+		return fmt.Errorf("invalid type for multiplier parameter, expected float64")
+	}
+	if multiplier <= 0 {
+		return fmt.Errorf("multiplier must be a positive number, got %f", multiplier)
+	}
+
+	wa.fastPeriod = fastPeriod
+	wa.slowPeriod = slowPeriod
+	wa.signalPeriod = signalPeriod
+	wa.atrPeriod = atrPeriod
+	wa.multiplier = multiplier
+	return nil
 }
 
 // WaddahAttarData holds the calculated indicator values
@@ -146,7 +186,7 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	}
 
 	// Calculate MACD values
-	macdValue, err := macd.RawValue(marketData.Symbol, marketData.Time, ctx, wa.FastPeriod, wa.SlowPeriod, wa.SignalPeriod)
+	macdValue, err := macd.RawValue(marketData.Symbol, marketData.Time, ctx, wa.fastPeriod, wa.slowPeriod, wa.signalPeriod)
 	if err != nil {
 		return result, fmt.Errorf("failed to calculate MACD: %w", err)
 	}
@@ -163,14 +203,14 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	}
 
 	// Calculate ATR
-	atrValue, err := atr.RawValue(marketData.Symbol, marketData.Time, ctx, wa.ATRPeriod)
+	atrValue, err := atr.RawValue(marketData.Symbol, marketData.Time, ctx, wa.atrPeriod)
 	if err != nil {
 		return result, fmt.Errorf("failed to calculate ATR: %w", err)
 	}
 
 	// Calculate trend and explosion
-	trend := macdValue * wa.Multiplier
-	explosion := atrValue * wa.Multiplier
+	trend := macdValue * wa.multiplier
+	explosion := atrValue * wa.multiplier
 
 	// Update state
 	value.PrevMACD = macdValue
@@ -217,7 +257,7 @@ func (wa *WaddahAttar) RawValue(params ...any) (float64, error) {
 	if !currentTime.IsZero() {
 		endTime := currentTime
 		startTime := endTime.Add(-time.Hour * 24)
-		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get historical data: %w", err)
 		}

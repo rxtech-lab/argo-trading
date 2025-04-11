@@ -11,16 +11,13 @@ import (
 
 // EMA indicator implements Exponential Moving Average calculation
 type EMA struct {
-	defaultPeriod int
+	period int
 }
 
-// NewEMA creates a new EMA indicator
-func NewEMA(period int) Indicator {
-	if period <= 0 {
-		period = 20 // Default period if invalid
-	}
+// NewEMA creates a new EMA indicator with default configuration
+func NewEMA() Indicator {
 	return &EMA{
-		defaultPeriod: period,
+		period: 20, // Default period
 	}
 }
 
@@ -29,10 +26,27 @@ func (e *EMA) Name() types.Indicator {
 	return types.IndicatorEMA
 }
 
+// Config configures the EMA indicator with the given parameters
+// Expected parameters: period (int)
+func (e *EMA) Config(params ...any) error {
+	if len(params) != 1 {
+		return fmt.Errorf("Config expects 1 parameter: period (int)")
+	}
+	period, ok := params[0].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for period parameter, expected int")
+	}
+	if period <= 0 {
+		return fmt.Errorf("period must be a positive integer, got %d", period)
+	}
+	e.period = period
+	return nil
+}
+
 // GetSignal calculates the EMA signal based on market data
 func (e *EMA) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
 	// Calculate EMA using SQL query from data source, passing the struct's period
-	emaValue, err := e.calculateEMAFromSQL(marketData.Symbol, marketData.Time, &ctx, optional.Some(e.defaultPeriod))
+	emaValue, err := e.calculateEMAFromSQL(marketData.Symbol, marketData.Time, &ctx, optional.Some(e.period))
 	if err != nil {
 		return types.Signal{}, fmt.Errorf("failed to calculate EMA: %w", err)
 	}
@@ -60,7 +74,7 @@ func (e *EMA) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 // It now accepts a period parameter to allow for flexible EMA calculation.
 func (e *EMA) calculateEMAFromSQL(symbol string, currentTime time.Time, ctx *IndicatorContext, period optional.Option[int]) (float64, error) {
 	if period.IsNone() {
-		period = optional.Some(e.defaultPeriod)
+		period = optional.Some(e.period)
 	}
 
 	periodValue, err := period.Take()

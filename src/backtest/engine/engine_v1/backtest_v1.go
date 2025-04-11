@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/sirily11/argo-trading-go/src/backtest/engine"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/cache"
@@ -66,7 +65,13 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 
 	// initialize the indicator registry
 	b.indicatorRegistry = indicator.NewIndicatorRegistry()
-	b.indicatorRegistry.RegisterIndicator(indicator.NewBollingerBands(20, 2, time.Hour*24*30))
+	b.indicatorRegistry.RegisterIndicator(indicator.NewBollingerBands())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewEMA())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewMACD())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewATR())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewWaddahAttar())
+
+	// initialize the state
 	b.state = NewBacktestState(b.log)
 	b.balance = b.config.InitialCapital
 	return nil
