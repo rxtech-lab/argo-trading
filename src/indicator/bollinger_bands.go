@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/moznion/go-optional"
 	"github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1/datasource"
 	"github.com/sirily11/argo-trading-go/src/types"
 )
@@ -24,18 +25,55 @@ type BollingerBands struct {
 	lookback time.Duration
 }
 
-// NewBollingerBands creates a new Bollinger Bands indicator
-func NewBollingerBands(period int, stdDev float64, lookback time.Duration) Indicator {
+// NewBollingerBands creates a new Bollinger Bands indicator with default configuration
+func NewBollingerBands() Indicator {
 	return &BollingerBands{
-		period:   period,
-		stdDev:   stdDev,
-		lookback: lookback,
+		period:   20,             // Default period
+		stdDev:   2.0,            // Default standard deviation
+		lookback: time.Hour * 24, // Default lookback period
 	}
 }
 
 // Name returns the name of the indicator
 func (bb *BollingerBands) Name() types.Indicator {
 	return types.IndicatorBollingerBands
+}
+
+// Config configures the Bollinger Bands indicator with the given parameters
+// Expected parameters: period (int), stdDev (float64), lookback (time.Duration)
+func (bb *BollingerBands) Config(params ...any) error {
+	if len(params) != 3 {
+		return fmt.Errorf("Config expects 3 parameters: period (int), stdDev (float64), lookback (time.Duration)")
+	}
+
+	period, ok := params[0].(int)
+	if !ok {
+		return fmt.Errorf("invalid type for period parameter, expected int")
+	}
+	if period <= 0 {
+		return fmt.Errorf("period must be a positive integer, got %d", period)
+	}
+
+	stdDev, ok := params[1].(float64)
+	if !ok {
+		return fmt.Errorf("invalid type for stdDev parameter, expected float64")
+	}
+	if stdDev <= 0 {
+		return fmt.Errorf("stdDev must be a positive number, got %f", stdDev)
+	}
+
+	lookback, ok := params[2].(time.Duration)
+	if !ok {
+		return fmt.Errorf("invalid type for lookback parameter, expected time.Duration")
+	}
+	if lookback <= 0 {
+		return fmt.Errorf("lookback must be a positive duration, got %v", lookback)
+	}
+
+	bb.period = period
+	bb.stdDev = stdDev
+	bb.lookback = lookback
+	return nil
 }
 
 // RawValue implements Indicator. It calculates the middle Bollinger Band (SMA)
@@ -66,7 +104,7 @@ func (bb *BollingerBands) RawValue(params ...any) (float64, error) {
 	startTime := marketData.Time.Add(-bb.lookback)
 	endTime := marketData.Time
 
-	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 	if err != nil {
 		return 0, fmt.Errorf("failed to get historical data: %w", err)
 	}
@@ -88,7 +126,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 	startTime := marketData.Time.Add(-bb.lookback)
 	endTime := marketData.Time
 
-	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, datasource.Interval1m)
+	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 	if err != nil {
 		return types.Signal{}, err
 	}

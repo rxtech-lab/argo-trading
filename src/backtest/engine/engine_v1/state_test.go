@@ -687,7 +687,7 @@ func (m *MockDataSource) Initialize(path string) error { return nil }
 func (m *MockDataSource) ReadAll(start, end optional.Option[time.Time]) func(yield func(types.MarketData, error) bool) {
 	return nil
 }
-func (m *MockDataSource) GetRange(start time.Time, end time.Time, interval datasource.Interval) ([]types.MarketData, error) {
+func (m *MockDataSource) GetRange(start time.Time, end time.Time, interval optional.Option[datasource.Interval]) ([]types.MarketData, error) {
 	return nil, nil
 }
 func (m *MockDataSource) ReadLastData(symbol string) (types.MarketData, error) {
