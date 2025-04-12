@@ -1,16 +1,16 @@
-package strategy_test
+package runtime
 
 import (
 	"testing"
 	"time"
 
-	engine "github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/cache"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/commission_fee"
-	"github.com/sirily11/argo-trading-go/internal/logger"
-	"github.com/sirily11/argo-trading-go/internal/trading"
-	"github.com/sirily11/argo-trading-go/internal/types"
-	"github.com/sirily11/argo-trading-go/pkg/strategy"
+	engine "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
+	"github.com/rxtech-lab/argo-trading/internal/trading"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -18,18 +18,26 @@ import (
 // and sells on 2 consecutive down candles
 type SimpleConsecutiveStrategy struct {
 	cache *cache.Cache
+	ctx   runtime.RuntimeContext
+}
+
+func NewSimpleConsecutiveStrategy(cache *cache.Cache, ctx runtime.RuntimeContext) *SimpleConsecutiveStrategy {
+	return &SimpleConsecutiveStrategy{
+		cache: cache,
+		ctx:   ctx,
+	}
 }
 
 func (s *SimpleConsecutiveStrategy) Initialize(config string) error {
 	return nil
 }
 
-func (s *SimpleConsecutiveStrategy) ProcessData(ctx strategy.StrategyContext, data types.MarketData) error {
+func (s *SimpleConsecutiveStrategy) ProcessData(data types.MarketData) error {
 	// Get previous data from cache
-	prevData, exists := (*s.cache).(*cache.CacheV1).Get("prev_data")
+	prevData, exists := (*s.cache).Get("prev_data")
 	if !exists {
 		// First data point, just store it
-		(*s.cache).(*cache.CacheV1).Set("prev_data", data)
+		(*s.cache).Set("prev_data", data)
 		return nil
 	}
 
@@ -50,7 +58,7 @@ func (s *SimpleConsecutiveStrategy) ProcessData(ctx strategy.StrategyContext, da
 			},
 			StrategyName: s.Name(),
 		}
-		return (*ctx.TradingSystem).PlaceOrder(order)
+		return (s.ctx.TradingSystem).PlaceOrder(order)
 	}
 
 	// Check for consecutive down candles
@@ -68,11 +76,11 @@ func (s *SimpleConsecutiveStrategy) ProcessData(ctx strategy.StrategyContext, da
 			},
 			StrategyName: s.Name(),
 		}
-		return (*ctx.TradingSystem).PlaceOrder(order)
+		return (s.ctx.TradingSystem).PlaceOrder(order)
 	}
 
 	// Update cache with current data
-	(*s.cache).(*cache.CacheV1).Set("prev_data", data)
+	(*s.cache).Set("prev_data", data)
 	return nil
 }
 
@@ -119,9 +127,10 @@ func (suite *StrategyTestSuite) SetupTest() {
 	suite.tradingSystem = engine.NewBacktestTrading(*suite.state, 10000.0, suite.commission)
 
 	// Initialize strategy
-	suite.strategy = &SimpleConsecutiveStrategy{
-		cache: suite.cache,
-	}
+	suite.strategy = NewSimpleConsecutiveStrategy(suite.cache, runtime.RuntimeContext{
+		Cache:         *suite.cache,
+		TradingSystem: suite.tradingSystem,
+	})
 }
 
 func (suite *StrategyTestSuite) TearDownTest() {
@@ -130,12 +139,6 @@ func (suite *StrategyTestSuite) TearDownTest() {
 }
 
 func (suite *StrategyTestSuite) TestConsecutiveUpCandles() {
-	// Create test context
-	tradingSystem := suite.tradingSystem
-	ctx := strategy.StrategyContext{
-		Cache:         suite.cache,
-		TradingSystem: &tradingSystem,
-	}
 
 	// First up candle
 	data1 := types.MarketData{
@@ -158,19 +161,18 @@ func (suite *StrategyTestSuite) TestConsecutiveUpCandles() {
 		Volume: 1000.0,
 		Time:   time.Now().Add(time.Minute),
 	}
-
 	// Update market data in trading system
 	suite.tradingSystem.(*engine.BacktestTrading).UpdateCurrentMarketData(data1)
 
 	// Process first candle (should just store in cache)
-	err := suite.strategy.ProcessData(ctx, data1)
+	err := suite.strategy.ProcessData(data1)
 	suite.NoError(err)
 
 	// Update market data in trading system
 	suite.tradingSystem.(*engine.BacktestTrading).UpdateCurrentMarketData(data2)
 
 	// Process second candle (should trigger buy)
-	err = suite.strategy.ProcessData(ctx, data2)
+	err = suite.strategy.ProcessData(data2)
 	suite.NoError(err)
 
 	// Verify that a buy order was placed
@@ -182,10 +184,6 @@ func (suite *StrategyTestSuite) TestConsecutiveUpCandles() {
 func (suite *StrategyTestSuite) TestConsecutiveDownCandles() {
 	// Create test context
 	tradingSystem := suite.tradingSystem
-	ctx := strategy.StrategyContext{
-		Cache:         suite.cache,
-		TradingSystem: &tradingSystem,
-	}
 
 	// First establish a position by buying
 	buyOrder := types.ExecuteOrder{
@@ -241,19 +239,18 @@ func (suite *StrategyTestSuite) TestConsecutiveDownCandles() {
 		Volume: 1000.0,
 		Time:   time.Now().Add(time.Minute),
 	}
-
 	// Update market data in trading system
 	suite.tradingSystem.(*engine.BacktestTrading).UpdateCurrentMarketData(data1)
 
 	// Process first candle (should just store in cache)
-	err = suite.strategy.ProcessData(ctx, data1)
+	err = suite.strategy.ProcessData(data1)
 	suite.NoError(err)
 
 	// Update market data in trading system
 	suite.tradingSystem.(*engine.BacktestTrading).UpdateCurrentMarketData(data2)
 
 	// Process second candle (should trigger sell)
-	err = suite.strategy.ProcessData(ctx, data2)
+	err = suite.strategy.ProcessData(data2)
 	suite.NoError(err)
 
 	// Verify that the position was sold

@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/cache"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 // WaddahAttar represents the Waddah Attar Explosion indicator
@@ -32,8 +32,8 @@ func NewWaddahAttar() Indicator {
 }
 
 // Name returns the name of the indicator
-func (wa *WaddahAttar) Name() types.Indicator {
-	return types.IndicatorWaddahAttar
+func (wa *WaddahAttar) Name() types.IndicatorType {
+	return types.IndicatorTypeWaddahAttar
 }
 
 // Config configures the Waddah Attar indicator with the given parameters
@@ -175,7 +175,7 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	}
 
 	// Get MACD indicator
-	macdIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorMACD)
+	macdIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeMACD)
 	if err != nil {
 		return result, fmt.Errorf("failed to get MACD indicator: %w", err)
 	}
@@ -192,7 +192,7 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	}
 
 	// Get ATR indicator
-	atrIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorATR)
+	atrIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeATR)
 	if err != nil {
 		return result, fmt.Errorf("failed to get ATR indicator: %w", err)
 	}

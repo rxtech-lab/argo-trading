@@ -7,10 +7,10 @@ import (
 
 	"github.com/go-playground/validator"
 	"github.com/google/uuid"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/commission_fee"
-	"github.com/sirily11/argo-trading-go/internal/trading"
-	"github.com/sirily11/argo-trading-go/internal/types"
-	"github.com/sirily11/argo-trading-go/internal/utils"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
+	"github.com/rxtech-lab/argo-trading/internal/trading"
+	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/utils"
 )
 
 // BacktestTrading is a trading system that is used to backtest a trading strategy

@@ -1,6 +1,6 @@
 package trading
 
-import "github.com/sirily11/argo-trading-go/internal/types"
+import "github.com/rxtech-lab/argo-trading/internal/types"
 
 type TradingSystem interface {
 	// PlaceOrder places a single order

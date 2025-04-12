@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/commission_fee"
-	"github.com/sirily11/argo-trading-go/internal/logger"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
 )
 

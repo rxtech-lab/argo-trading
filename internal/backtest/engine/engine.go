@@ -1,8 +1,6 @@
 package engine
 
-import (
-	"github.com/sirily11/argo-trading-go/pkg/strategy"
-)
+import "github.com/rxtech-lab/argo-trading/internal/runtime"
 
 type Engine interface {
 	// Initialize the engine with the given configuration file.
@@ -19,7 +17,7 @@ type Engine interface {
 	// Example: AAPL_2020_MovingAverageCrossover_Default
 	SetResultsFolder(folder string) error
 	// LoadStrategy loads the trading strategy from the given strategy. Could be called multiple times to load multiple strategies.
-	LoadStrategy(strategy strategy.TradingStrategy) error
+	LoadStrategy(strategy runtime.StrategyRuntime) error
 	// Run runs the engine and executes the trading strategy
 	Run() error
 }

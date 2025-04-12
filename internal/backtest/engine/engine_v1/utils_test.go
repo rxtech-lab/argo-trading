@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/src/strategy"
-	"github.com/sirily11/argo-trading-go/src/types"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -24,7 +23,7 @@ func (m *MockStrategy) Initialize(config string) error {
 	return nil
 }
 
-func (m *MockStrategy) ProcessData(ctx strategy.StrategyContext, data types.MarketData) error {
+func (m *MockStrategy) ProcessData(data types.MarketData) error {
 	return nil
 }
 

@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 // MACD represents the Moving Average Convergence Divergence indicator
@@ -26,8 +26,8 @@ func NewMACD() Indicator {
 }
 
 // Name returns the name of the indicator
-func (m *MACD) Name() types.Indicator {
-	return types.IndicatorMACD
+func (m *MACD) Name() types.IndicatorType {
+	return types.IndicatorTypeMACD
 }
 
 // Config configures the MACD indicator with the given parameters
@@ -140,12 +140,12 @@ func (m *MACD) RawValue(params ...any) (float64, error) {
 	}
 
 	// Calculate MACD
-	fastEMA, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorEMA)
+	fastEMA, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeEMA)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get EMA indicator: %w", err)
 	}
 
-	slowEMA, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorEMA)
+	slowEMA, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeEMA)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get EMA indicator: %w", err)
 	}

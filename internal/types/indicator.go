@@ -1,19 +1,19 @@
 package types
 
-type Indicator string
+type IndicatorType string
 
 const (
-	IndicatorRSI                   Indicator = "rsi"
-	IndicatorMACD                  Indicator = "macd"
-	IndicatorBollingerBands        Indicator = "bollinger_bands"
-	IndicatorStochasticOsciallator Indicator = "stochastic_oscillator"
-	IndicatorWilliamsR             Indicator = "williams_r"
-	IndicatorADX                   Indicator = "adx"
-	IndicatorCCI                   Indicator = "cci"
-	IndicatorAO                    Indicator = "ao"
-	IndicatorTrendStrength         Indicator = "trend_strength"
-	IndicatorRangeFilter           Indicator = "range_filter"
-	IndicatorEMA                   Indicator = "ema"
-	IndicatorWaddahAttar           Indicator = "waddah_attar"
-	IndicatorATR                   Indicator = "atr"
+	IndicatorTypeRSI                   IndicatorType = "rsi"
+	IndicatorTypeMACD                  IndicatorType = "macd"
+	IndicatorTypeBollingerBands        IndicatorType = "bollinger_bands"
+	IndicatorTypeStochasticOsciallator IndicatorType = "stochastic_oscillator"
+	IndicatorTypeWilliamsR             IndicatorType = "williams_r"
+	IndicatorTypeADX                   IndicatorType = "adx"
+	IndicatorTypeCCI                   IndicatorType = "cci"
+	IndicatorTypeAO                    IndicatorType = "ao"
+	IndicatorTypeTrendStrength         IndicatorType = "trend_strength"
+	IndicatorTypeRangeFilter           IndicatorType = "range_filter"
+	IndicatorTypeEMA                   IndicatorType = "ema"
+	IndicatorTypeWaddahAttar           IndicatorType = "waddah_attar"
+	IndicatorTypeATR                   IndicatorType = "atr"
 )

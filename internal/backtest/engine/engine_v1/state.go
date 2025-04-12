@@ -12,10 +12,10 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/moznion/go-optional"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/shopspring/decimal"
-	"github.com/sirily11/argo-trading-go/internal/logger"
-	"github.com/sirily11/argo-trading-go/internal/types"
-	"github.com/sirily11/argo-trading-go/pkg/strategy"
 	"go.uber.org/zap"
 )
 
@@ -490,7 +490,7 @@ func (b *BacktestState) calculateTotalFees(symbol string) (float64, error) {
 }
 
 // GetStats returns the statistics of the backtest
-func (b *BacktestState) GetStats(ctx strategy.StrategyContext) ([]types.TradeStats, error) {
+func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats, error) {
 	// Get all unique symbols that have trades using Squirrel
 	selectQuery := b.sq.
 		Select("DISTINCT symbol").

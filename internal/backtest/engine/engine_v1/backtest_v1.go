@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/cache"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/commission_fee"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/indicator"
-	"github.com/sirily11/argo-trading-go/internal/logger"
-	"github.com/sirily11/argo-trading-go/internal/marker"
-	"github.com/sirily11/argo-trading-go/internal/trading"
-	"github.com/sirily11/argo-trading-go/internal/types"
-	"github.com/sirily11/argo-trading-go/internal/utils"
-	s "github.com/sirily11/argo-trading-go/pkg/strategy"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/indicator"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/marker"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
+	"github.com/rxtech-lab/argo-trading/internal/trading"
+	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/utils"
 	"github.com/vbauerster/mpb/v8"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
@@ -25,14 +25,14 @@ import (
 
 type BacktestEngineV1 struct {
 	config              BacktestEngineV1Config
-	strategies          []s.TradingStrategy
+	strategies          []runtime.StrategyRuntime
 	strategyConfigPaths []string
 	dataPaths           []string
 	resultsFolder       string
 	log                 *logger.Logger
-	indicatorRegistry   *indicator.IndicatorRegistry
-	marker              *marker.Marker
-	tradingSystem       *trading.TradingSystem
+	indicatorRegistry   indicator.IndicatorRegistry
+	marker              marker.Marker
+	tradingSystem       trading.TradingSystem
 	state               *BacktestState
 	balance             float64
 	cache               cache.Cache
@@ -78,7 +78,7 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 }
 
 // LoadStrategy implements engine.Engine.
-func (b *BacktestEngineV1) LoadStrategy(strategy s.TradingStrategy) error {
+func (b *BacktestEngineV1) LoadStrategy(strategy runtime.StrategyRuntime) error {
 	b.strategies = append(b.strategies, strategy)
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
@@ -234,7 +234,7 @@ func (b *BacktestEngineV1) Run() error {
 			}
 			for _, dataPath := range b.dataPaths {
 				wg.Add(1)
-				go func(strategy s.TradingStrategy, configPath, dataPath string) {
+				go func(strategy runtime.StrategyRuntime, configPath, dataPath string) {
 					defer wg.Done()
 
 					key := runKey{
@@ -273,12 +273,13 @@ func (b *BacktestEngineV1) Run() error {
 					}
 					runState.datasource = datasource
 
-					strategyContext := s.StrategyContext{
+					strategyContext := runtime.RuntimeContext{
 						DataSource:        datasource,
 						IndicatorRegistry: b.indicatorRegistry,
 						Marker:            b.marker,
 						TradingSystem:     b.tradingSystem,
 					}
+					//TODO: add context to the strategy
 
 					// Initialize the data source with the given data path
 					if err := datasource.Initialize(dataPath); err != nil {
@@ -292,7 +293,7 @@ func (b *BacktestEngineV1) Run() error {
 							return
 						}
 						// run the strategy
-						err = strategy.ProcessData(strategyContext, data)
+						err = strategy.ProcessData(data)
 						if err != nil {
 							errChan <- fmt.Errorf("failed to process data: %w", err)
 							return
@@ -344,7 +345,7 @@ func (b *BacktestEngineV1) Run() error {
 }
 
 // executeOrdersWithState executes the orders using the provided state
-func (b *BacktestEngineV1) executeOrdersWithState(marketData types.MarketData, strategy s.TradingStrategy, executeOrders []types.ExecuteOrder, runState *ParallelRunState) ([]types.Order, error) {
+func (b *BacktestEngineV1) executeOrdersWithState(marketData types.MarketData, strategy runtime.StrategyRuntime, executeOrders []types.ExecuteOrder, runState *ParallelRunState) ([]types.Order, error) {
 	orders := []types.Order{}
 	pendingOrders := []types.Order{}
 	totalCost := 0.0

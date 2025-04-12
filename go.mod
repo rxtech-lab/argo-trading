@@ -1,4 +1,4 @@
-module github.com/sirily11/argo-trading-go
+module github.com/rxtech-lab/argo-trading
 
 go 1.24.0
 
@@ -16,6 +16,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tetratelabs/wazero v1.9.0
 	github.com/vbauerster/mpb/v8 v8.9.3
+	go.uber.org/mock v0.5.1
 	go.uber.org/zap v1.27.0
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v2 v2.4.0

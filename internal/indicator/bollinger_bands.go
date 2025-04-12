@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 type InsufficientDataError struct {
@@ -35,8 +35,8 @@ func NewBollingerBands() Indicator {
 }
 
 // Name returns the name of the indicator
-func (bb *BollingerBands) Name() types.Indicator {
-	return types.IndicatorBollingerBands
+func (bb *BollingerBands) Name() types.IndicatorType {
+	return types.IndicatorTypeBollingerBands
 }
 
 // Config configures the Bollinger Bands indicator with the given parameters

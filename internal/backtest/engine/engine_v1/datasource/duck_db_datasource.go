@@ -9,8 +9,8 @@ import (
 	"github.com/Masterminds/squirrel"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/logger"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"go.uber.org/zap"
 )
 

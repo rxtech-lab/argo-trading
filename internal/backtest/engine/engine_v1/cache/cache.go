@@ -6,6 +6,8 @@ import (
 
 type Cache interface {
 	Reset()
+	Get(key string) (any, bool)
+	Set(key string, value any) error
 }
 
 type RangeFilterState struct {
@@ -49,8 +51,9 @@ func (c *CacheV1) Reset() {
 
 // Set cache data by key. Don't use this method if you want to add a state for indicator. Modify the CacheV1 struct directly.
 // This is for strategy only!
-func (c *CacheV1) Set(key string, value any) {
+func (c *CacheV1) Set(key string, value any) error {
 	c.otherData[key] = value
+	return nil
 }
 
 // Get cache data by key. Don't use this method if you want to get a state for indicator. Use the method in the indicator struct instead.

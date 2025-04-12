@@ -37,5 +37,5 @@ type Signal struct {
 	// Symbol is the symbol of the signal
 	Symbol string
 	// Indicator is the indicator that generated the signal
-	Indicator Indicator
+	Indicator IndicatorType
 }

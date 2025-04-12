@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/cache"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 // --- RangeFilter Indicator ---
@@ -27,8 +27,8 @@ func NewRangeFilter() Indicator {
 }
 
 // Name returns the name of the indicator.
-func (rf *RangeFilter) Name() types.Indicator {
-	return types.IndicatorRangeFilter
+func (rf *RangeFilter) Name() types.IndicatorType {
+	return types.IndicatorTypeRangeFilter
 }
 
 // Config configures the Range Filter indicator with the given parameters
@@ -159,7 +159,7 @@ func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx Indicato
 		absChange := math.Abs(src - value.PrevSource)
 
 		// Get EMA indicators from registry
-		shortEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorEMA)
+		shortEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeEMA)
 		if err != nil {
 			return result, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
 		}
@@ -171,7 +171,7 @@ func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx Indicato
 		}
 
 		// Clone for long EMA
-		longEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorEMA)
+		longEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeEMA)
 		if err != nil {
 			return result, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
 		}

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/logger"
-	s "github.com/sirily11/argo-trading-go/pkg/strategy"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 )
@@ -22,7 +22,7 @@ type runKey struct {
 // ProgressBarConfig holds the configuration for creating progress bars
 type ProgressBarConfig struct {
 	Progress    *mpb.Progress
-	Strategies  []s.TradingStrategy
+	Strategies  []runtime.StrategyRuntime
 	ConfigPaths []string
 	DataPaths   []string
 	Logger      *logger.Logger
@@ -80,7 +80,7 @@ func createProgressBars(config ProgressBarConfig) (map[runKey]*mpb.Bar, error) {
 	return bars, nil
 }
 
-func getResultFolder(configPath string, dataPath string, b *BacktestEngineV1, strategy s.TradingStrategy) string {
+func getResultFolder(configPath string, dataPath string, b *BacktestEngineV1, strategy runtime.StrategyRuntime) string {
 	// Create base folders for strategy and config
 	strategyFolder := filepath.Join(b.resultsFolder, strategy.Name())
 	configFolder := filepath.Join(strategyFolder, strings.TrimSuffix(filepath.Base(configPath), filepath.Ext(configPath)))

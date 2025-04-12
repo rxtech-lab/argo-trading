@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 // RSI represents the Relative Strength Index indicator
@@ -22,8 +22,8 @@ func NewRSI() Indicator {
 }
 
 // Name returns the name of the indicator
-func (r *RSI) Name() types.Indicator {
-	return types.IndicatorRSI
+func (r *RSI) Name() types.IndicatorType {
+	return types.IndicatorTypeRSI
 }
 
 // Config configures the RSI indicator with the given parameters

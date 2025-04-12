@@ -3,115 +3,39 @@ syntax = "proto3";
 package strategy;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
 
 option go_package = "github.com/sirily11/argo-trading-go/pkg/strategy";
 
 // MarketData represents the market data for a single point in time
 message MarketData {
   string symbol = 1;
-  double price = 2;
-  double volume = 3;
-  google.protobuf.Timestamp timestamp = 4;
-}
-
-// StrategyContext contains all the context needed for strategy execution
-message StrategyContext {
-  // DataSource provides the market data as well as the historical data
-  string data_source = 1;
-  // IndicatorRegistry is the registry of all indicators
-  string indicator_registry = 2;
-  // Cache is the cache of the strategy
-  string cache = 3;
-  // Trading System is used to place orders
-  string trading_system = 4;
-  // Marker is used to mark a point in time with a signal and a reason
-  string marker = 5;
-}
-
-// HostFunctions defines the functions that the host provides to the plugin
-// go:plugin type=host
-service HostFunctions {
-  // GetHistoricalData retrieves historical market data
-  rpc GetHistoricalData(HistoricalDataRequest) returns (HistoricalDataResponse) {}
-  // PlaceOrder places an order through the trading system
-  rpc PlaceOrder(OrderRequest) returns (OrderResponse) {}
-  // MarkSignal marks a point in time with a signal and reason
-  rpc MarkSignal(SignalRequest) returns (SignalResponse) {}
-}
-
-// HistoricalDataRequest is used to request historical data
-message HistoricalDataRequest {
-  string symbol = 1;
-  google.protobuf.Timestamp start_time = 2;
-  google.protobuf.Timestamp end_time = 3;
-}
-
-// HistoricalDataResponse contains the historical data
-message HistoricalDataResponse {
-  repeated MarketData data = 1;
-}
-
-// OrderRequest is used to place an order
-message OrderRequest {
-  string symbol = 1;
-  string order_type = 2;
-  double quantity = 3;
-  double price = 4;
-}
-
-// OrderResponse contains the order response
-message OrderResponse {
-  string order_id = 1;
-  bool success = 2;
-  string error = 3;
-}
-
-// SignalRequest is used to mark a signal
-message SignalRequest {
-  string symbol = 1;
-  string signal_type = 2;
-  string reason = 3;
-  google.protobuf.Timestamp timestamp = 4;
-}
-
-// SignalResponse contains the signal response
-message SignalResponse {
-  bool success = 1;
-  string error = 2;
+  double high = 2;
+  double low = 3;
+  double open = 4;
+  double close = 5;
+  double volume = 6;
+  google.protobuf.Timestamp time = 7;
 }
 
 // TradingStrategy defines the interface for trading strategies
 // go:plugin type=plugin version=1
 service TradingStrategy {
   // Initialize sets up the strategy with a configuration string
-  rpc Initialize(InitializeRequest) returns (InitializeResponse) {}
+  rpc Initialize(InitializeRequest) returns (google.protobuf.Empty) {}
   // ProcessData processes new market data and generates signals
-  rpc ProcessData(ProcessDataRequest) returns (ProcessDataResponse) {}
+  rpc ProcessData(ProcessDataRequest) returns (google.protobuf.Empty) {}
   // Name returns the name of the strategy
   rpc Name(NameRequest) returns (NameResponse) {}
 }
 
-// InitializeRequest contains the configuration for strategy initialization
 message InitializeRequest {
   string config = 1;
 }
 
-// InitializeResponse contains the initialization response
-message InitializeResponse {
-  bool success = 1;
-  string error = 2;
-}
-
 // ProcessDataRequest contains the market data to process
 message ProcessDataRequest {
-  StrategyContext context = 1;
-  MarketData data = 2;
-}
-
-// ProcessDataResponse contains the processing response
-message ProcessDataResponse {
-  bool success = 1;
-  string error = 2;
+  MarketData data = 1;
 }
 
 // NameRequest is an empty request for getting the strategy name
@@ -120,4 +44,263 @@ message NameRequest {}
 // NameResponse contains the strategy name
 message NameResponse {
   string name = 1;
-} 
+}
+
+// StrategyApi defines all the functions that the host provides to the plugin
+// go:plugin type=host
+service StrategyApi {
+  // DataSource methods
+  rpc GetRange(GetRangeRequest) returns (GetRangeResponse) {}
+  rpc ReadLastData(ReadLastDataRequest) returns (MarketData) {}
+  rpc ExecuteSQL(ExecuteSQLRequest) returns (ExecuteSQLResponse) {}
+  rpc Count(CountRequest) returns (CountResponse) {}
+
+  // Indicator methods
+  rpc ConfigureIndicator(ConfigureRequest) returns (google.protobuf.Empty) {}
+  rpc GetSignal(GetSignalRequest) returns (GetSignalResponse) {}
+
+  // Cache methods
+  rpc GetCache(GetRequest) returns (GetResponse) {}
+  rpc SetCache(SetRequest) returns (google.protobuf.Empty) {}
+
+  // TradingSystem methods
+  rpc PlaceOrder(ExecuteOrder) returns (google.protobuf.Empty) {}
+  rpc PlaceMultipleOrders(PlaceMultipleOrdersRequest) returns (google.protobuf.Empty) {}
+  rpc GetPositions(google.protobuf.Empty) returns (GetPositionsResponse) {}
+  rpc GetPosition(GetPositionRequest) returns (Position) {}
+  rpc CancelOrder(CancelOrderRequest) returns (google.protobuf.Empty) {}
+  rpc CancelAllOrders(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse) {}
+
+  // Marker methods
+  rpc Mark(MarkRequest) returns (google.protobuf.Empty) {}
+  rpc GetMarkers(google.protobuf.Empty) returns (GetMarkersResponse) {}
+}
+
+enum Interval {
+  INTERVAL_1M = 0;
+  INTERVAL_5M = 1;
+  INTERVAL_15M = 2;
+  INTERVAL_30M = 3;
+  INTERVAL_1H = 4;
+  INTERVAL_4H = 5;
+  INTERVAL_6H = 6;
+  INTERVAL_8H = 7;
+  INTERVAL_12H = 8;
+  INTERVAL_1D = 9;
+  INTERVAL_1W = 10;
+  INTERVAL_1MONTH = 11;
+}
+
+message GetRangeRequest {
+  string symbol = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  Interval interval = 4;
+}
+
+message GetRangeResponse {
+  repeated MarketData data = 1;
+}
+
+message ReadLastDataRequest {
+  string symbol = 1;
+}
+
+message ExecuteSQLRequest {
+  string query = 1;
+  repeated string params = 2;
+}
+
+message SQLResult {
+  map<string, string> fields = 1;
+}
+
+message ExecuteSQLResponse {
+  repeated SQLResult results = 1;
+}
+
+message CountRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+}
+
+message CountResponse {
+  int32 count = 1;
+}
+
+message ConfigureRequest {
+  IndicatorType indicator_type = 1;
+  string config = 2;
+}
+
+message GetSignalRequest {
+  IndicatorType indicator_type = 1;
+  MarketData market_data = 2;
+}
+
+message GetSignalResponse {
+  google.protobuf.Timestamp timestamp = 1;
+  SignalType type = 2;
+  string name = 3;
+  string reason = 4;
+  string rawValue = 5;
+  string symbol = 6;
+  IndicatorType indicatorType = 7;
+}
+
+enum SignalType {
+  SIGNAL_TYPE_BUY_LONG = 0;
+  SIGNAL_TYPE_SELL_LONG = 1;
+  SIGNAL_TYPE_BUY_SHORT = 2;
+  SIGNAL_TYPE_SELL_SHORT = 3;
+  SIGNAL_TYPE_NO_ACTION = 4;
+  SIGNAL_TYPE_CLOSE_POSITION = 5;
+  SIGNAL_TYPE_WAIT = 6;
+  SIGNAL_TYPE_ABORT = 7;
+}
+
+enum IndicatorType {
+  INDICATOR_RSI = 0;
+  INDICATOR_MACD = 1;
+  INDICATOR_BOLLINGER_BANDS = 2;
+  INDICATOR_STOCHASTIC_OSCILLATOR = 3;
+  INDICATOR_WILLIAMS_R = 4;
+  INDICATOR_ADX = 5;
+  INDICATOR_CCI = 6;
+  INDICATOR_AO = 7;
+  INDICATOR_TREND_STRENGTH = 8;
+  INDICATOR_RANGE_FILTER = 9;
+  INDICATOR_EMA = 10;
+  INDICATOR_WADDAH_ATTAR = 11;
+  INDICATOR_ATR = 12;
+}
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  string value = 1;
+}
+
+message SetRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message PlaceMultipleOrdersRequest {
+  repeated ExecuteOrder orders = 1;
+}
+
+message GetPositionsResponse {
+  repeated Position positions = 1;
+}
+
+message GetPositionRequest {
+  string symbol = 1;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+}
+
+message GetOrderStatusRequest {
+  string order_id = 1;
+}
+
+message GetOrderStatusResponse {
+  OrderStatus status = 1;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_PENDING = 0;
+  ORDER_STATUS_FILLED = 1;
+  ORDER_STATUS_CANCELLED = 2;
+  ORDER_STATUS_REJECTED = 3;
+  ORDER_STATUS_FAILED = 4;
+}
+
+enum PurchaseType {
+  PURCHASE_TYPE_BUY = 0;
+  PURCHASE_TYPE_SELL = 1;
+}
+
+enum OrderType {
+  ORDER_TYPE_MARKET = 0;
+  ORDER_TYPE_LIMIT = 1;
+}
+
+enum OrderReason {
+  ORDER_REASON_STOP_LOSS = 0;
+  ORDER_REASON_TAKE_PROFIT = 1;
+  ORDER_REASON_STRATEGY = 2;
+}
+
+message Reason {
+  string reason = 1;
+  string message = 2;
+}
+
+message ExecuteOrderTakeProfitOrStopLoss {
+  string symbol = 1;
+  PurchaseType side = 2;
+  OrderType order_type = 3;
+}
+
+message ExecuteOrder {
+  string id = 1;
+  string symbol = 2;
+  PurchaseType side = 3;
+  OrderType order_type = 4;
+  Reason reason = 5;
+  double price = 6;
+  string strategy_name = 7;
+  double quantity = 8;
+  ExecuteOrderTakeProfitOrStopLoss take_profit = 9;
+  ExecuteOrderTakeProfitOrStopLoss stop_loss = 10;
+}
+
+message Order {
+  string order_id = 1;
+  string symbol = 2;
+  PurchaseType side = 3;
+  double quantity = 4;
+  double price = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  bool is_completed = 7;
+  Reason reason = 8;
+  string strategy_name = 9;
+  double fee = 10;
+}
+
+message Position {
+  string symbol = 1;
+  double quantity = 2;
+  double total_in_quantity = 3;
+  double total_out_quantity = 4;
+  double total_in_amount = 5;
+  double total_out_amount = 6;
+  double total_in_fee = 7;
+  double total_out_fee = 8;
+  google.protobuf.Timestamp open_timestamp = 9;
+  string strategy_name = 10;
+}
+
+message MarkRequest {
+  MarketData market_data = 1;
+  SignalType signal = 2;
+  string reason = 3;
+}
+
+message GetMarkersResponse {
+  repeated Mark markers = 1;
+}
+
+message Mark {
+  MarketData market_data = 1;
+  SignalType signal = 2;
+  string reason = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+

@@ -9,10 +9,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/logger"
-	"github.com/sirily11/argo-trading-go/internal/strategy"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -883,7 +883,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			}
 
 			// Get stats
-			stats, err := suite.state.GetStats(strategy.StrategyContext{
+			stats, err := suite.state.GetStats(runtime.RuntimeContext{
 				DataSource: mockSource,
 			})
 			if tc.expectError {

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/datasource"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 // ATR represents the Average True Range indicator
@@ -23,8 +23,8 @@ func NewATR() Indicator {
 }
 
 // Name returns the name of the indicator
-func (a *ATR) Name() types.Indicator {
-	return types.IndicatorATR
+func (a *ATR) Name() types.IndicatorType {
+	return types.IndicatorTypeATR
 }
 
 // Config configures the ATR indicator with the given parameters
@@ -116,7 +116,7 @@ func (a *ATR) RawValue(params ...any) (float64, error) {
 	)
 
 	// Get EMA indicator for smoothing
-	emaIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorEMA)
+	emaIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeEMA)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get EMA indicator: %w", err)
 	}

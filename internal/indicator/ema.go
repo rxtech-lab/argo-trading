@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/sirily11/argo-trading-go/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 // EMA indicator implements Exponential Moving Average calculation
@@ -22,8 +22,8 @@ func NewEMA() Indicator {
 }
 
 // Name returns the name of the indicator
-func (e *EMA) Name() types.Indicator {
-	return types.IndicatorEMA
+func (e *EMA) Name() types.IndicatorType {
+	return types.IndicatorTypeEMA
 }
 
 // Config configures the EMA indicator with the given parameters

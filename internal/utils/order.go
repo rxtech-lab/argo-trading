@@ -1,6 +1,6 @@
 package utils
 
-import "github.com/sirily11/argo-trading-go/internal/backtest/engine/engine_v1/commission_fee"
+import "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 
 // Calculate the maximum quantity that can be bought with the given balance. Returns the quantity in integer
 func CalculateMaxQuantity(balance float64, price float64, commissionFee commission_fee.CommissionFee) int {

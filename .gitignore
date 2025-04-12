@@ -5,3 +5,4 @@ results
 .DS_Store
 .idea
 config
+mocks/mock_*

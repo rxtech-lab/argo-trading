@@ -1,6 +1,6 @@
 package marker
 
-import "github.com/sirily11/argo-trading-go/internal/types"
+import "github.com/rxtech-lab/argo-trading/internal/types"
 
 // Marker is a marker that can be used to mark a point in time with a signal and a reason
 type Marker interface {
