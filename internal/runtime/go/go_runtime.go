@@ -1,4 +1,4 @@
-package runtime
+package go_runtime
 
 import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime"

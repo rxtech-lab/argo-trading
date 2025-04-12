@@ -7,7 +7,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
-func strategyIntervalToDataSourceInterval(interval strategy.Interval) optional.Option[datasource.Interval] {
+func StrategyIntervalToDataSourceInterval(interval strategy.Interval) optional.Option[datasource.Interval] {
 	switch interval {
 	case strategy.Interval_INTERVAL_1M:
 		return optional.Some(datasource.Interval1m)
@@ -22,7 +22,7 @@ func strategyIntervalToDataSourceInterval(interval strategy.Interval) optional.O
 	}
 }
 
-func strategyPurchaseTypeToPurchaseType(purchaseType strategy.PurchaseType) types.PurchaseType {
+func StrategyPurchaseTypeToPurchaseType(purchaseType strategy.PurchaseType) types.PurchaseType {
 	switch purchaseType {
 	case strategy.PurchaseType_PURCHASE_TYPE_BUY:
 		return types.PurchaseTypeBuy
@@ -33,7 +33,7 @@ func strategyPurchaseTypeToPurchaseType(purchaseType strategy.PurchaseType) type
 	}
 }
 
-func strategyOrderTypeToOrderType(orderType strategy.OrderType) types.OrderType {
+func StrategyOrderTypeToOrderType(orderType strategy.OrderType) types.OrderType {
 	switch orderType {
 	case strategy.OrderType_ORDER_TYPE_MARKET:
 		return types.OrderTypeMarket
@@ -44,7 +44,7 @@ func strategyOrderTypeToOrderType(orderType strategy.OrderType) types.OrderType 
 	}
 }
 
-func strategySignalTypeToSignalType(signalType strategy.SignalType) types.SignalType {
+func StrategySignalTypeToSignalType(signalType strategy.SignalType) types.SignalType {
 	switch signalType {
 	case strategy.SignalType_SIGNAL_TYPE_BUY_LONG:
 		return types.SignalTypeBuyLong
@@ -59,7 +59,7 @@ func strategySignalTypeToSignalType(signalType strategy.SignalType) types.Signal
 	}
 }
 
-func strategyIndicatorTypeToIndicatorType(indicatorType strategy.IndicatorType) types.IndicatorType {
+func StrategyIndicatorTypeToIndicatorType(indicatorType strategy.IndicatorType) types.IndicatorType {
 	switch indicatorType {
 	case strategy.IndicatorType_INDICATOR_RSI:
 		return types.IndicatorTypeRSI
@@ -88,7 +88,7 @@ func strategyIndicatorTypeToIndicatorType(indicatorType strategy.IndicatorType) 
 	}
 }
 
-func signalTypeToStrategySignalType(signalType types.SignalType) strategy.SignalType {
+func SignalTypeToStrategySignalType(signalType types.SignalType) strategy.SignalType {
 	switch signalType {
 	case types.SignalTypeBuyLong:
 		return strategy.SignalType_SIGNAL_TYPE_BUY_LONG
@@ -111,7 +111,7 @@ func signalTypeToStrategySignalType(signalType types.SignalType) strategy.Signal
 	}
 }
 
-func indicatorTypeToStrategyIndicatorType(indicatorType types.IndicatorType) strategy.IndicatorType {
+func IndicatorTypeToStrategyIndicatorType(indicatorType types.IndicatorType) strategy.IndicatorType {
 	switch indicatorType {
 	case types.IndicatorTypeRSI:
 		return strategy.IndicatorType_INDICATOR_RSI
@@ -139,7 +139,8 @@ func indicatorTypeToStrategyIndicatorType(indicatorType types.IndicatorType) str
 		return strategy.IndicatorType_INDICATOR_RSI
 	}
 }
-func orderTypeToStrategyOrderType(orderType types.OrderType) strategy.OrderType {
+
+func OrderTypeToStrategyOrderType(orderType types.OrderType) strategy.OrderType {
 	switch orderType {
 	case types.OrderTypeMarket:
 		return strategy.OrderType_ORDER_TYPE_MARKET

@@ -1,129 +1,133 @@
+//go:build wasip1
+
 package main
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 
-	"github.com/sirily11/argo-trading-go/pkg/strategy"
+	"github.com/knqyf263/go-plugin/types/known/emptypb"
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
-// RSIConfig contains the configuration for the RSI strategy
-type RSIConfig struct {
-	Period     int     `json:"period"`
-	Overbought float64 `json:"overbought"`
-	Oversold   float64 `json:"oversold"`
+// ConsecutiveCandlesStrategy implements a strategy that buys on 2 consecutive up candles
+// and sells on 2 consecutive down candles
+type ConsecutiveCandlesStrategy struct {
+	// Strategy is stateless, state is stored in cache
 }
 
-// RSIStrategy implements the TradingStrategy interface
-type RSIStrategy struct {
-	config RSIConfig
-	prices []float64
+func main() {}
+
+func init() {
+	strategy.RegisterTradingStrategy(NewConsecutiveCandlesStrategy())
 }
 
-// Initialize sets up the strategy with the given configuration
-func (s *RSIStrategy) Initialize(ctx context.Context, req *strategy.InitializeRequest) (*strategy.InitializeResponse, error) {
-	// Parse the configuration
-	// In a real implementation, you would use a JSON parser here
-	s.config = RSIConfig{
-		Period:     14,
-		Overbought: 70,
-		Oversold:   30,
-	}
-	s.prices = make([]float64, 0)
-	return &strategy.InitializeResponse{Success: true}, nil
+func NewConsecutiveCandlesStrategy() strategy.TradingStrategy {
+	return &ConsecutiveCandlesStrategy{}
 }
 
-// ProcessData processes new market data and generates signals
-func (s *RSIStrategy) ProcessData(ctx context.Context, req *strategy.ProcessDataRequest) (*strategy.ProcessDataResponse, error) {
-	// Add the new price to our price history
-	s.prices = append(s.prices, req.Data.Price)
+// Initialize implements strategy.TradingStrategy.
+func (s *ConsecutiveCandlesStrategy) Initialize(_ context.Context, _ *strategy.InitializeRequest) (*emptypb.Empty, error) {
+	// Nothing to initialize
+	return &emptypb.Empty{}, nil
+}
 
-	// If we don't have enough data yet, return
-	if len(s.prices) < s.config.Period {
-		return &strategy.ProcessDataResponse{Success: true}, nil
-	}
+// Name implements strategy.TradingStrategy.
+func (s *ConsecutiveCandlesStrategy) Name(_ context.Context, _ *strategy.NameRequest) (*strategy.NameResponse, error) {
+	return &strategy.NameResponse{Name: "ConsecutiveCandlesStrategy"}, nil
+}
 
-	// Calculate RSI
-	rsi := s.calculateRSI()
+// ProcessData implements strategy.TradingStrategy.
+func (s *ConsecutiveCandlesStrategy) ProcessData(ctx context.Context, req *strategy.ProcessDataRequest) (*emptypb.Empty, error) {
+	data := req.Data
+	// Get API for interacting with the host system
+	api := strategy.NewStrategyApi()
+	// Get previous data from cache
+	cacheKey := "prev_data_" + data.Symbol
+	prevDataResp, err := api.GetCache(ctx, &strategy.GetRequest{Key: cacheKey})
 
-	// Generate signals based on RSI
-	if rsi > s.config.Overbought {
-		// Overbought signal
-		_, err := req.Context.HostFunctions.MarkSignal(ctx, &strategy.SignalRequest{
-			Symbol:     req.Data.Symbol,
-			SignalType: "SELL",
-			Reason:     fmt.Sprintf("RSI %f is above overbought threshold %f", rsi, s.config.Overbought),
-			Timestamp:  req.Data.Timestamp,
+	// If there's no previous data or an error, just store current data and return
+	if err != nil || prevDataResp.Value == "" {
+		// Store current data in cache
+		dataJson, err := json.Marshal(data)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = api.SetCache(ctx, &strategy.SetRequest{
+			Key:   cacheKey,
+			Value: string(dataJson),
 		})
 		if err != nil {
-			return &strategy.ProcessDataResponse{Success: false, Error: err.Error()}, nil
+			return nil, err
 		}
-	} else if rsi < s.config.Oversold {
-		// Oversold signal
-		_, err := req.Context.HostFunctions.MarkSignal(ctx, &strategy.SignalRequest{
-			Symbol:     req.Data.Symbol,
-			SignalType: "BUY",
-			Reason:     fmt.Sprintf("RSI %f is below oversold threshold %f", rsi, s.config.Oversold),
-			Timestamp:  req.Data.Timestamp,
-		})
+
+		return &emptypb.Empty{}, nil
+	}
+
+	// Parse previous data from cache
+	var prevData strategy.MarketData
+	if err := json.Unmarshal([]byte(prevDataResp.Value), &prevData); err != nil {
+		return nil, err
+	}
+
+	// Check for consecutive up candles
+	if data.Close > data.Open && prevData.Close > prevData.Open {
+		// Buy signal
+		order := &strategy.ExecuteOrder{
+			Symbol:    data.Symbol,
+			Side:      strategy.PurchaseType_PURCHASE_TYPE_BUY,
+			OrderType: strategy.OrderType_ORDER_TYPE_LIMIT,
+			Quantity:  1.0, // Fixed quantity
+			Price:     data.Close,
+			Reason: &strategy.Reason{
+				Reason:  "strategy",
+				Message: "Two consecutive up candles",
+			},
+			StrategyName: "ConsecutiveCandlesStrategy",
+		}
+
+		_, err := api.PlaceOrder(ctx, order)
 		if err != nil {
-			return &strategy.ProcessDataResponse{Success: false, Error: err.Error()}, nil
+			return nil, err
 		}
 	}
 
-	return &strategy.ProcessDataResponse{Success: true}, nil
-}
+	// Check for consecutive down candles
+	if data.Close < data.Open && prevData.Close < prevData.Open {
+		// Sell signal
+		order := &strategy.ExecuteOrder{
+			Symbol:    data.Symbol,
+			Side:      strategy.PurchaseType_PURCHASE_TYPE_SELL,
+			OrderType: strategy.OrderType_ORDER_TYPE_LIMIT,
+			Quantity:  1.0, // Fixed quantity
+			Price:     data.Close,
+			Reason: &strategy.Reason{
+				Reason:  "strategy",
+				Message: "Two consecutive down candles",
+			},
+			StrategyName: "ConsecutiveCandlesStrategy",
+		}
 
-// Name returns the name of the strategy
-func (s *RSIStrategy) Name(ctx context.Context, req *strategy.NameRequest) (*strategy.NameResponse, error) {
-	return &strategy.NameResponse{Name: "RSI Strategy"}, nil
-}
-
-// calculateRSI calculates the Relative Strength Index
-func (s *RSIStrategy) calculateRSI() float64 {
-	if len(s.prices) < s.config.Period {
-		return 0
-	}
-
-	// Calculate price changes
-	gains := make([]float64, 0)
-	losses := make([]float64, 0)
-
-	for i := 1; i < len(s.prices); i++ {
-		change := s.prices[i] - s.prices[i-1]
-		if change >= 0 {
-			gains = append(gains, change)
-			losses = append(losses, 0)
-		} else {
-			gains = append(gains, 0)
-			losses = append(losses, -change)
+		_, err := api.PlaceOrder(ctx, order)
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	// Calculate average gain and loss
-	avgGain := average(gains[:s.config.Period])
-	avgLoss := average(losses[:s.config.Period])
-
-	// Calculate RS and RSI
-	rs := avgGain / avgLoss
-	rsi := 100 - (100 / (1 + rs))
-
-	return rsi
-}
-
-// average calculates the average of a float64 slice
-func average(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
+	// Update cache with current data
+	dataJson, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
 	}
-	sum := 0.0
-	for _, v := range values {
-		sum += v
-	}
-	return sum / float64(len(values))
-}
 
-func main() {
-	// This is required for the plugin to work
-	// The plugin system will call the exported functions
+	_, err = api.SetCache(ctx, &strategy.SetRequest{
+		Key:   cacheKey,
+		Value: string(dataJson),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
 }

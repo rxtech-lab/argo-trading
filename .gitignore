@@ -6,3 +6,4 @@ results
 .idea
 config
 mocks/mock_*
+*.wasm

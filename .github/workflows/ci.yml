@@ -26,8 +26,11 @@ jobs:
       - name: Install go-plugin
         run: ./scripts/setup.sh
 
-      - name: Generate
+      - name: Generate sdk and mocks
         run: make generate
+
+      - name: Compile wasm
+        run: cd examples/strategy && make build
 
       - name: Run tests with coverage
         run: |

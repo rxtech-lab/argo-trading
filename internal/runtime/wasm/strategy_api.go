@@ -1,4 +1,4 @@
-package runtime
+package wasm
 
 import (
 	"context"
@@ -9,16 +9,17 @@ import (
 	"github.com/knqyf263/go-plugin/types/known/timestamppb"
 	"github.com/moznion/go-optional"
 	i "github.com/rxtech-lab/argo-trading/internal/indicator"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
-type strategyApiForWasm struct {
-	runtimeContext *RuntimeContext
+type StrategyApiForWasm struct {
+	runtimeContext *runtime.RuntimeContext
 }
 
 // CancelAllOrders implements strategy.StrategyApi.
-func (s strategyApiForWasm) CancelAllOrders(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+func (s StrategyApiForWasm) CancelAllOrders(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
 	err := (s.runtimeContext.TradingSystem).CancelAllOrders()
 	if err != nil {
 		return nil, err
@@ -27,7 +28,7 @@ func (s strategyApiForWasm) CancelAllOrders(ctx context.Context, _ *emptypb.Empt
 }
 
 // CancelOrder implements strategy.StrategyApi.
-func (s strategyApiForWasm) CancelOrder(ctx context.Context, req *strategy.CancelOrderRequest) (*emptypb.Empty, error) {
+func (s StrategyApiForWasm) CancelOrder(ctx context.Context, req *strategy.CancelOrderRequest) (*emptypb.Empty, error) {
 	err := (s.runtimeContext.TradingSystem).CancelOrder(req.OrderId)
 	if err != nil {
 		return nil, err
@@ -36,7 +37,7 @@ func (s strategyApiForWasm) CancelOrder(ctx context.Context, req *strategy.Cance
 }
 
 // ConfigureIndicator implements strategy.StrategyApi.
-func (s strategyApiForWasm) ConfigureIndicator(ctx context.Context, req *strategy.ConfigureRequest) (*emptypb.Empty, error) {
+func (s StrategyApiForWasm) ConfigureIndicator(ctx context.Context, req *strategy.ConfigureRequest) (*emptypb.Empty, error) {
 	registry := s.runtimeContext.IndicatorRegistry
 	indicator, err := registry.GetIndicator(types.IndicatorType(req.IndicatorType))
 	if err != nil {
@@ -50,7 +51,7 @@ func (s strategyApiForWasm) ConfigureIndicator(ctx context.Context, req *strateg
 }
 
 // Count implements strategy.StrategyApi.
-func (s strategyApiForWasm) Count(ctx context.Context, req *strategy.CountRequest) (*strategy.CountResponse, error) {
+func (s StrategyApiForWasm) Count(ctx context.Context, req *strategy.CountRequest) (*strategy.CountResponse, error) {
 	startTime := optional.Some(req.StartTime.AsTime())
 	endTime := optional.Some(req.EndTime.AsTime())
 	count, err := s.runtimeContext.DataSource.Count(startTime, endTime)
@@ -63,7 +64,7 @@ func (s strategyApiForWasm) Count(ctx context.Context, req *strategy.CountReques
 }
 
 // ExecuteSQL implements strategy.StrategyApi.
-func (s strategyApiForWasm) ExecuteSQL(ctx context.Context, req *strategy.ExecuteSQLRequest) (*strategy.ExecuteSQLResponse, error) {
+func (s StrategyApiForWasm) ExecuteSQL(ctx context.Context, req *strategy.ExecuteSQLRequest) (*strategy.ExecuteSQLResponse, error) {
 	params := make([]interface{}, len(req.Params))
 	for i, param := range req.Params {
 		params[i] = param
@@ -95,13 +96,20 @@ func (s strategyApiForWasm) ExecuteSQL(ctx context.Context, req *strategy.Execut
 }
 
 // GetCache implements strategy.StrategyApi.
-func (s strategyApiForWasm) GetCache(ctx context.Context, req *strategy.GetRequest) (*strategy.GetResponse, error) {
+func (s StrategyApiForWasm) GetCache(ctx context.Context, req *strategy.GetRequest) (*strategy.GetResponse, error) {
 	cache := s.runtimeContext.Cache
 
 	value, ok := cache.Get(req.Key)
 	if !ok {
-		return nil, fmt.Errorf("cache key not found: %s", req.Key)
+		return &strategy.GetResponse{}, nil
 	}
+	// check if value is a string
+	if strVal, ok := value.(string); ok {
+		return &strategy.GetResponse{
+			Value: strVal,
+		}, nil
+	}
+
 	// json marshal
 	jsonValue, err := json.Marshal(value)
 	if err != nil {
@@ -114,7 +122,7 @@ func (s strategyApiForWasm) GetCache(ctx context.Context, req *strategy.GetReque
 }
 
 // GetMarkers implements strategy.StrategyApi.
-func (s strategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*strategy.GetMarkersResponse, error) {
+func (s StrategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*strategy.GetMarkersResponse, error) {
 	markers, err := (s.runtimeContext.Marker).GetMarkers()
 	if err != nil {
 		return nil, err
@@ -169,7 +177,7 @@ func (s strategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*
 }
 
 // GetOrderStatus implements strategy.StrategyApi.
-func (s strategyApiForWasm) GetOrderStatus(ctx context.Context, req *strategy.GetOrderStatusRequest) (*strategy.GetOrderStatusResponse, error) {
+func (s StrategyApiForWasm) GetOrderStatus(ctx context.Context, req *strategy.GetOrderStatusRequest) (*strategy.GetOrderStatusResponse, error) {
 	status, err := (s.runtimeContext.TradingSystem).GetOrderStatus(req.OrderId)
 	if err != nil {
 		return nil, err
@@ -197,7 +205,7 @@ func (s strategyApiForWasm) GetOrderStatus(ctx context.Context, req *strategy.Ge
 }
 
 // GetPosition implements strategy.StrategyApi.
-func (s strategyApiForWasm) GetPosition(ctx context.Context, req *strategy.GetPositionRequest) (*strategy.Position, error) {
+func (s StrategyApiForWasm) GetPosition(ctx context.Context, req *strategy.GetPositionRequest) (*strategy.Position, error) {
 	position, err := (s.runtimeContext.TradingSystem).GetPosition(req.Symbol)
 	if err != nil {
 		return nil, err
@@ -218,7 +226,7 @@ func (s strategyApiForWasm) GetPosition(ctx context.Context, req *strategy.GetPo
 }
 
 // GetPositions implements strategy.StrategyApi.
-func (s strategyApiForWasm) GetPositions(ctx context.Context, _ *emptypb.Empty) (*strategy.GetPositionsResponse, error) {
+func (s StrategyApiForWasm) GetPositions(ctx context.Context, _ *emptypb.Empty) (*strategy.GetPositionsResponse, error) {
 	positions, err := (s.runtimeContext.TradingSystem).GetPositions()
 	if err != nil {
 		return nil, err
@@ -247,8 +255,8 @@ func (s strategyApiForWasm) GetPositions(ctx context.Context, _ *emptypb.Empty) 
 }
 
 // GetRange implements strategy.StrategyApi.
-func (s strategyApiForWasm) GetRange(ctx context.Context, req *strategy.GetRangeRequest) (*strategy.GetRangeResponse, error) {
-	intervalValue := strategyIntervalToDataSourceInterval(req.Interval)
+func (s StrategyApiForWasm) GetRange(ctx context.Context, req *strategy.GetRangeRequest) (*strategy.GetRangeResponse, error) {
+	intervalValue := runtime.StrategyIntervalToDataSourceInterval(req.Interval)
 	data, err := s.runtimeContext.DataSource.GetRange(req.StartTime.AsTime(), req.EndTime.AsTime(), intervalValue)
 	if err != nil {
 		return nil, err
@@ -274,7 +282,7 @@ func (s strategyApiForWasm) GetRange(ctx context.Context, req *strategy.GetRange
 }
 
 // GetSignal implements strategy.StrategyApi.
-func (s strategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSignalRequest) (*strategy.GetSignalResponse, error) {
+func (s StrategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSignalRequest) (*strategy.GetSignalResponse, error) {
 	registry := s.runtimeContext.IndicatorRegistry
 	indicator, err := registry.GetIndicator(types.IndicatorType(req.IndicatorType))
 	if err != nil {
@@ -310,29 +318,29 @@ func (s strategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSign
 
 	return &strategy.GetSignalResponse{
 		Timestamp:     timestamppb.New(signal.Time),
-		Type:          signalTypeToStrategySignalType(signal.Type),
+		Type:          runtime.SignalTypeToStrategySignalType(signal.Type),
 		Name:          signal.Name,
 		Reason:        signal.Reason,
 		RawValue:      string(rawValue),
 		Symbol:        signal.Symbol,
-		IndicatorType: strategy.IndicatorType(req.IndicatorType),
+		IndicatorType: req.IndicatorType,
 	}, nil
 }
 
 // Mark implements strategy.StrategyApi.
-func (s strategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest) (*emptypb.Empty, error) {
+func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest) (*emptypb.Empty, error) {
 	panic("not implemented")
 }
 
 // PlaceMultipleOrders implements strategy.StrategyApi.
-func (s strategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strategy.PlaceMultipleOrdersRequest) (*emptypb.Empty, error) {
+func (s StrategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strategy.PlaceMultipleOrdersRequest) (*emptypb.Empty, error) {
 	orders := make([]types.ExecuteOrder, len(req.Orders))
 	for i, order := range req.Orders {
 		orders[i] = types.ExecuteOrder{
 			ID:           order.Id,
 			Symbol:       order.Symbol,
-			Side:         strategyPurchaseTypeToPurchaseType(order.Side),
-			OrderType:    strategyOrderTypeToOrderType(order.OrderType),
+			Side:         runtime.StrategyPurchaseTypeToPurchaseType(order.Side),
+			OrderType:    runtime.StrategyOrderTypeToOrderType(order.OrderType),
 			Price:        order.Price,
 			StrategyName: order.StrategyName,
 			Quantity:     order.Quantity,
@@ -345,16 +353,16 @@ func (s strategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strate
 		if order.TakeProfit != nil {
 			orders[i].TakeProfit = optional.Some(types.ExecuteOrderTakeProfitOrStopLoss{
 				Symbol:    order.TakeProfit.Symbol,
-				Side:      strategyPurchaseTypeToPurchaseType(order.TakeProfit.Side),
-				OrderType: strategyOrderTypeToOrderType(order.TakeProfit.OrderType),
+				Side:      runtime.StrategyPurchaseTypeToPurchaseType(order.TakeProfit.Side),
+				OrderType: runtime.StrategyOrderTypeToOrderType(order.TakeProfit.OrderType),
 			})
 		}
 
 		if order.StopLoss != nil {
 			orders[i].StopLoss = optional.Some(types.ExecuteOrderTakeProfitOrStopLoss{
 				Symbol:    order.StopLoss.Symbol,
-				Side:      strategyPurchaseTypeToPurchaseType(order.StopLoss.Side),
-				OrderType: strategyOrderTypeToOrderType(order.StopLoss.OrderType),
+				Side:      runtime.StrategyPurchaseTypeToPurchaseType(order.StopLoss.Side),
+				OrderType: runtime.StrategyOrderTypeToOrderType(order.StopLoss.OrderType),
 			})
 		}
 	}
@@ -368,12 +376,12 @@ func (s strategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strate
 }
 
 // PlaceOrder implements strategy.StrategyApi.
-func (s strategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.ExecuteOrder) (*emptypb.Empty, error) {
+func (s StrategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.ExecuteOrder) (*emptypb.Empty, error) {
 	order := types.ExecuteOrder{
 		ID:           req.Id,
 		Symbol:       req.Symbol,
-		Side:         strategyPurchaseTypeToPurchaseType(req.Side),
-		OrderType:    strategyOrderTypeToOrderType(req.OrderType),
+		Side:         runtime.StrategyPurchaseTypeToPurchaseType(req.Side),
+		OrderType:    runtime.StrategyOrderTypeToOrderType(req.OrderType),
 		Price:        req.Price,
 		StrategyName: req.StrategyName,
 		Quantity:     req.Quantity,
@@ -386,16 +394,16 @@ func (s strategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.Execut
 	if req.TakeProfit != nil {
 		order.TakeProfit = optional.Some(types.ExecuteOrderTakeProfitOrStopLoss{
 			Symbol:    req.TakeProfit.Symbol,
-			Side:      strategyPurchaseTypeToPurchaseType(req.TakeProfit.Side),
-			OrderType: strategyOrderTypeToOrderType(req.TakeProfit.OrderType),
+			Side:      runtime.StrategyPurchaseTypeToPurchaseType(req.TakeProfit.Side),
+			OrderType: runtime.StrategyOrderTypeToOrderType(req.TakeProfit.OrderType),
 		})
 	}
 
 	if req.StopLoss != nil {
 		order.StopLoss = optional.Some(types.ExecuteOrderTakeProfitOrStopLoss{
 			Symbol:    req.StopLoss.Symbol,
-			Side:      strategyPurchaseTypeToPurchaseType(req.StopLoss.Side),
-			OrderType: strategyOrderTypeToOrderType(req.StopLoss.OrderType),
+			Side:      runtime.StrategyPurchaseTypeToPurchaseType(req.StopLoss.Side),
+			OrderType: runtime.StrategyOrderTypeToOrderType(req.StopLoss.OrderType),
 		})
 	}
 
@@ -408,7 +416,7 @@ func (s strategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.Execut
 }
 
 // ReadLastData implements strategy.StrategyApi.
-func (s strategyApiForWasm) ReadLastData(ctx context.Context, req *strategy.ReadLastDataRequest) (*strategy.MarketData, error) {
+func (s StrategyApiForWasm) ReadLastData(ctx context.Context, req *strategy.ReadLastDataRequest) (*strategy.MarketData, error) {
 	data, err := s.runtimeContext.DataSource.ReadLastData(req.Symbol)
 	if err != nil {
 		return nil, err
@@ -426,7 +434,7 @@ func (s strategyApiForWasm) ReadLastData(ctx context.Context, req *strategy.Read
 }
 
 // SetCache implements strategy.StrategyApi.
-func (s strategyApiForWasm) SetCache(ctx context.Context, req *strategy.SetRequest) (*emptypb.Empty, error) {
+func (s StrategyApiForWasm) SetCache(ctx context.Context, req *strategy.SetRequest) (*emptypb.Empty, error) {
 	cache := s.runtimeContext.Cache
 
 	err := (cache).Set(req.Key, req.Value)
@@ -437,14 +445,14 @@ func (s strategyApiForWasm) SetCache(ctx context.Context, req *strategy.SetReque
 	return &emptypb.Empty{}, nil
 }
 
-func NewWasmStrategyApi(ctx *RuntimeContext) strategy.StrategyApi {
-	return strategyApiForWasm{
+func NewWasmStrategyApi(ctx *runtime.RuntimeContext) strategy.StrategyApi {
+	return StrategyApiForWasm{
 		runtimeContext: ctx,
 	}
 }
 
 // GetStrategyApi returns the strategy api that provides host functions
 // for wasm runtime strategies to interact with the trading system.
-func (r *RuntimeContext) GetStrategyApiForWasm() strategy.StrategyApi {
+func GetStrategyApiForWasm(r *runtime.RuntimeContext) strategy.StrategyApi {
 	return NewWasmStrategyApi(r)
 }

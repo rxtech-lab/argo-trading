@@ -1,4 +1,4 @@
-package runtime
+package wasm
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/knqyf263/go-plugin/types/known/timestamppb"
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/mocks"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
@@ -25,7 +26,7 @@ type StrategyApiTestSuite struct {
 	mockDataSource *mocks.MockDataSource
 	mockCache      *mocks.MockCache
 	mockMarker     *mocks.MockMarker
-	runtimeContext *RuntimeContext
+	runtimeContext *runtime.RuntimeContext
 	api            strategy.StrategyApi
 }
 
@@ -38,7 +39,7 @@ func (suite *StrategyApiTestSuite) SetupTest() {
 	suite.mockCache = mocks.NewMockCache(suite.ctrl)
 	suite.mockMarker = mocks.NewMockMarker(suite.ctrl)
 
-	suite.runtimeContext = &RuntimeContext{
+	suite.runtimeContext = &runtime.RuntimeContext{
 		TradingSystem:     suite.mockTrading,
 		IndicatorRegistry: suite.mockIndicators,
 		DataSource:        suite.mockDataSource,
@@ -199,40 +200,110 @@ func (suite *StrategyApiTestSuite) TestReadLastData() {
 
 // TestSetCache tests the SetCache method
 func (suite *StrategyApiTestSuite) TestSetCache() {
-	key := "test-key"
-	value := "test-value"
+	tests := []struct {
+		name        string
+		key         string
+		inputValue  string
+		expectError bool
+	}{
+		{
+			name:        "String value",
+			key:         "string-key",
+			inputValue:  "test-value",
+			expectError: false,
+		},
+		{
+			name:        "Number as string",
+			key:         "number-key",
+			inputValue:  "42.5",
+			expectError: false,
+		},
+		{
+			name:        "JSON object",
+			key:         "object-key",
+			inputValue:  `{"name":"test","price":100.5,"tags":["crypto","trading"]}`,
+			expectError: false,
+		},
+	}
 
-	// Setup expectations
-	suite.mockCache.EXPECT().
-		Set(key, value).
-		Return(nil)
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			// Setup expectations
+			suite.mockCache.EXPECT().
+				Set(tc.key, tc.inputValue).
+				Return(nil)
 
-	// Execute test
-	_, err := suite.api.SetCache(context.Background(), &strategy.SetRequest{
-		Key:   key,
-		Value: value,
-	})
+			// Execute test
+			_, err := suite.api.SetCache(context.Background(), &strategy.SetRequest{
+				Key:   tc.key,
+				Value: tc.inputValue,
+			})
 
-	suite.NoError(err)
+			if tc.expectError {
+				suite.Error(err)
+			} else {
+				suite.NoError(err)
+			}
+		})
+	}
 }
 
 // TestGetCache tests the GetCache method
 func (suite *StrategyApiTestSuite) TestGetCache() {
-	key := "test-key"
-	value := "test-value"
+	tests := []struct {
+		name        string
+		key         string
+		value       interface{}
+		expectError bool
+		expectedRes string
+	}{
+		{
+			name:        "String value",
+			key:         "string-key",
+			value:       "test-value",
+			expectError: false,
+			expectedRes: "test-value",
+		},
+		{
+			name:        "Number value",
+			key:         "number-key",
+			value:       42.5,
+			expectError: false,
+			expectedRes: "42.5",
+		},
+		{
+			name: "Object value",
+			key:  "object-key",
+			value: map[string]interface{}{
+				"name":  "test",
+				"price": 100.5,
+				"tags":  []string{"crypto", "trading"},
+			},
+			expectError: false,
+			expectedRes: `{"name":"test","price":100.5,"tags":["crypto","trading"]}`,
+		},
+	}
 
-	// Setup expectations
-	suite.mockCache.EXPECT().
-		Get(key).
-		Return(value, true)
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			// Setup expectations
+			suite.mockCache.EXPECT().
+				Get(tc.key).
+				Return(tc.value, true)
 
-	// Execute test
-	response, err := suite.api.GetCache(context.Background(), &strategy.GetRequest{
-		Key: key,
-	})
+			// Execute test
+			response, err := suite.api.GetCache(context.Background(), &strategy.GetRequest{
+				Key: tc.key,
+			})
 
-	suite.NoError(err)
-	suite.Contains(response.Value, value)
+			if tc.expectError {
+				suite.Error(err)
+			} else {
+				suite.NoError(err)
+				suite.Equal(tc.expectedRes, response.Value)
+			}
+		})
+	}
 }
 
 // TestGetMarkers tests the GetMarkers method

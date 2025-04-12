@@ -1,9 +1,12 @@
-package runtime
+package wasm
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	timestamppb "github.com/knqyf263/go-plugin/types/known/timestamppb"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
@@ -15,13 +18,18 @@ type StrategyWasmRuntime struct {
 }
 
 // NewStrategyWasmRuntime creates a new StrategyWasmRuntime with `wasmFilePath` as the strategy file.
-func NewStrategyWasmRuntime(wasmFilePath string) (StrategyRuntime, error) {
+func NewStrategyWasmRuntime(wasmFilePath string, strategyApi strategy.StrategyApi) (runtime.StrategyRuntime, error) {
+	// check if file exists
+	if _, err := os.Stat(wasmFilePath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("file does not exist: %s", wasmFilePath)
+	}
+
 	ctx := context.Background()
 	p, err := strategy.NewTradingStrategyPlugin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	plugin, err := p.Load(ctx, wasmFilePath, nil)
+	plugin, err := p.Load(ctx, wasmFilePath, strategyApi)
 	if err != nil {
 		return nil, err
 	}
