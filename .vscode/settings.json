@@ -12,6 +12,7 @@
     "progressbar",
     "schollz",
     "sirily",
-    "Timespan"
+    "Timespan",
+    "timestamppb"
   ]
 }

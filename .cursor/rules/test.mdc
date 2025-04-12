@@ -1,7 +1,7 @@
 ---
 description: 
-globs: 
-alwaysApply: true
+globs: *.go
+alwaysApply: false
 ---
 # Write test along with code 
 
@@ -72,3 +72,22 @@ func TestBacktestStateSuite(t *testing.T) {
 # Run tests after implementation
 
 Always run `go test ./...` when implementing a new feature. Fix the bug accordingly.
+
+
+# Database test with duckDB
+
+If user ask to not to use mock to generate test, check the `internal/backtest/engine/engine_v1/state_test.go` for how to create a test using duckdb by not mocking it. When you deal with a file that contains duckdb or datasource, do not mock it, create mock data instead.
+
+
+# Test with mock
+
+1. Write a mockgen in `mocks/generate.go` similar to `//go:generate mockgen -destination=./mock_trading.go -package=mocks github.com/rxtech-lab/argo-trading/internal/trading TradingSystem` to generate mock
+2. Test with mock
+3. More info at `https://github.com/uber-go/mock`
+
+
+
+
+
+
+

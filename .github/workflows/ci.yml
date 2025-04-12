@@ -23,6 +23,15 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install go-plugin
+        run: ./scripts/setup.sh
+
+      - name: Generate sdk and mocks
+        run: make generate
+
+      - name: Compile wasm
+        run: cd examples/strategy && make build
+
       - name: Run tests with coverage
         run: |
           # Create test output directory

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/polygon-io/client-go/rest/models"
-	"github.com/sirily11/argo-trading-go/cmd/download/clients"
+	"github.com/rxtech-lab/argo-trading/cmd/download/clients"
 )
 
 func main() {

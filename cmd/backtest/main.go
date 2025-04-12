@@ -4,8 +4,7 @@ import (
 	"log"
 	"os"
 
-	engine "github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1"
-	"github.com/sirily11/argo-trading-go/src/strategy"
+	engine "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
 )
 
 func main() {
@@ -30,7 +29,7 @@ func main() {
 	engine.SetConfigPath("config/strategy/*.yaml")
 
 	// set strategy
-	engine.LoadStrategy(strategy.NewExampleIndicatorStrategy())
+	// engine.LoadStrategy(strategy.NewExampleIndicatorStrategy())
 
 	// run the engine
 	engine.Run()

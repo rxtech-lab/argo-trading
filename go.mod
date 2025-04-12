@@ -1,4 +1,4 @@
-module github.com/sirily11/argo-trading-go
+module github.com/rxtech-lab/argo-trading
 
 go 1.24.0
 
@@ -7,14 +7,18 @@ require (
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.12.0
+	github.com/knqyf263/go-plugin v0.9.0
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/moznion/go-optional v0.12.0
 	github.com/polygon-io/client-go v1.16.10
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/stretchr/testify v1.10.0
+	github.com/tetratelabs/wazero v1.9.0
 	github.com/vbauerster/mpb/v8 v8.9.3
+	go.uber.org/mock v0.5.1
 	go.uber.org/zap v1.27.0
+	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 )
