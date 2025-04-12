@@ -14,7 +14,7 @@ import (
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/schollz/progressbar/v3"
 
-	"github.com/sirily11/argo-trading-go/src/types"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 func init() {

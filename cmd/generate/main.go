@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	engine "github.com/sirily11/argo-trading-go/src/backtest/engine/engine_v1"
+	engine "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
 	"gopkg.in/yaml.v2"
 )
 
