@@ -264,9 +264,9 @@ func (suite *StrategyApiTestSuite) TestGetMarkers() {
 }
 
 func (suite *StrategyApiTestSuite) TestCount() {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 	endTime := startTime.Add(time.Hour)
-	count := int64(100)
+	count := int(100)
 
 	suite.mockDataSource.EXPECT().Count(
 		optional.Some(startTime),
@@ -282,7 +282,7 @@ func (suite *StrategyApiTestSuite) TestCount() {
 }
 
 func (suite *StrategyApiTestSuite) TestGetRange() {
-	startTime := time.Now()
+	startTime := time.Now().UTC()
 	endTime := startTime.Add(time.Hour)
 	interval := datasource.Interval1m
 	data := []types.MarketData{
@@ -297,7 +297,11 @@ func (suite *StrategyApiTestSuite) TestGetRange() {
 		},
 	}
 
-	suite.mockDataSource.EXPECT().GetRange(startTime, endTime, interval).Return(data, nil)
+	suite.mockDataSource.EXPECT().GetRange(
+		startTime,
+		endTime,
+		optional.Some(interval),
+	).Return(data, nil)
 
 	response, err := suite.api.GetRange(context.Background(), &strategy.GetRangeRequest{
 		StartTime: timestamppb.New(startTime),
@@ -330,14 +334,25 @@ func (suite *StrategyApiTestSuite) TestGetSignal() {
 		Type:      types.SignalTypeBuyLong,
 		Name:      "test",
 		Reason:    "test reason",
-		RawValue:  "test value",
+		RawValue:  map[string]float64{"rsi": 30.0},
 		Symbol:    "BTCUSDT",
 		Indicator: types.IndicatorTypeRSI,
 	}
 
+	mockRSI := mocks.NewMockIndicator(suite.ctrl)
+	mockRSI.EXPECT().
+		GetSignal(gomock.Any(), gomock.Any()).
+		Return(expectedSignal, nil).
+		AnyTimes()
+	mockRSI.EXPECT().
+		Name().
+		Return(types.IndicatorTypeRSI).
+		AnyTimes()
+
 	suite.mockIndicators.EXPECT().
-		GetIndicator(types.IndicatorTypeRSI).
-		Return(expectedSignal, nil)
+		GetIndicator(gomock.Any()).
+		Return(mockRSI, nil).
+		AnyTimes()
 
 	response, err := api.GetSignal(context.Background(), &strategy.GetSignalRequest{
 		IndicatorType: indicatorType,

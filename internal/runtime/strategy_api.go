@@ -8,7 +8,6 @@ import (
 	"github.com/knqyf263/go-plugin/types/known/emptypb"
 	"github.com/knqyf263/go-plugin/types/known/timestamppb"
 	"github.com/moznion/go-optional"
-	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	i "github.com/rxtech-lab/argo-trading/internal/indicator"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
@@ -292,11 +291,10 @@ func (s strategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSign
 		Time:   req.MarketData.Time.AsTime(),
 	}
 
-	cache := (s.runtimeContext.Cache).(*cache.CacheV1)
 	indicatorContext := i.IndicatorContext{
 		DataSource:        s.runtimeContext.DataSource,
 		IndicatorRegistry: s.runtimeContext.IndicatorRegistry,
-		Cache:             cache,
+		Cache:             s.runtimeContext.Cache,
 	}
 
 	signal, err := indicator.GetSignal(marketData, indicatorContext)

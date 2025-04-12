@@ -116,25 +116,26 @@ func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx Indicato
 	result := RangeFilterData{}
 
 	// Initialize state if needed
-	if ctx.Cache.RangeFilterState.IsNone() {
-		ctx.Cache.RangeFilterState = optional.Some(cache.RangeFilterState{
+	cacheV1 := ctx.Cache.(*cache.CacheV1)
+	if cacheV1.RangeFilterState.IsNone() {
+		cacheV1.RangeFilterState = optional.Some(cache.RangeFilterState{
 			PrevFilt:   math.NaN(),
 			PrevSource: math.NaN(),
 			Symbol:     marketData.Symbol,
 		})
 	}
 
-	value, err := ctx.Cache.RangeFilterState.Take()
+	value, err := cacheV1.RangeFilterState.Take()
 	if err != nil {
 		return result, err
 	}
 	if value.Symbol != marketData.Symbol {
-		ctx.Cache.RangeFilterState = optional.Some(cache.RangeFilterState{
+		cacheV1.RangeFilterState = optional.Some(cache.RangeFilterState{
 			PrevFilt:   math.NaN(),
 			PrevSource: math.NaN(),
 			Symbol:     marketData.Symbol,
 		})
-		value, _ = ctx.Cache.RangeFilterState.Take()
+		value, _ = cacheV1.RangeFilterState.Take()
 	}
 
 	var smrng, filt float64
@@ -234,7 +235,7 @@ func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx Indicato
 	value.PrevFilt = filt
 	value.Upward = currentUpward
 	value.Downward = currentDownward
-	ctx.Cache.RangeFilterState = optional.Some(value)
+	cacheV1.RangeFilterState = optional.Some(value)
 
 	// Set the results
 	result.filt = filt

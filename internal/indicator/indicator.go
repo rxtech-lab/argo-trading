@@ -9,7 +9,7 @@ import (
 type IndicatorContext struct {
 	DataSource        datasource.DataSource
 	IndicatorRegistry IndicatorRegistry
-	Cache             *cache.CacheV1
+	Cache             cache.Cache
 }
 
 // Indicator interface defines methods that any technical indicator must implement

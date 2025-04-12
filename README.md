@@ -14,7 +14,7 @@ A powerful framework for developing, testing, and implementing algorithmic tradi
 2. Install dependencies
 
    ```bash
-   go mod tidy
+   go mod download
    ```
 
 3. Generate strategy interfaces

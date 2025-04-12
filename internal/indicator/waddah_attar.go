@@ -149,8 +149,9 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	result := WaddahAttarData{}
 
 	// Initialize state if needed
-	if ctx.Cache.WaddahAttarState.IsNone() {
-		ctx.Cache.WaddahAttarState = optional.Some(cache.WaddahAttarState{
+	cacheV1 := ctx.Cache.(*cache.CacheV1)
+	if cacheV1.WaddahAttarState.IsNone() {
+		cacheV1.WaddahAttarState = optional.Some(cache.WaddahAttarState{
 			PrevMACD:   math.NaN(),
 			PrevSignal: math.NaN(),
 			PrevHist:   math.NaN(),
@@ -159,19 +160,19 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 		})
 	}
 
-	value, err := ctx.Cache.WaddahAttarState.Take()
+	value, err := cacheV1.WaddahAttarState.Take()
 	if err != nil {
 		return result, err
 	}
 	if value.Symbol != marketData.Symbol {
-		ctx.Cache.WaddahAttarState = optional.Some(cache.WaddahAttarState{
+		cacheV1.WaddahAttarState = optional.Some(cache.WaddahAttarState{
 			PrevMACD:   math.NaN(),
 			PrevSignal: math.NaN(),
 			PrevHist:   math.NaN(),
 			PrevATR:    math.NaN(),
 			Symbol:     marketData.Symbol,
 		})
-		value, _ = ctx.Cache.WaddahAttarState.Take()
+		value, _ = cacheV1.WaddahAttarState.Take()
 	}
 
 	// Get MACD indicator
@@ -216,7 +217,7 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	value.PrevMACD = macdValue
 	value.PrevATR = atrValue
 	value.Initialized = true
-	ctx.Cache.WaddahAttarState = optional.Some(value)
+	cacheV1.WaddahAttarState = optional.Some(value)
 
 	// Set results
 	result.macd = macdValue
