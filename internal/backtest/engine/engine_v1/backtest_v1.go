@@ -9,7 +9,6 @@ import (
 
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
-	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/indicator"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
@@ -17,7 +16,6 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
-	"github.com/rxtech-lab/argo-trading/internal/utils"
 	"github.com/vbauerster/mpb/v8"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
@@ -34,6 +32,7 @@ type BacktestEngineV1 struct {
 	marker              marker.Marker
 	tradingSystem       trading.TradingSystem
 	state               *BacktestState
+	datasource          datasource.DataSource
 	balance             float64
 	cache               cache.Cache
 }
@@ -147,6 +146,11 @@ func (b *BacktestEngineV1) SetResultsFolder(folder string) error {
 	return nil
 }
 
+func (b *BacktestEngineV1) SetDataSource(datasource datasource.DataSource) error {
+	b.datasource = datasource
+	return nil
+}
+
 func (b *BacktestEngineV1) preRunCheck() error {
 	if len(b.strategies) == 0 {
 		b.log.Error("No strategies loaded")
@@ -166,6 +170,11 @@ func (b *BacktestEngineV1) preRunCheck() error {
 	if b.resultsFolder == "" {
 		b.log.Error("No results folder set")
 		return errors.New("no results folder set")
+	}
+
+	if b.datasource == nil {
+		b.log.Error("No datasource set")
+		return errors.New("no datasource set")
 	}
 	return nil
 }
@@ -198,7 +207,7 @@ func (b *BacktestEngineV1) Run() error {
 		Logger:      b.log,
 		StartTime:   b.config.StartTime,
 		EndTime:     b.config.EndTime,
-	})
+	}, b.datasource)
 	if err != nil {
 		b.log.Error("Failed to create progress bars",
 			zap.Error(err),
@@ -265,16 +274,10 @@ func (b *BacktestEngineV1) Run() error {
 						zap.String("result", resultFolderPath),
 					)
 
-					// Initialize the data source with in-memory database
-					datasource, err := datasource.NewDataSource(":memory:", b.log)
-					if err != nil {
-						errChan <- fmt.Errorf("failed to create data source: %w", err)
-						return
-					}
-					runState.datasource = datasource
+					runState.datasource = b.datasource
 
 					strategyContext := runtime.RuntimeContext{
-						DataSource:        datasource,
+						DataSource:        b.datasource,
 						IndicatorRegistry: b.indicatorRegistry,
 						Marker:            b.marker,
 						TradingSystem:     b.tradingSystem,
@@ -282,12 +285,12 @@ func (b *BacktestEngineV1) Run() error {
 					//TODO: add context to the strategy
 
 					// Initialize the data source with the given data path
-					if err := datasource.Initialize(dataPath); err != nil {
+					if err := b.datasource.Initialize(dataPath); err != nil {
 						errChan <- fmt.Errorf("failed to initialize data source: %w", err)
 						return
 					}
 
-					for data, err := range datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
+					for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
 						if err != nil {
 							errChan <- fmt.Errorf("failed to read data: %w", err)
 							return
@@ -342,64 +345,4 @@ func (b *BacktestEngineV1) Run() error {
 	}
 
 	return nil
-}
-
-// executeOrdersWithState executes the orders using the provided state
-func (b *BacktestEngineV1) executeOrdersWithState(marketData types.MarketData, strategy runtime.StrategyRuntime, executeOrders []types.ExecuteOrder, runState *ParallelRunState) ([]types.Order, error) {
-	orders := []types.Order{}
-	pendingOrders := []types.Order{}
-	totalCost := 0.0
-
-	for _, executeOrder := range executeOrders {
-		position, err := runState.state.GetPosition(executeOrder.Symbol)
-		price := (marketData.High + marketData.Low) / 2
-		commissionFeeHandler := commission_fee.GetCommissionFeeHandler(b.config.Broker)
-		if err != nil {
-			b.log.Error("Failed to get position",
-				zap.String("symbol", executeOrder.Symbol),
-				zap.Error(err),
-			)
-			return nil, err
-		}
-
-		quantity := 0.0
-		if executeOrder.Side == types.PurchaseTypeBuy {
-			// calculate the quantity by the current balance / price
-			quantity = float64(utils.CalculateMaxQuantity(runState.balance, price, commissionFeeHandler))
-		} else {
-			quantity = position.Quantity
-		}
-		totalCost += quantity*price + commissionFeeHandler.Calculate(quantity)
-
-		if position.Quantity == 0 {
-			pendingOrder := types.Order{
-				Symbol:       executeOrder.Symbol,
-				Side:         executeOrder.Side,
-				Quantity:     quantity,
-				Price:        (marketData.High + marketData.Low) / 2,
-				Timestamp:    marketData.Time,
-				StrategyName: strategy.Name(),
-				Reason: types.Reason{
-					Reason:  executeOrder.Reason.Reason,
-					Message: executeOrder.Reason.Message,
-				},
-			}
-			pendingOrders = append(pendingOrders, pendingOrder)
-		}
-	}
-
-	results, err := runState.state.Update(pendingOrders)
-	if err != nil {
-		b.log.Error("Failed to update state",
-			zap.Error(err),
-		)
-		return nil, err
-	}
-
-	for _, result := range results {
-		orders = append(orders, result.Order)
-	}
-	runState.balance -= totalCost
-
-	return orders, nil
 }
