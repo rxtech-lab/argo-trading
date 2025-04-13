@@ -38,7 +38,8 @@ jobs:
           mkdir -p test-results
 
           # Run tests with detailed output and save to file, capturing the exit code
-          go test -v -race -coverprofile=coverage.txt -covermode=atomic ./... 2>&1 | tee test-results/test-output.log
+          # Don't include the pkg folder in the coverage report since it is auto-generated
+          go test -v -race -coverprofile=coverage.txt -covermode=atomic -coverpkg=./... $(go list ./... | grep -v "/pkg/") 2>&1 | tee test-results/test-output.log
           TEST_EXIT_CODE=${PIPESTATUS[0]}
 
           # Generate coverage report

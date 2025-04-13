@@ -9,11 +9,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/moznion/go-optional"
-	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/mocks"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/mock/gomock"
 )
 
 // BacktestStateTestSuite is a test suite for BacktestState
@@ -678,46 +679,30 @@ func (suite *BacktestStateTestSuite) TestWrite() {
 	suite.Require().Equal(100.0, price, "Order price mismatch")
 }
 
-// MockDataSource implements datasource.DataSource for testing
-type MockDataSource struct {
-	lastData map[string]types.MarketData
-}
-
-func (m *MockDataSource) Initialize(path string) error { return nil }
-func (m *MockDataSource) ReadAll(start, end optional.Option[time.Time]) func(yield func(types.MarketData, error) bool) {
-	return nil
-}
-func (m *MockDataSource) GetRange(start time.Time, end time.Time, interval optional.Option[datasource.Interval]) ([]types.MarketData, error) {
-	return nil, nil
-}
-func (m *MockDataSource) ReadLastData(symbol string) (types.MarketData, error) {
-	if data, ok := m.lastData[symbol]; ok {
-		return data, nil
-	}
-	return types.MarketData{}, fmt.Errorf("no data for symbol %s", symbol)
-}
-func (m *MockDataSource) ExecuteSQL(query string, params ...interface{}) ([]datasource.SQLResult, error) {
-	return nil, nil
-}
-func (m *MockDataSource) Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error) {
-	return 0, nil
-}
-func (m *MockDataSource) Close() error { return nil }
-
+// TestGetStats runs before each test
 func (suite *BacktestStateTestSuite) TestGetStats() {
-	// Create mock data source
-	mockSource := &MockDataSource{
-		lastData: map[string]types.MarketData{
-			"AAPL": {
-				Symbol: "AAPL",
-				Close:  120.0,
-			},
-			"GOOGL": {
-				Symbol: "GOOGL",
-				Close:  2100.0,
-			},
-		},
-	}
+	// Create mock controller
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	// Create mock data source using gomock
+	mockSource := mocks.NewMockDataSource(ctrl)
+
+	// Set up mock behavior for ReadLastData
+	mockSource.EXPECT().ReadLastData("AAPL").Return(types.MarketData{
+		Symbol: "AAPL",
+		Close:  120.0,
+	}, nil).AnyTimes()
+
+	mockSource.EXPECT().ReadLastData("GOOGL").Return(types.MarketData{
+		Symbol: "GOOGL",
+		Close:  2100.0,
+	}, nil).AnyTimes()
+
+	// For GetPreviousNumberOfDataPoints (required by interface but not used in test)
+	mockSource.EXPECT().GetPreviousNumberOfDataPoints(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+		[]types.MarketData{}, nil,
+	).AnyTimes()
 
 	tests := []struct {
 		name          string

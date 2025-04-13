@@ -31,17 +31,13 @@ type ProgressBarConfig struct {
 }
 
 // createProgressBars creates progress bars for each combination of strategy, config, and data path
-func createProgressBars(config ProgressBarConfig) (map[runKey]*mpb.Bar, error) {
+func createProgressBars(config ProgressBarConfig, datasource datasource.DataSource) (map[runKey]*mpb.Bar, error) {
 	bars := make(map[runKey]*mpb.Bar)
 
 	for _, strategy := range config.Strategies {
 		for _, configPath := range config.ConfigPaths {
 			for _, dataPath := range config.DataPaths {
 				// Initialize datasource to get count
-				datasource, err := datasource.NewDataSource(":memory:", config.Logger)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create data source: %w", err)
-				}
 				if err := datasource.Initialize(dataPath); err != nil {
 					return nil, fmt.Errorf("failed to initialize data source: %w", err)
 				}
