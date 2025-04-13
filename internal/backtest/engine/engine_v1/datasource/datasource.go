@@ -36,6 +36,11 @@ type DataSource interface {
 	ReadAll(start optional.Option[time.Time], end optional.Option[time.Time]) func(yield func(types.MarketData, error) bool)
 	// GetRange reads a range of data from the data source and yields it to the caller
 	GetRange(start time.Time, end time.Time, interval optional.Option[Interval]) ([]types.MarketData, error)
+	// GetPreviousNumberOfDataPoints returns the specified number of historical data points for a given symbol,
+	// ending at the specified time. The data points are returned in chronological order from oldest to newest.
+	GetPreviousNumberOfDataPoints(end time.Time, symbol string, count int) ([]types.MarketData, error)
+	// GetMarketData reads the market data for a specific symbol and time
+	GetMarketData(symbol string, time time.Time) (types.MarketData, error)
 	// ReadLastData reads the last data from the data source for a specific symbol
 	ReadLastData(symbol string) (types.MarketData, error)
 	// ExecuteSQL executes a raw SQL query and returns the results as SQLResult

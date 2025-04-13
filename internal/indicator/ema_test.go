@@ -2,13 +2,16 @@ package indicator
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/moznion/go-optional"
+	_ "github.com/marcboeker/go-duckdb"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 )
 
 // EMATestSuite is a test suite for the EMA indicator
@@ -17,54 +20,48 @@ type EMATestSuite struct {
 	db         *sql.DB
 	dataSource datasource.DataSource
 	ema        *EMA
+	logger     *logger.Logger
 }
 
 // SetupSuite sets up the test suite
 func (suite *EMATestSuite) SetupSuite() {
+	// Create a no-op logger that doesn't log to console
+	loggerConfig := zap.NewDevelopmentConfig()
+	loggerConfig.OutputPaths = []string{}      // Empty output paths to prevent console logging
+	loggerConfig.ErrorOutputPaths = []string{} // Empty error output paths
+	zapLogger, err := loggerConfig.Build()
+	suite.Require().NoError(err)
+	suite.logger = &logger.Logger{Logger: zapLogger}
+
 	// Create an in-memory DuckDB database for testing
 	db, err := sql.Open("duckdb", ":memory:")
 	suite.Require().NoError(err)
 	suite.db = db
 
-	// Create a mock data source that uses the real database
-	dataSource := &databaseMockDataSource{
-		db: db,
-	}
+	// Create a DuckDBDataSource
+	dataSource, err := datasource.NewDataSource(":memory:", suite.logger)
+	suite.Require().NoError(err)
 	suite.dataSource = dataSource
 
-	// Initialize EMA with a default period
+	// Initialize EMA with a default period of 20
 	ema := NewEMA()
-	ema.Config(20)
 	suite.ema = ema.(*EMA)
 	suite.Require().NotNil(suite.ema)
 
-	// Create market_data table
-	_, err = db.Exec(`
-		CREATE TABLE market_data (
-			time TIMESTAMP,
-			symbol VARCHAR,
-			open DOUBLE,
-			high DOUBLE,
-			low DOUBLE,
-			close DOUBLE,
-			volume DOUBLE
-		)
-	`)
+	// Initialize data source with parquet file
+	testDataPath := "./test_data/test_data.parquet"
+	err = suite.dataSource.Initialize(testDataPath)
 	suite.Require().NoError(err)
 }
 
 // TearDownSuite tears down the test suite
 func (suite *EMATestSuite) TearDownSuite() {
+	if suite.dataSource != nil {
+		suite.dataSource.Close()
+	}
 	if suite.db != nil {
 		suite.db.Close()
 	}
-}
-
-// SetupTest runs before each test
-func (suite *EMATestSuite) SetupTest() {
-	// Clear the market_data table before each test
-	_, err := suite.db.Exec("DELETE FROM market_data")
-	suite.Require().NoError(err)
 }
 
 // TestEMACalcSuite runs the test suite
@@ -72,215 +69,102 @@ func TestEMACalcSuite(t *testing.T) {
 	suite.Run(t, new(EMATestSuite))
 }
 
-// databaseMockDataSource implements a mock data source that uses a real database
-type databaseMockDataSource struct {
-	db *sql.DB
-}
-
-func (m *databaseMockDataSource) Initialize(path string) error { return nil }
-func (m *databaseMockDataSource) ReadAll(start, end optional.Option[time.Time]) func(yield func(types.MarketData, error) bool) {
-	return nil
-}
-func (m *databaseMockDataSource) GetRange(start time.Time, end time.Time, interval optional.Option[datasource.Interval]) ([]types.MarketData, error) {
-	return nil, nil
-}
-func (m *databaseMockDataSource) ReadLastData(symbol string) (types.MarketData, error) {
-	return types.MarketData{}, nil
-}
-
-// ExecuteSQL executes SQL directly on the test database
-func (m *databaseMockDataSource) ExecuteSQL(query string, params ...interface{}) ([]datasource.SQLResult, error) {
-	rows, err := m.db.Query(query, params...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	results := []datasource.SQLResult{}
-	for rows.Next() {
-		values := make([]interface{}, len(columns))
-		valuePtrs := make([]interface{}, len(columns))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, err
-		}
-
-		rowMap := make(map[string]interface{})
-		for i, col := range columns {
-			rowMap[col] = values[i]
-		}
-
-		results = append(results, datasource.SQLResult{Values: rowMap})
-	}
-
-	return results, nil
-}
-
-func (m *databaseMockDataSource) Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error) {
-	return 0, nil
-}
-func (m *databaseMockDataSource) Close() error { return nil }
-
-// TestCalculateEMAFromSQL tests the calculateEMAFromSQL function
-func (suite *EMATestSuite) TestCalculateEMAFromSQL() {
+// TestEMACalculation tests the EMA calculation against the expected values from the parquet file
+func (suite *EMATestSuite) TestEMACalculation() {
 	// Define test cases
 	testCases := []struct {
-		name            string
-		setupData       func() // Function to set up test data
-		symbol          string
-		period          int
-		expectedEMA     float64
-		expectedErrorIs string // Empty means no error expected
+		name              string
+		symbol            string
+		period            int // EMA period to test
+		allowedDifference float64
 	}{
 		{
-			name: "Simple EMA calculation with constant price",
-			setupData: func() {
-				// Generate 60 data points with constant price 100.0
-				baseTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-
-				// Insert test data
-				stmt, err := suite.db.Prepare(`
-					INSERT INTO market_data (time, symbol, open, high, low, close, volume)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-				`)
-				suite.Require().NoError(err)
-				defer stmt.Close()
-
-				for i := 0; i < 60; i++ {
-					timestamp := baseTime.Add(time.Duration(i) * time.Hour)
-					_, err = stmt.Exec(timestamp, "AAPL", 100.0, 100.0, 100.0, 100.0, 1000.0)
-					suite.Require().NoError(err)
-				}
-			},
-			symbol:      "AAPL",
-			period:      20,
-			expectedEMA: 100.0, // EMA of constant values is the constant
+			name:              "EMA with period 7",
+			symbol:            "AAPL",
+			period:            7,
+			allowedDifference: 1,
 		},
 		{
-			name: "Linear increasing price",
-			setupData: func() {
-				// Generate 60 data points with linearly increasing price
-				baseTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-
-				stmt, err := suite.db.Prepare(`
-					INSERT INTO market_data (time, symbol, open, high, low, close, volume)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-				`)
-				suite.Require().NoError(err)
-				defer stmt.Close()
-
-				for i := 0; i < 60; i++ {
-					timestamp := baseTime.Add(time.Duration(i) * time.Hour)
-					price := 100.0 + float64(i)
-					_, err = stmt.Exec(timestamp, "GOOGL", price, price, price, price, 1000.0)
-					suite.Require().NoError(err)
-				}
-			},
-			symbol: "GOOGL",
-			period: 20,
-			// For linearly increasing data, EMA will lag behind the latest price
-			// The exact value depends on how EMA is calculated, but we can compute it manually
-			expectedEMA: calculateExpectedEMA(20, func(i int) float64 { return 100.0 + float64(i) }, 60),
+			name:              "EMA with period 14",
+			symbol:            "AAPL",
+			period:            14,
+			allowedDifference: 1,
 		},
 		{
-			name: "Fewer data points than period",
-			setupData: func() {
-				// Generate 10 data points (less than period 20)
-				baseTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-
-				stmt, err := suite.db.Prepare(`
-					INSERT INTO market_data (time, symbol, open, high, low, close, volume)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-				`)
-				suite.Require().NoError(err)
-				defer stmt.Close()
-
-				for i := 0; i < 10; i++ {
-					timestamp := baseTime.Add(time.Duration(i) * time.Hour)
-					_, err = stmt.Exec(timestamp, "MSFT", 100.0, 100.0, 100.0, 100.0, 1000.0)
-					suite.Require().NoError(err)
-				}
-			},
-			symbol:      "MSFT",
-			period:      20,
-			expectedEMA: 100.0, // Simple average of all points
-		},
-		{
-			name: "No data for symbol",
-			setupData: func() {
-				// Generate data for a different symbol
-				baseTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-
-				stmt, err := suite.db.Prepare(`
-					INSERT INTO market_data (time, symbol, open, high, low, close, volume)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-				`)
-				suite.Require().NoError(err)
-				defer stmt.Close()
-
-				for i := 0; i < 10; i++ {
-					timestamp := baseTime.Add(time.Duration(i) * time.Hour)
-					_, err = stmt.Exec(timestamp, "AMZN", 100.0, 100.0, 100.0, 100.0, 1000.0)
-					suite.Require().NoError(err)
-				}
-			},
-			symbol:          "TSLA", // Query for a symbol with no data
-			period:          20,
-			expectedErrorIs: "no data found",
+			name:              "EMA with period 21",
+			symbol:            "AAPL",
+			period:            21,
+			allowedDifference: 1,
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			// Clear previous test data
-			_, err := suite.db.Exec("DELETE FROM market_data")
-			suite.Require().NoError(err)
+			// Query all EMA values from the parquet data
+			columnName := fmt.Sprintf("ema_%d", tc.period)
+			expectedEMAQuery := `
+				SELECT time, close, ` + columnName + `
+				FROM market_data
+				WHERE ` + columnName + ` IS NOT NULL
+				AND symbol = ?
+				ORDER BY time ASC
+			`
+			results, err := suite.dataSource.ExecuteSQL(expectedEMAQuery, tc.symbol)
+			suite.Require().NoError(err, "Failed to query expected EMA values")
+			suite.Require().NotEmpty(results, "No results returned for expected EMA query")
 
-			// Set up test data
-			tc.setupData()
-
-			// Create indicator context
+			// Create indicator context for EMA calculation
 			ctx := IndicatorContext{
 				DataSource: suite.dataSource,
 			}
 
-			// Execute the test
-			currentTime := time.Date(2023, 1, 31, 0, 0, 0, 0, time.UTC) // Time after all data points
-			result, err := suite.ema.calculateEMAFromSQL(tc.symbol, currentTime, &ctx, optional.Some(tc.period))
+			// Configure EMA with the test period
+			suite.ema.Config(tc.period)
 
-			if tc.expectedErrorIs != "" {
-				suite.Require().Error(err)
-				suite.Require().Contains(err.Error(), tc.expectedErrorIs)
-			} else {
-				suite.Require().NoError(err)
-				suite.Assert().InDelta(tc.expectedEMA, result, 0.2, "EMA calculation mismatch")
+			// Skip the first tc.period data points as EMA is only reliable after that
+			for i, result := range results {
+				if i < tc.period {
+					continue
+				}
+
+				expectedTime := result.Values["time"].(time.Time)
+				expectedEMA := result.Values[columnName].(float64)
+
+				// Get market data for the expected time
+				currentMarketData, err := suite.dataSource.GetMarketData(tc.symbol, expectedTime)
+				suite.Require().NoError(err, "Failed to get market data for time %v", expectedTime)
+				suite.Require().NotEqual(time.Time{}, currentMarketData.Time,
+					"Could not find market data for time %v", expectedTime)
+
+				// Calculate EMA for this point
+				calculatedEMA, err := suite.ema.RawValue(currentMarketData.Symbol, currentMarketData.Time, ctx)
+				suite.Require().NoError(err, "Failed to calculate EMA at point %d", i)
+
+				// Compare expected and calculated EMA values
+				diff := expectedEMA - calculatedEMA
+				if diff < 0 {
+					diff = -diff
+				}
+				suite.Assert().LessOrEqual(diff, tc.allowedDifference,
+					"EMA difference too large at point %d (time: %v): expected %f, got %f, diff %f",
+					i, expectedTime, expectedEMA, calculatedEMA, diff)
+
+				// Also test getting signal
+				signal, err := suite.ema.GetSignal(currentMarketData, ctx)
+				suite.Require().NoError(err, "Failed to get signal at point %d", i)
+
+				// Verify signal properties
+				suite.Assert().Equal(currentMarketData.Symbol, signal.Symbol)
+				suite.Assert().Equal(currentMarketData.Time, signal.Time)
+				suite.Assert().Equal(string(types.IndicatorTypeEMA), signal.Name)
+
+				// Verify EMA value in signal matches calculated value
+				rawValue, ok := signal.RawValue.(map[string]float64)
+				suite.Assert().True(ok, "Failed to cast RawValue to map[string]float64")
+				emaFromSignal, exists := rawValue["ema"]
+				suite.Assert().True(exists, "EMA value not found in signal raw values")
+				suite.Assert().Equal(calculatedEMA, emaFromSignal, "EMA values don't match")
 			}
 		})
 	}
-}
-
-// Helper function to calculate expected EMA for test verification
-func calculateExpectedEMA(period int, priceFunc func(int) float64, numPoints int) float64 {
-	// Calculate SMA for the first 'period' points as seed
-	sum := 0.0
-	for i := 0; i < period; i++ {
-		sum += priceFunc(i)
-	}
-	ema := sum / float64(period)
-
-	// Apply EMA formula for subsequent points
-	multiplier := 2.0 / (float64(period) + 1.0)
-	for i := period; i < numPoints; i++ {
-		ema = (priceFunc(i)-ema)*multiplier + ema
-	}
-
-	return ema
 }

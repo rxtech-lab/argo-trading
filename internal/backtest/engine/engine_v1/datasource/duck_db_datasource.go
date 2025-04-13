@@ -603,3 +603,121 @@ func (d *DuckDBDataSource) Close() error {
 	}
 	return nil
 }
+
+func (d *DuckDBDataSource) GetMarketData(symbol string, timestamp time.Time) (types.MarketData, error) {
+	// Build query using squirrel
+	query, args, err := d.sq.
+		Select("time", "symbol", "open", "high", "low", "close", "volume").
+		From("market_data").
+		Where(squirrel.And{
+			squirrel.Eq{"symbol": symbol},
+			squirrel.Eq{"time": timestamp},
+		}).
+		ToSql()
+
+	if err != nil {
+		return types.MarketData{}, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	// Execute the query
+	var (
+		timeResult                     time.Time
+		symbolResult                   string
+		open, high, low, close, volume float64
+	)
+
+	err = d.db.QueryRow(query, args...).Scan(
+		&timeResult, &symbolResult, &open, &high, &low, &close, &volume)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return types.MarketData{}, fmt.Errorf("no market data found for symbol %s at time %v", symbol, timestamp)
+		}
+		return types.MarketData{}, fmt.Errorf("failed to get market data: %w", err)
+	}
+
+	return types.MarketData{
+		Symbol: symbolResult,
+		Time:   timeResult,
+		Open:   open,
+		High:   high,
+		Low:    low,
+		Close:  close,
+		Volume: volume,
+	}, nil
+}
+
+// GetPreviousNumberOfDataPoints implements DataSource.
+func (d *DuckDBDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol string, count int) ([]types.MarketData, error) {
+	d.logger.Debug("Getting previous data points",
+		zap.Time("end", end),
+		zap.String("symbol", symbol),
+		zap.Int("count", count))
+
+	// Build query using squirrel
+	query, args, err := d.sq.
+		Select("time", "symbol", "open", "high", "low", "close", "volume").
+		From("market_data").
+		Where(squirrel.And{
+			squirrel.Eq{"symbol": symbol},
+			squirrel.LtOrEq{"time": end},
+		}).
+		OrderBy("time DESC").
+		Limit(uint64(count)).
+		ToSql()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	// Execute the query
+	stmt, err := d.db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query: %w", err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query market data: %w", err)
+	}
+	defer rows.Close()
+
+	// Pre-allocate slice with reasonable capacity
+	result := make([]types.MarketData, 0, count)
+	for rows.Next() {
+		var (
+			timestamp                      time.Time
+			symbolResult                   string
+			open, high, low, close, volume float64
+		)
+
+		err := rows.Scan(&timestamp, &symbolResult, &open, &high, &low, &close, &volume)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		marketData := types.MarketData{
+			Symbol: symbolResult,
+			Time:   timestamp,
+			Open:   open,
+			High:   high,
+			Low:    low,
+			Close:  close,
+			Volume: volume,
+		}
+
+		result = append(result, marketData)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	// Reverse the slice to get chronological order (oldest to newest)
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+
+	return result, nil
+}

@@ -7,7 +7,6 @@ import (
 
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
-	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
@@ -291,17 +290,14 @@ func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 
 	// If a specific time is provided, get data up to that time
 	if !currentTime.IsZero() {
-		// Get data from a range ending at currentTime
-		endTime := currentTime
-		startTime := endTime.Add(-time.Hour * 24) // Get last 24 hours of data
-
-		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
+		// Get historical data points
+		historicalData, err := ctx.DataSource.GetPreviousNumberOfDataPoints(currentTime, symbol, rf.period)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get historical data: %w", err)
 		}
 
 		if len(historicalData) == 0 {
-			return 0, fmt.Errorf("no historical data available for the specified time range")
+			return 0, fmt.Errorf("no historical data available for symbol %s", symbol)
 		}
 
 		// Use the last data point

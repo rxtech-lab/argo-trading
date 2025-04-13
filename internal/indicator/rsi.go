@@ -4,20 +4,22 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/moznion/go-optional"
-	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
 // RSI represents the Relative Strength Index indicator
 type RSI struct {
-	period int
+	period            int
+	rsiLowerThreshold float64
+	rsiUpperThreshold float64
 }
 
 // NewRSI creates a new RSI indicator with default configuration
 func NewRSI() Indicator {
 	return &RSI{
-		period: 14, // Default period
+		period:            14, // Default period
+		rsiLowerThreshold: 30,
+		rsiUpperThreshold: 70,
 	}
 }
 
@@ -29,8 +31,8 @@ func (r *RSI) Name() types.IndicatorType {
 // Config configures the RSI indicator with the given parameters
 // Expected parameters: period (int)
 func (r *RSI) Config(params ...any) error {
-	if len(params) != 1 {
-		return fmt.Errorf("Config expects 1 parameter: period (int)")
+	if len(params) < 1 {
+		return fmt.Errorf("Config expects at least 1 parameter: period (int)")
 	}
 
 	period, ok := params[0].(int)
@@ -42,6 +44,24 @@ func (r *RSI) Config(params ...any) error {
 	}
 
 	r.period = period
+
+	// setup thresholds
+	if len(params) == 2 {
+		threshold, ok := params[1].(float64)
+		if !ok {
+			return fmt.Errorf("invalid type for threshold parameter, expected float64")
+		}
+		r.rsiLowerThreshold = threshold
+	}
+
+	if len(params) == 3 {
+		threshold, ok := params[2].(float64)
+		if !ok {
+			return fmt.Errorf("invalid type for threshold parameter, expected float64")
+		}
+		r.rsiUpperThreshold = threshold
+	}
+
 	return nil
 }
 
@@ -54,10 +74,10 @@ func (r *RSI) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 
 	signalType := types.SignalTypeNoAction
 	reason := "No signal"
-	if rsiValue < 30 {
+	if rsiValue < r.rsiLowerThreshold {
 		signalType = types.SignalTypeBuyLong
 		reason = fmt.Sprintf("RSI oversold (value=%.2f)", rsiValue)
-	} else if rsiValue > 70 {
+	} else if rsiValue > r.rsiUpperThreshold {
 		signalType = types.SignalTypeSellShort
 		reason = fmt.Sprintf("RSI overbought (value=%.2f)", rsiValue)
 	}
@@ -95,10 +115,7 @@ func (r *RSI) RawValue(params ...any) (float64, error) {
 		return 0, fmt.Errorf("third parameter must be of type IndicatorContext")
 	}
 
-	// Get historical data for RSI calculation
-	endTime := currentTime
-	startTime := endTime.Add(-time.Duration(r.period*2) * time.Hour * 24) // Get enough data for calculation
-	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
+	historicalData, err := ctx.DataSource.GetPreviousNumberOfDataPoints(currentTime, symbol, r.period+1)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get historical data for symbol %s: %w", symbol, err)
 	}
