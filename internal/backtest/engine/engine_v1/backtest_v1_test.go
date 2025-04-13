@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/moznion/go-optional"
+	engine_types "github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/mocks"
 	"github.com/stretchr/testify/assert"
@@ -98,7 +100,7 @@ endTime: "2023-01-31T23:59:59Z"
 		require.NoError(t, err)
 
 		// Run backtest
-		err = backtestEngine.Run()
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
 		require.NoError(t, err)
 
 		// Verify results folder was created
@@ -189,7 +191,7 @@ endTime: "2023-01-31T23:59:59Z"
 		backtestEngine.SetResultsFolder(tempDir)
 
 		// Run backtest
-		err := backtestEngine.Run()
+		err := backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
 		require.NoError(t, err)
 	})
 
@@ -264,7 +266,7 @@ endTime: "2023-01-31T23:59:59Z"
 		backtestEngine.SetResultsFolder(tempDir)
 
 		// Run backtest
-		err := backtestEngine.Run()
+		err := backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
 		require.NoError(t, err)
 
 		// Verify results folder structure was created
@@ -358,7 +360,7 @@ endTime: "2023-01-31T23:59:59Z"
 		backtestEngine.SetResultsFolder(tempDir)
 
 		// Run backtest
-		err := backtestEngine.Run()
+		err := backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
 		require.NoError(t, err)
 
 		// Verify stats file creation
