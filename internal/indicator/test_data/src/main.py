@@ -1,4 +1,4 @@
-from indicator_calculator import calculate_rsi, calculate_ema, read_parquet_to_df, write_df_to_parquet, calculate_macd
+from indicator_calculator import calculate_rsi, calculate_ema, read_parquet_to_df, write_df_to_parquet, calculate_macd, calculate_sma
 
 
 def main():
@@ -15,6 +15,7 @@ def main():
     for period in [7, 14, 21]:
         data = calculate_rsi(data, period=period)
         data = calculate_ema(data, period=period)
+        data = calculate_sma(data, period=period)
 
     data = calculate_macd(data)
     # Only first 500 rows

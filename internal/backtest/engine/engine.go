@@ -1,6 +1,9 @@
 package engine
 
-import "github.com/rxtech-lab/argo-trading/internal/runtime"
+import (
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/runtime"
+)
 
 type Engine interface {
 	// Initialize the engine with the given configuration file.
@@ -20,4 +23,6 @@ type Engine interface {
 	LoadStrategy(strategy runtime.StrategyRuntime) error
 	// Run runs the engine and executes the trading strategy
 	Run() error
+	// SetDataSource sets the data source for the engine.
+	SetDataSource(dataSource datasource.DataSource) error
 }

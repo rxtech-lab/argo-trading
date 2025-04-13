@@ -3,6 +3,7 @@ package go_runtime
 import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
 // GoRuntime is a runtime for a strategy that is written in Go struct.
@@ -24,6 +25,10 @@ func (g *GoRuntime) Name() string {
 
 // ProcessData implements StrategyRuntime.
 func (g *GoRuntime) ProcessData(data types.MarketData) error {
+	panic("unimplemented")
+}
+
+func (g *GoRuntime) InitializeApi(api strategy.StrategyApi) error {
 	panic("unimplemented")
 }
 

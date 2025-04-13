@@ -14,28 +14,19 @@ import (
 // StrategyWasmRuntime is a runtime for a strategy that is written in WebAssembly.
 // It is used for production purposes.
 type StrategyWasmRuntime struct {
-	strategy strategy.TradingStrategy
+	strategy     strategy.TradingStrategy
+	wasmFilePath string
 }
 
 // NewStrategyWasmRuntime creates a new StrategyWasmRuntime with `wasmFilePath` as the strategy file.
-func NewStrategyWasmRuntime(wasmFilePath string, strategyApi strategy.StrategyApi) (runtime.StrategyRuntime, error) {
+func NewStrategyWasmRuntime(wasmFilePath string) (runtime.StrategyRuntime, error) {
 	// check if file exists
 	if _, err := os.Stat(wasmFilePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("file does not exist: %s", wasmFilePath)
 	}
 
-	ctx := context.Background()
-	p, err := strategy.NewTradingStrategyPlugin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	plugin, err := p.Load(ctx, wasmFilePath, strategyApi)
-	if err != nil {
-		return nil, err
-	}
-
 	return &StrategyWasmRuntime{
-		strategy: plugin,
+		wasmFilePath: wasmFilePath,
 	}, nil
 }
 
@@ -46,6 +37,21 @@ func (s *StrategyWasmRuntime) Initialize(config string) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *StrategyWasmRuntime) InitializeApi(api strategy.StrategyApi) error {
+	ctx := context.Background()
+	p, err := strategy.NewTradingStrategyPlugin(ctx)
+	if err != nil {
+		return err
+	}
+
+	plugin, err := p.Load(ctx, s.wasmFilePath, api)
+	if err != nil {
+		return err
+	}
+	s.strategy = plugin
 	return nil
 }
 
