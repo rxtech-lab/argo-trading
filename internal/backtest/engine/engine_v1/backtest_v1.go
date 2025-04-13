@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/indicator"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
@@ -17,7 +19,6 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
-	"github.com/vbauerster/mpb/v8"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -75,7 +76,11 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 
 	// initialize the state
 	b.state = NewBacktestState(b.log)
+	if err := b.state.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize state: %w", err)
+	}
 	b.balance = b.config.InitialCapital
+	b.tradingSystem = NewBacktestTrading(b.state, b.config.InitialCapital, commission_fee.NewInteractiveBrokerCommissionFee())
 	return nil
 }
 
@@ -190,13 +195,10 @@ type ParallelRunState struct {
 }
 
 // Run implements engine.Engine.
-func (b *BacktestEngineV1) Run() error {
+func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnProcessDataCallback]) error {
 	if err := b.preRunCheck(); err != nil {
 		return err
 	}
-
-	// Create progress container
-	p := mpb.New()
 
 	// clean the results folder
 	// remove results folder if it exists
@@ -217,26 +219,13 @@ func (b *BacktestEngineV1) Run() error {
 				)
 				return err
 			}
-			if err != nil {
-				b.log.Error("Failed to initialize strategy",
-					zap.String("strategy", strategy.Name()),
-					zap.Error(err),
-				)
-				return err
-			}
 			for _, dataPath := range b.dataPaths {
-				// Create a new state for this run
-				runState := &ParallelRunState{
-					state:   NewBacktestState(b.log),
-					balance: b.config.InitialCapital,
-				}
 
+				state := NewBacktestState(b.log)
 				// Initialize the state
-				if err := runState.state.Initialize(); err != nil {
+				if err := state.Initialize(); err != nil {
 					return fmt.Errorf("failed to initialize state: %w", err)
 				}
-
-				runState.datasource = b.datasource
 
 				strategyContext := runtime.RuntimeContext{
 					DataSource:        b.datasource,
@@ -274,27 +263,33 @@ func (b *BacktestEngineV1) Run() error {
 				if err != nil {
 					return fmt.Errorf("failed to get data count: %w", err)
 				}
-				bar := p.AddBar(int64(count))
 
+				currentCount := 0
 				for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
 					if err != nil {
 						return fmt.Errorf("failed to read data: %w", err)
 					}
 					// run the strategy
+					if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
+						backtestTrading.UpdateCurrentMarketData(data)
+					}
 					err = strategy.ProcessData(data)
 					if err != nil {
 						return fmt.Errorf("failed to process data: %w", err)
 					}
 					// Update progress bar
-					bar.Increment()
+					onProcessDataCallback.IfSome(func(callback engine.OnProcessDataCallback) {
+						callback(currentCount, count)
+					})
+					currentCount++
 				}
 
 				// Write results and cleanup
-				if err := runState.state.Write(resultFolderPath); err != nil {
+				if err := state.Write(resultFolderPath); err != nil {
 					return fmt.Errorf("failed to write results: %w", err)
 				}
 
-				stats, err := runState.state.GetStats(strategyContext)
+				stats, err := state.GetStats(strategyContext)
 				if err != nil {
 					return fmt.Errorf("failed to get stats: %w", err)
 				}
@@ -302,16 +297,12 @@ func (b *BacktestEngineV1) Run() error {
 					return fmt.Errorf("failed to write stats: %w", err)
 				}
 
-				if err := runState.state.Cleanup(); err != nil {
+				if err := state.Cleanup(); err != nil {
 					return fmt.Errorf("failed to cleanup state: %w", err)
 				}
 			}
 		}
 	}
-
-	// Wait for all progress bars to complete
-	p.Wait()
-
 	return nil
 }
 

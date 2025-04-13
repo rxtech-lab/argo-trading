@@ -15,7 +15,7 @@ import (
 
 // BacktestTrading is a trading system that is used to backtest a trading strategy
 type BacktestTrading struct {
-	state         BacktestState
+	state         *BacktestState
 	balance       float64
 	marketData    types.MarketData
 	pendingOrders []types.ExecuteOrder
@@ -175,7 +175,7 @@ func (b *BacktestTrading) getSellingPower() float64 {
 	return position.Quantity
 }
 
-func NewBacktestTrading(state BacktestState, initialBalance float64, commission commission_fee.CommissionFee) trading.TradingSystem {
+func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee) trading.TradingSystem {
 	return &BacktestTrading{
 		state:         state,
 		balance:       initialBalance,

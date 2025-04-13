@@ -11,6 +11,7 @@ require (
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/moznion/go-optional v0.12.0
 	github.com/polygon-io/client-go v1.16.10
+	github.com/schollz/progressbar v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/stretchr/testify v1.10.0

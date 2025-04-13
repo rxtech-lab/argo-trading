@@ -124,7 +124,7 @@ func (suite *StrategyTestSuite) SetupTest() {
 	suite.Require().NoError(err)
 
 	// Create real trading system
-	suite.tradingSystem = engine.NewBacktestTrading(*suite.state, 10000.0, suite.commission)
+	suite.tradingSystem = engine.NewBacktestTrading(suite.state, 10000.0, suite.commission)
 
 	// Initialize strategy
 	suite.strategy = NewSimpleConsecutiveStrategy(suite.cache, runtime.RuntimeContext{

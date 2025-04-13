@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 )
+
+type OnProcessDataCallback func(current int, total int) error
 
 type Engine interface {
 	// Initialize the engine with the given configuration file.
@@ -22,7 +25,7 @@ type Engine interface {
 	// LoadStrategy loads the trading strategy from the given strategy. Could be called multiple times to load multiple strategies.
 	LoadStrategy(strategy runtime.StrategyRuntime) error
 	// Run runs the engine and executes the trading strategy
-	Run() error
+	Run(onProcessDataCallback optional.Option[OnProcessDataCallback]) error
 	// SetDataSource sets the data source for the engine.
 	SetDataSource(dataSource datasource.DataSource) error
 }

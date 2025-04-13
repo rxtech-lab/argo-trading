@@ -384,6 +384,12 @@ func (s StrategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strate
 
 // PlaceOrder implements strategy.StrategyApi.
 func (s StrategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.ExecuteOrder) (*emptypb.Empty, error) {
+	var reasonName string
+	var reasonMessage string
+	if req.Reason != nil {
+		reasonName = req.Reason.Reason
+		reasonMessage = req.Reason.Message
+	}
 	order := types.ExecuteOrder{
 		ID:           req.Id,
 		Symbol:       req.Symbol,
@@ -393,8 +399,8 @@ func (s StrategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.Execut
 		StrategyName: req.StrategyName,
 		Quantity:     req.Quantity,
 		Reason: types.Reason{
-			Reason:  req.Reason.Reason,
-			Message: req.Reason.Message,
+			Reason:  reasonName,
+			Message: reasonMessage,
 		},
 	}
 

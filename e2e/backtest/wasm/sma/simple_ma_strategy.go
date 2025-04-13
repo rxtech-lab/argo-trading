@@ -48,9 +48,18 @@ func (s *SimpleMAStrategy) Initialize(_ context.Context, req *strategy.Initializ
 	}
 
 	// Validate configuration
-	if config.FastPeriod <= 0 || config.SlowPeriod <= 0 {
+	if config.FastPeriod < 0 || config.SlowPeriod < 0 {
 		return nil, fmt.Errorf("invalid periods: fast=%d, slow=%d", config.FastPeriod, config.SlowPeriod)
+	} else {
+		// set default values
+		if config.FastPeriod == 0 {
+			config.FastPeriod = 5
+		}
+		if config.SlowPeriod == 0 {
+			config.SlowPeriod = 20
+		}
 	}
+
 	if config.FastPeriod >= config.SlowPeriod {
 		return nil, fmt.Errorf("fast period must be less than slow period")
 	}
