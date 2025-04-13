@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
@@ -14,8 +13,10 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/marker"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
+	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 	"github.com/vbauerster/mpb/v8"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
@@ -69,6 +70,8 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 	b.indicatorRegistry.RegisterIndicator(indicator.NewMACD())
 	b.indicatorRegistry.RegisterIndicator(indicator.NewATR())
 	b.indicatorRegistry.RegisterIndicator(indicator.NewWaddahAttar())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewRSI())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewMA())
 
 	// initialize the state
 	b.state = NewBacktestState(b.log)
@@ -192,28 +195,8 @@ func (b *BacktestEngineV1) Run() error {
 		return err
 	}
 
-	// Create a channel to collect errors from goroutines
-	errChan := make(chan error, len(b.strategies)*len(b.strategyConfigPaths)*len(b.dataPaths))
-	var wg sync.WaitGroup
-
 	// Create progress container
-	p := mpb.New(mpb.WithWaitGroup(&wg))
-	// Create progress bars
-	bars, err := createProgressBars(ProgressBarConfig{
-		Progress:    p,
-		Strategies:  b.strategies,
-		ConfigPaths: b.strategyConfigPaths,
-		DataPaths:   b.dataPaths,
-		Logger:      b.log,
-		StartTime:   b.config.StartTime,
-		EndTime:     b.config.EndTime,
-	}, b.datasource)
-	if err != nil {
-		b.log.Error("Failed to create progress bars",
-			zap.Error(err),
-		)
-		return err
-	}
+	p := mpb.New()
 
 	// clean the results folder
 	// remove results folder if it exists
@@ -223,7 +206,7 @@ func (b *BacktestEngineV1) Run() error {
 	// create results folder
 	os.MkdirAll(b.resultsFolder, 0755)
 
-	// Start the goroutines
+	// Run strategies sequentially
 	for _, strategy := range b.strategies {
 		for _, configPath := range b.strategyConfigPaths {
 			config, err := os.ReadFile(configPath)
@@ -234,115 +217,112 @@ func (b *BacktestEngineV1) Run() error {
 				)
 				return err
 			}
-			err = strategy.Initialize(string(config))
 			if err != nil {
 				b.log.Error("Failed to initialize strategy",
 					zap.String("strategy", strategy.Name()),
 					zap.Error(err),
 				)
+				return err
 			}
 			for _, dataPath := range b.dataPaths {
-				wg.Add(1)
-				go func(strategy runtime.StrategyRuntime, configPath, dataPath string) {
-					defer wg.Done()
+				// Create a new state for this run
+				runState := &ParallelRunState{
+					state:   NewBacktestState(b.log),
+					balance: b.config.InitialCapital,
+				}
 
-					key := runKey{
-						strategy:   strategy.Name(),
-						configPath: configPath,
-						dataPath:   dataPath,
-					}
-					bar := bars[key]
+				// Initialize the state
+				if err := runState.state.Initialize(); err != nil {
+					return fmt.Errorf("failed to initialize state: %w", err)
+				}
 
-					// Create a new state for this parallel run
-					runState := &ParallelRunState{
-						state:   NewBacktestState(b.log),
-						balance: b.config.InitialCapital,
-					}
+				runState.datasource = b.datasource
 
-					// Initialize the state
-					if err := runState.state.Initialize(); err != nil {
-						errChan <- fmt.Errorf("failed to initialize state: %w", err)
-						return
-					}
+				strategyContext := runtime.RuntimeContext{
+					DataSource:        b.datasource,
+					IndicatorRegistry: b.indicatorRegistry,
+					Marker:            b.marker,
+					TradingSystem:     b.tradingSystem,
+					Cache:             b.cache,
+				}
 
-					resultFolderPath := getResultFolder(configPath, dataPath, b, strategy)
+				// need to initialize the strategy api first since there is no wasm plugin available before this line
+				err = strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
+				if err != nil {
+					return fmt.Errorf("failed to initialize strategy api: %w", err)
+				}
+				err = strategy.Initialize(string(config))
+				if err != nil {
+					return fmt.Errorf("failed to initialize strategy: %w", err)
+				}
+				resultFolderPath := getResultFolder(configPath, dataPath, b, strategy)
 
-					b.log.Debug("Running strategy",
-						zap.String("strategy", strategy.Name()),
-						zap.String("config", configPath),
-						zap.String("data", dataPath),
-						zap.String("result", resultFolderPath),
-					)
+				b.log.Debug("Running strategy",
+					zap.String("strategy", strategy.Name()),
+					zap.String("config", configPath),
+					zap.String("data", dataPath),
+					zap.String("result", resultFolderPath),
+				)
 
-					runState.datasource = b.datasource
+				// Initialize the data source with the given data path
+				if err := b.datasource.Initialize(dataPath); err != nil {
+					return fmt.Errorf("failed to initialize data source: %w", err)
+				}
 
-					strategyContext := runtime.RuntimeContext{
-						DataSource:        b.datasource,
-						IndicatorRegistry: b.indicatorRegistry,
-						Marker:            b.marker,
-						TradingSystem:     b.tradingSystem,
-					}
-					//TODO: add context to the strategy
+				// create a progress bar
+				count, err := b.datasource.Count(b.config.StartTime, b.config.EndTime)
+				if err != nil {
+					return fmt.Errorf("failed to get data count: %w", err)
+				}
+				bar := p.AddBar(int64(count))
 
-					// Initialize the data source with the given data path
-					if err := b.datasource.Initialize(dataPath); err != nil {
-						errChan <- fmt.Errorf("failed to initialize data source: %w", err)
-						return
-					}
-
-					for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
-						if err != nil {
-							errChan <- fmt.Errorf("failed to read data: %w", err)
-							return
-						}
-						// run the strategy
-						err = strategy.ProcessData(data)
-						if err != nil {
-							errChan <- fmt.Errorf("failed to process data: %w", err)
-							return
-						}
-						// Update progress bar
-						bar.Increment()
-					}
-
-					// Write results and cleanup
-					if err := runState.state.Write(resultFolderPath); err != nil {
-						errChan <- fmt.Errorf("failed to write results: %w", err)
-						return
-					}
-
-					stats, err := runState.state.GetStats(strategyContext)
+				for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
 					if err != nil {
-						errChan <- fmt.Errorf("failed to get stats: %w", err)
-						return
+						return fmt.Errorf("failed to read data: %w", err)
 					}
-					if err := types.WriteTradeStats(filepath.Join(resultFolderPath, "stats.yaml"), stats); err != nil {
-						errChan <- fmt.Errorf("failed to write stats: %w", err)
-						return
+					// run the strategy
+					err = strategy.ProcessData(data)
+					if err != nil {
+						return fmt.Errorf("failed to process data: %w", err)
 					}
+					// Update progress bar
+					bar.Increment()
+				}
 
-					if err := runState.state.Cleanup(); err != nil {
-						errChan <- fmt.Errorf("failed to cleanup state: %w", err)
-						return
-					}
-				}(strategy, configPath, dataPath)
+				// Write results and cleanup
+				if err := runState.state.Write(resultFolderPath); err != nil {
+					return fmt.Errorf("failed to write results: %w", err)
+				}
+
+				stats, err := runState.state.GetStats(strategyContext)
+				if err != nil {
+					return fmt.Errorf("failed to get stats: %w", err)
+				}
+				if err := types.WriteTradeStats(filepath.Join(resultFolderPath, "stats.yaml"), stats); err != nil {
+					return fmt.Errorf("failed to write stats: %w", err)
+				}
+
+				if err := runState.state.Cleanup(); err != nil {
+					return fmt.Errorf("failed to cleanup state: %w", err)
+				}
 			}
 		}
 	}
 
 	// Wait for all progress bars to complete
 	p.Wait()
-	close(errChan)
-
-	// Check for any errors
-	var errors []error
-	for err := range errChan {
-		errors = append(errors, err)
-	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("encountered %d errors during parallel execution: %v", len(errors), errors)
-	}
 
 	return nil
+}
+
+func (b *BacktestEngineV1) GetStrategyApi() (strategy.StrategyApi, error) {
+	strategyApi := wasm.NewWasmStrategyApi(&runtime.RuntimeContext{
+		DataSource:        b.datasource,
+		IndicatorRegistry: b.indicatorRegistry,
+		Marker:            b.marker,
+		TradingSystem:     b.tradingSystem,
+		Cache:             b.cache,
+	})
+
+	return strategyApi, nil
 }

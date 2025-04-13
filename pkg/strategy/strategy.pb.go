@@ -135,6 +135,7 @@ const (
 	IndicatorType_INDICATOR_EMA                   IndicatorType = 10
 	IndicatorType_INDICATOR_WADDAH_ATTAR          IndicatorType = 11
 	IndicatorType_INDICATOR_ATR                   IndicatorType = 12
+	IndicatorType_INDICATOR_MA                    IndicatorType = 13
 )
 
 // Enum value maps for IndicatorType.
@@ -153,6 +154,7 @@ var (
 		10: "INDICATOR_EMA",
 		11: "INDICATOR_WADDAH_ATTAR",
 		12: "INDICATOR_ATR",
+		13: "INDICATOR_MA",
 	}
 	IndicatorType_value = map[string]int32{
 		"INDICATOR_RSI":                   0,
@@ -168,6 +170,7 @@ var (
 		"INDICATOR_EMA":                   10,
 		"INDICATOR_WADDAH_ATTAR":          11,
 		"INDICATOR_ATR":                   12,
+		"INDICATOR_MA":                    13,
 	}
 )
 

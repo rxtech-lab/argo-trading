@@ -51,13 +51,19 @@ func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 func (d *DuckDBDataSource) Initialize(path string) error {
 	d.logger.Debug("Initializing DuckDB data source", zap.String("path", path))
 
+	// First drop the view if it exists
+	_, err := d.db.Exec(`DROP VIEW IF EXISTS market_data;`)
+	if err != nil {
+		return fmt.Errorf("failed to drop existing view: %w", err)
+	}
+
 	// Create a view from the parquet file - using raw SQL as Squirrel doesn't support CREATE VIEW
 	query := fmt.Sprintf(`
 		CREATE VIEW market_data AS 
 		SELECT * FROM read_parquet('%s');
 	`, path)
 
-	_, err := d.db.Exec(query)
+	_, err = d.db.Exec(query)
 	if err != nil {
 		return err
 	}

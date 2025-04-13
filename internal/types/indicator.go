@@ -16,4 +16,5 @@ const (
 	IndicatorTypeEMA                   IndicatorType = "ema"
 	IndicatorTypeWaddahAttar           IndicatorType = "waddah_attar"
 	IndicatorTypeATR                   IndicatorType = "atr"
+	IndicatorTypeMA                    IndicatorType = "ma"
 )

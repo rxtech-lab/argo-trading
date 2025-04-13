@@ -32,6 +32,9 @@ jobs:
       - name: Compile wasm
         run: cd examples/strategy && make build
 
+      - name: Compile E2E wasms
+        run: cd e2e/backtest/wasm && make build
+
       - name: Run tests with coverage
         run: |
           # Create test output directory

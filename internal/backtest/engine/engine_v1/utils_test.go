@@ -7,6 +7,7 @@ import (
 
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -24,6 +25,10 @@ func (m *MockStrategy) Initialize(config string) error {
 }
 
 func (m *MockStrategy) ProcessData(data types.MarketData) error {
+	return nil
+}
+
+func (m *MockStrategy) InitializeApi(api strategy.StrategyApi) error {
 	return nil
 }
 

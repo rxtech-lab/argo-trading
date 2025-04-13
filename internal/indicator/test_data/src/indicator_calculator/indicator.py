@@ -132,3 +132,24 @@ def calculate_macd(data: pd.DataFrame,
     result = result.drop(['ema_fast', 'ema_slow'], axis=1)
 
     return result
+
+
+def calculate_sma(data: pd.DataFrame, period: int = 20, column: str = 'close') -> pd.DataFrame:
+    """
+    Calculate the Simple Moving Average (SMA) for the given market data.
+
+    Args:
+        data (pd.DataFrame): A dataframe containing market data with a specified column.
+        period (int): The number of periods to use for the moving average calculation. Default is 20.
+        column (str): The name of the column to calculate the moving average on. Default is 'close'.
+    Returns:
+        pd.DataFrame: A dataframe with an additional column containing the moving average values.
+    """
+    # Create a copy of the input dataframe to avoid modifying the original
+    result = data.copy()
+
+    # Calculate the simple moving average
+    # The first (period-1) values will be NaN
+    result[f'sma_{period}'] = result[column].rolling(window=period).mean()
+
+    return result

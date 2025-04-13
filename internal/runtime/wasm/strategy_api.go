@@ -39,11 +39,18 @@ func (s StrategyApiForWasm) CancelOrder(ctx context.Context, req *strategy.Cance
 // ConfigureIndicator implements strategy.StrategyApi.
 func (s StrategyApiForWasm) ConfigureIndicator(ctx context.Context, req *strategy.ConfigureRequest) (*emptypb.Empty, error) {
 	registry := s.runtimeContext.IndicatorRegistry
-	indicator, err := registry.GetIndicator(types.IndicatorType(req.IndicatorType))
+	indicator, err := registry.GetIndicator(runtime.StrategyIndicatorTypeToIndicatorType(req.IndicatorType))
 	if err != nil {
 		return nil, err
 	}
-	err = indicator.Config(req.Config)
+	// JSON unmarshal config to any[]
+	var configArray []any
+	err = json.Unmarshal([]byte(req.Config), &configArray)
+	if err != nil {
+		return nil, err
+	}
+
+	err = indicator.Config(configArray...)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +291,7 @@ func (s StrategyApiForWasm) GetRange(ctx context.Context, req *strategy.GetRange
 // GetSignal implements strategy.StrategyApi.
 func (s StrategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSignalRequest) (*strategy.GetSignalResponse, error) {
 	registry := s.runtimeContext.IndicatorRegistry
-	indicator, err := registry.GetIndicator(types.IndicatorType(req.IndicatorType))
+	indicator, err := registry.GetIndicator(runtime.StrategyIndicatorTypeToIndicatorType(req.IndicatorType))
 	if err != nil {
 		return nil, err
 	}
