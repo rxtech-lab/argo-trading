@@ -43,7 +43,7 @@ func (suite *BacktestTradingTestSuite) SetupTest() {
 	err := suite.state.Initialize()
 	suite.Require().NoError(err)
 	suite.trading = &BacktestTrading{
-		state:         *suite.state,
+		state:         suite.state,
 		balance:       suite.initialBalance,
 		marketData:    types.MarketData{},
 		pendingOrders: []types.ExecuteOrder{},

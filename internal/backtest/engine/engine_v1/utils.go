@@ -4,29 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/moznion/go-optional"
-	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
-	"github.com/vbauerster/mpb/v8"
 )
-
-// runKey represents a unique key for a backtest run
-type runKey struct {
-	strategy, configPath, dataPath string
-}
-
-// ProgressBarConfig holds the configuration for creating progress bars
-type ProgressBarConfig struct {
-	Progress    *mpb.Progress
-	Strategies  []runtime.StrategyRuntime
-	ConfigPaths []string
-	DataPaths   []string
-	Logger      *logger.Logger
-	StartTime   optional.Option[time.Time]
-	EndTime     optional.Option[time.Time]
-}
 
 func getResultFolder(configPath string, dataPath string, b *BacktestEngineV1, strategy runtime.StrategyRuntime) string {
 	// Create base folders for strategy and config

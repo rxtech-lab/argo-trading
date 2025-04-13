@@ -12,6 +12,7 @@
     "progressbar",
     "schollz",
     "sirily",
+    "testhelper",
     "Timespan",
     "timestamppb"
   ]
