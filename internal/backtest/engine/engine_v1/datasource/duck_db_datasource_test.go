@@ -1531,6 +1531,95 @@ func (suite *DuckDBTestSuite) TestReadLastData() {
 	}
 }
 
+func (suite *DuckDBTestSuite) TestGetMarketData() {
+	// Define test cases for GetMarketData
+	tests := []struct {
+		name        string
+		setupData   string
+		symbol      string
+		time        time.Time
+		expected    types.MarketData
+		expectError bool
+	}{
+		{
+			name: "Get existing market data",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:00:00'::TIMESTAMP, 'MSFT', 200.0, 201.0, 199.0, 200.5, 2000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			symbol: "AAPL",
+			time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			expected: types.MarketData{
+				Symbol: "AAPL",
+				Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				Open:   100.0,
+				High:   101.0,
+				Low:    99.0,
+				Close:  100.5,
+				Volume: 1000.0,
+			},
+			expectError: false,
+		},
+		{
+			name: "Get non-existent market data",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			symbol:      "GOOG",
+			time:        time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			expected:    types.MarketData{},
+			expectError: true,
+		},
+	}
+
+	// Run GetMarketData tests
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.cleanupMarketData()
+
+			// Setup test data
+			_, err := suite.ds.db.Exec(tc.setupData)
+			suite.Require().NoError(err)
+
+			// Test GetMarketData
+			result, err := suite.ds.GetMarketData(tc.symbol, tc.time)
+
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(tc.expected.Symbol, result.Symbol, "Symbol mismatch")
+			suite.Assert().Equal(tc.expected.Time.UTC(), result.Time.UTC(), "Time mismatch")
+			suite.Assert().Equal(tc.expected.Open, result.Open, "Open price mismatch")
+			suite.Assert().Equal(tc.expected.High, result.High, "High price mismatch")
+			suite.Assert().Equal(tc.expected.Low, result.Low, "Low price mismatch")
+			suite.Assert().Equal(tc.expected.Close, result.Close, "Close price mismatch")
+			suite.Assert().Equal(tc.expected.Volume, result.Volume, "Volume mismatch")
+		})
+	}
+}
+
 // Helper function to write test data to parquet file
 func writeTestDataToParquet(data []types.MarketData, filepath string) error {
 	// Create a temporary DuckDB database
@@ -1571,4 +1660,235 @@ func writeTestDataToParquet(data []types.MarketData, filepath string) error {
 		COPY market_data TO '%s' (FORMAT PARQUET)
 	`, filepath))
 	return err
+}
+
+func (suite *DuckDBTestSuite) TestGetPreviousNumberOfDataPoints() {
+	tests := []struct {
+		name         string
+		setupData    string
+		end          time.Time
+		symbol       string
+		count        int
+		expectedData []types.MarketData
+		expectError  bool
+	}{
+		{
+			name: "Get previous data points for existing symbol",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:    time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+			symbol: "AAPL",
+			count:  2,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+					Open:   102.5,
+					High:   104.0,
+					Low:    102.0,
+					Close:  103.5,
+					Volume: 2500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Get previous data points with mixed symbols",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'MSFT', 200.0, 201.0, 199.0, 200.5, 2000.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'MSFT', 201.5, 202.0, 200.0, 201.5, 2500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:    time.Date(2024, 1, 1, 10, 3, 0, 0, time.UTC),
+			symbol: "AAPL",
+			count:  2,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   101.0,
+					Low:    99.0,
+					Close:  100.5,
+					Volume: 1000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 2, 0, 0, time.UTC),
+					Open:   101.5,
+					High:   103.0,
+					Low:    101.0,
+					Close:  102.5,
+					Volume: 2000.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Get previous data points for a specific end time",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0),
+			('2024-01-01 10:02:00'::TIMESTAMP, 'AAPL', 101.5, 103.0, 101.0, 102.5, 2000.0),
+			('2024-01-01 10:03:00'::TIMESTAMP, 'AAPL', 102.5, 104.0, 102.0, 103.5, 2500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:    time.Date(2024, 1, 1, 10, 1, 30, 0, time.UTC), // Between 10:01 and 10:02
+			symbol: "AAPL",
+			count:  2,
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   101.0,
+					Low:    99.0,
+					Close:  100.5,
+					Volume: 1000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Get previous data points for non-existent symbol",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:          time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			symbol:       "MSFT",
+			count:        2,
+			expectedData: []types.MarketData{},
+			expectError:  false,
+		},
+		{
+			name: "Request more data points than available",
+			setupData: `CREATE TABLE market_data_source (
+				time TIMESTAMP,
+				symbol TEXT,
+				open DOUBLE,
+				high DOUBLE,
+				low DOUBLE,
+				close DOUBLE,
+				volume DOUBLE
+			);
+			INSERT INTO market_data_source VALUES
+			('2024-01-01 10:00:00'::TIMESTAMP, 'AAPL', 100.0, 101.0, 99.0, 100.5, 1000.0),
+			('2024-01-01 10:01:00'::TIMESTAMP, 'AAPL', 100.5, 102.0, 100.0, 101.5, 1500.0);
+			CREATE VIEW market_data AS SELECT * FROM market_data_source`,
+			end:    time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+			symbol: "AAPL",
+			count:  5, // More than available
+			expectedData: []types.MarketData{
+				{
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					Open:   100.0,
+					High:   101.0,
+					Low:    99.0,
+					Close:  100.5,
+					Volume: 1000.0,
+					Symbol: "AAPL",
+				},
+				{
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
+					Open:   100.5,
+					High:   102.0,
+					Low:    100.0,
+					Close:  101.5,
+					Volume: 1500.0,
+					Symbol: "AAPL",
+				},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.cleanupMarketData()
+
+			// Setup test data
+			_, err := suite.ds.db.Exec(tc.setupData)
+			suite.Require().NoError(err)
+
+			// Test GetPreviousNumberOfDataPoints
+			results, err := suite.ds.GetPreviousNumberOfDataPoints(tc.end, tc.symbol, tc.count)
+			if tc.expectError {
+				suite.Assert().Error(err)
+				return
+			}
+
+			suite.Assert().NoError(err)
+			suite.Assert().Equal(len(tc.expectedData), len(results), "Number of records mismatch")
+
+			if len(tc.expectedData) > 0 {
+				for i, expected := range tc.expectedData {
+					suite.Assert().Equal(expected.Time.UTC(), results[i].Time.UTC(), "Time mismatch")
+					suite.Assert().Equal(expected.Open, results[i].Open, "Open price mismatch")
+					suite.Assert().Equal(expected.High, results[i].High, "High price mismatch")
+					suite.Assert().Equal(expected.Low, results[i].Low, "Low price mismatch")
+					suite.Assert().Equal(expected.Close, results[i].Close, "Close price mismatch")
+					suite.Assert().Equal(expected.Volume, results[i].Volume, "Volume mismatch")
+					suite.Assert().Equal(expected.Symbol, results[i].Symbol, "Symbol mismatch")
+				}
+			}
+		})
+	}
 }

@@ -87,7 +87,8 @@ If user ask to not to use mock to generate test, check the `internal/backtest/en
 
 
 
+# Indicator test
 
-
+To implement an indicator test, use `internal/indicator/rsi_test.go` as reference. It is using table test to test different period, and then compare every data points. It skips some data point as requested. Don't mock the datasource, use the real datasource!
 
 
