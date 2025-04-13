@@ -7,11 +7,9 @@ import (
 	"time"
 
 	"github.com/moznion/go-optional"
-	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 )
 
 // runKey represents a unique key for a backtest run
@@ -28,52 +26,6 @@ type ProgressBarConfig struct {
 	Logger      *logger.Logger
 	StartTime   optional.Option[time.Time]
 	EndTime     optional.Option[time.Time]
-}
-
-// createProgressBars creates progress bars for each combination of strategy, config, and data path
-func createProgressBars(config ProgressBarConfig, datasource datasource.DataSource) (map[runKey]*mpb.Bar, error) {
-	bars := make(map[runKey]*mpb.Bar)
-
-	for _, strategy := range config.Strategies {
-		for _, configPath := range config.ConfigPaths {
-			for _, dataPath := range config.DataPaths {
-				// Initialize datasource to get count
-				if err := datasource.Initialize(dataPath); err != nil {
-					return nil, fmt.Errorf("failed to initialize data source: %w", err)
-				}
-				count, err := datasource.Count(config.StartTime, config.EndTime)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get count of data source: %w", err)
-				}
-
-				if count == 0 {
-					return nil, fmt.Errorf("no data found for strategy %s, config %s, data %s", strategy.Name(), configPath, dataPath)
-				}
-
-				key := runKey{
-					strategy:   strategy.Name(),
-					configPath: configPath,
-					dataPath:   dataPath,
-				}
-
-				bars[key] = config.Progress.AddBar(int64(count),
-					mpb.PrependDecorators(
-						decor.Name(fmt.Sprintf("%s - %s", strategy.Name(), filepath.Base(dataPath)),
-							decor.WC{W: len(strategy.Name()) + len(filepath.Base(dataPath)) + 3}),
-					),
-					mpb.AppendDecorators(
-						decor.Percentage(),
-						decor.OnComplete(
-							decor.AverageETA(decor.ET_STYLE_GO),
-							"done",
-						),
-					),
-				)
-			}
-		}
-	}
-
-	return bars, nil
 }
 
 func getResultFolder(configPath string, dataPath string, b *BacktestEngineV1, strategy runtime.StrategyRuntime) string {

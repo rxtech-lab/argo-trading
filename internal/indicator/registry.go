@@ -35,7 +35,7 @@ func (r *IndicatorRegistryV1) RegisterIndicator(indicator Indicator) error {
 
 	name := indicator.Name()
 	if _, exists := r.indicators[name]; exists {
-		return fmt.Errorf("indicator with name %s already registered", name)
+		return fmt.Errorf("RegisterIndicator: indicator with name %s already registered", name)
 	}
 
 	r.indicators[name] = indicator
@@ -49,7 +49,7 @@ func (r *IndicatorRegistryV1) GetIndicator(name types.IndicatorType) (Indicator,
 
 	indicator, exists := r.indicators[name]
 	if !exists {
-		return nil, fmt.Errorf("indicator with name %s not found", name)
+		return nil, fmt.Errorf("GetIndicator: indicator with name %s not found", name)
 	}
 
 	return indicator, nil
@@ -74,7 +74,7 @@ func (r *IndicatorRegistryV1) RemoveIndicator(name types.IndicatorType) error {
 	defer r.mu.Unlock()
 
 	if _, exists := r.indicators[name]; !exists {
-		return fmt.Errorf("indicator with name %s not found", name)
+		return fmt.Errorf("RemoveIndicator: indicator with name %s not found", name)
 	}
 
 	delete(r.indicators, name)

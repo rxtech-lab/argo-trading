@@ -50,6 +50,7 @@ func TestBacktestEngineV1_Run(t *testing.T) {
 		// Setup mock expectations
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
@@ -145,6 +146,7 @@ endTime: "2023-01-31T23:59:59Z"
 		// Setup strategy expectations - verify ProcessData is called with each data point
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 
 		// Important: expect ProcessData to be called with exact data points in order
 		gomock.InOrder(
@@ -222,6 +224,7 @@ endTime: "2023-01-31T23:59:59Z"
 		// Setup mock expectations
 		mockStrategy.EXPECT().Name().Return("TestStrategyResults").AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).DoAndReturn(func(data types.MarketData) error {
 			// This simulates the strategy processing data
 			return nil
@@ -318,6 +321,7 @@ endTime: "2023-01-31T23:59:59Z"
 		// Setup mock expectations
 		mockStrategy.EXPECT().Name().Return("TestStrategyStats").AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
@@ -392,6 +396,7 @@ endTime: "2023-01-31T23:59:59Z"
 		// Mock strategy initialization to fail
 		mockStrategy.EXPECT().Name().Return("TestStrategyError").AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(errors.New("strategy initialization failed")).AnyTimes()
+		// We don't expect InitializeApi to be called here since Initialize will fail first
 
 		// Create a simplified backtest engine for testing just the initialization error case
 		// Skip the full Run path by not setting up datasource expectations

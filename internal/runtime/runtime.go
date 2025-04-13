@@ -7,10 +7,12 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/marker"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
 type StrategyRuntime interface {
 	Initialize(config string) error
+	InitializeApi(api strategy.StrategyApi) error
 	ProcessData(data types.MarketData) error
 	Name() string
 }
