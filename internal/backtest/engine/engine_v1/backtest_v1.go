@@ -220,10 +220,8 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 				return err
 			}
 			for _, dataPath := range b.dataPaths {
-
-				state := NewBacktestState(b.log)
 				// Initialize the state
-				if err := state.Initialize(); err != nil {
+				if err := b.state.Initialize(); err != nil {
 					return fmt.Errorf("failed to initialize state: %w", err)
 				}
 
@@ -285,11 +283,11 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 				}
 
 				// Write results and cleanup
-				if err := state.Write(resultFolderPath); err != nil {
+				if err := b.state.Write(resultFolderPath); err != nil {
 					return fmt.Errorf("failed to write results: %w", err)
 				}
 
-				stats, err := state.GetStats(strategyContext)
+				stats, err := b.state.GetStats(strategyContext)
 				if err != nil {
 					return fmt.Errorf("failed to get stats: %w", err)
 				}
@@ -297,7 +295,7 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					return fmt.Errorf("failed to write stats: %w", err)
 				}
 
-				if err := state.Cleanup(); err != nil {
+				if err := b.state.Cleanup(); err != nil {
 					return fmt.Errorf("failed to cleanup state: %w", err)
 				}
 			}
