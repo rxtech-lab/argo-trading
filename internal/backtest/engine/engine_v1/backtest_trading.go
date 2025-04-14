@@ -15,11 +15,12 @@ import (
 
 // BacktestTrading is a trading system that is used to backtest a trading strategy.
 type BacktestTrading struct {
-	state         *BacktestState
-	balance       float64
-	marketData    types.MarketData
-	pendingOrders []types.ExecuteOrder
-	commission    commission_fee.CommissionFee
+	state            *BacktestState
+	balance          float64
+	marketData       types.MarketData
+	pendingOrders    []types.ExecuteOrder
+	commission       commission_fee.CommissionFee
+	decimalPrecision int
 }
 
 func (b *BacktestTrading) UpdateCurrentMarketData(marketData types.MarketData) {
@@ -123,6 +124,12 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 		return err
 	}
 
+	// Round the quantity to respect configured decimal precision
+	order.Quantity = utils.RoundToDecimalPrecision(order.Quantity, b.decimalPrecision)
+	if order.Quantity <= 0 {
+		return fmt.Errorf("order quantity is too small or zero after rounding to configured precision")
+	}
+
 	// check if the order's price is within the price range
 	if order.Price < b.marketData.Low {
 		return fmt.Errorf("order price is out of range")
@@ -173,7 +180,9 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 }
 
 func (b *BacktestTrading) getBuyingPower() float64 {
-	return float64(utils.CalculateMaxQuantity(b.balance, (b.marketData.High+b.marketData.Low)/2, b.commission))
+	maxQty := utils.CalculateMaxQuantity(b.balance, (b.marketData.High+b.marketData.Low)/2, b.commission)
+
+	return utils.RoundToDecimalPrecision(maxQty, b.decimalPrecision)
 }
 
 func (b *BacktestTrading) getSellingPower() float64 {
@@ -183,15 +192,16 @@ func (b *BacktestTrading) getSellingPower() float64 {
 		return 0
 	}
 
-	return position.Quantity
+	return utils.RoundToDecimalPrecision(position.Quantity, b.decimalPrecision)
 }
 
-func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee) trading.TradingSystem {
+func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) trading.TradingSystem {
 	return &BacktestTrading{
-		state:         state,
-		balance:       initialBalance,
-		marketData:    types.MarketData{},
-		pendingOrders: []types.ExecuteOrder{},
-		commission:    commission,
+		state:            state,
+		balance:          initialBalance,
+		marketData:       types.MarketData{},
+		pendingOrders:    []types.ExecuteOrder{},
+		commission:       commission,
+		decimalPrecision: decimalPrecision,
 	}
 }
