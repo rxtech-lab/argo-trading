@@ -13,7 +13,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/utils"
 )
 
-// BacktestTrading is a trading system that is used to backtest a trading strategy
+// BacktestTrading is a trading system that is used to backtest a trading strategy.
 type BacktestTrading struct {
 	state         *BacktestState
 	balance       float64
@@ -33,6 +33,7 @@ func (b *BacktestTrading) UpdateBalance(balance float64) {
 // CancelAllOrders implements trading.TradingSystem.
 func (b *BacktestTrading) CancelAllOrders() error {
 	b.pendingOrders = []types.ExecuteOrder{}
+
 	return nil
 }
 
@@ -41,9 +42,11 @@ func (b *BacktestTrading) CancelOrder(orderID string) error {
 	for i, order := range b.pendingOrders {
 		if order.ID == orderID {
 			b.pendingOrders = slices.Delete(b.pendingOrders, i, i+1)
+
 			return nil
 		}
 	}
+
 	return nil
 }
 
@@ -73,6 +76,7 @@ func (b *BacktestTrading) GetOrderStatus(orderID string) (types.OrderStatus, err
 			return types.OrderStatusPending, nil
 		}
 	}
+
 	return types.OrderStatusFailed, nil
 }
 
@@ -82,6 +86,7 @@ func (b *BacktestTrading) GetPosition(symbol string) (types.Position, error) {
 	if err != nil {
 		return types.Position{}, err
 	}
+
 	return position, nil
 }
 
@@ -91,6 +96,7 @@ func (b *BacktestTrading) GetPositions() ([]types.Position, error) {
 	if err != nil {
 		return []types.Position{}, err
 	}
+
 	return positions, nil
 }
 
@@ -102,6 +108,7 @@ func (b *BacktestTrading) PlaceMultipleOrders(orders []types.ExecuteOrder) error
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -110,6 +117,7 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	// validate the order using go-playground/validator/v10
 	order.ID = uuid.New().String()
 	validate := validator.New()
+
 	err := validate.Struct(order)
 	if err != nil {
 		return err
@@ -125,6 +133,7 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	if order.Price > b.marketData.High {
 		executePrice = b.marketData.High
 	}
+
 	if executePrice <= 0 {
 		return fmt.Errorf("order price is out of range: %f", executePrice)
 	}
@@ -159,6 +168,7 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -172,6 +182,7 @@ func (b *BacktestTrading) getSellingPower() float64 {
 	if err != nil {
 		return 0
 	}
+
 	return position.Quantity
 }
 

@@ -27,22 +27,36 @@ type BacktestState struct {
 
 // CalculatePNL calculates the profit/loss for a trade
 
-func NewBacktestState(logger *logger.Logger) *BacktestState {
+func NewBacktestState(logger *logger.Logger) (*BacktestState, error) {
 	db, err := sql.Open("duckdb", ":memory:")
 	if err != nil {
 		logger.Error("Failed to open database", zap.Error(err))
-		return nil
+
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Test connection to ensure database is properly initialized
+	if err := db.Ping(); err != nil {
+		logger.Error("Failed to connect to database", zap.Error(err))
+		db.Close()
+
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	return &BacktestState{
 		logger: logger,
 		db:     db,
 		sq:     squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
-	}
+	}, nil
 }
 
-// Initialize creates the necessary tables for tracking trades and positions
+// Initialize creates the necessary tables for tracking trades and positions.
 func (b *BacktestState) Initialize() error {
+	// Check for nil db
+	if b == nil || b.db == nil {
+		return fmt.Errorf("backtest state or database is nil")
+	}
+
 	// Create sequence for order IDs
 	_, err := b.db.Exec(`CREATE SEQUENCE IF NOT EXISTS order_id_seq`)
 	if err != nil {
@@ -95,15 +109,20 @@ func (b *BacktestState) Initialize() error {
 	return nil
 }
 
-// UpdateResult contains the results of processing an order
+// UpdateResult contains the results of processing an order.
 type UpdateResult struct {
 	Order         types.Order
 	Trade         types.Trade
 	IsNewPosition bool
 }
 
-// Update processes orders and updates trades
+// Update processes orders and updates trades.
 func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
+	// Check for nil fields
+	if b == nil || b.db == nil {
+		return nil, fmt.Errorf("backtest state or database is nil")
+	}
+
 	results := make([]UpdateResult, 0, len(orders))
 
 	for _, order := range orders {
@@ -131,6 +150,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		_, err = insertQuery.Exec()
 		if err != nil {
 			tx.Rollback()
+
 			return nil, fmt.Errorf("failed to insert order: %w", err)
 		}
 
@@ -138,11 +158,13 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		currentPosition, err := b.GetPosition(order.Symbol)
 		if err != nil {
 			tx.Rollback()
+
 			return nil, fmt.Errorf("failed to get position: %w", err)
 		}
 
 		// Calculate PnL if closing position
 		var pnl float64 = 0
+
 		if order.Side == types.PurchaseTypeSell && currentPosition.Quantity > 0 {
 			// For sell orders, calculate PnL using decimal arithmetic
 			avgEntryPrice := currentPosition.GetAverageEntryPrice()
@@ -192,6 +214,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		_, err = insertTradeQuery.Exec()
 		if err != nil {
 			tx.Rollback()
+
 			return nil, fmt.Errorf("failed to insert trade: %w", err)
 		}
 
@@ -216,7 +239,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 	return results, nil
 }
 
-// GetPosition retrieves the current position for a symbol by calculating from trades
+// GetPosition retrieves the current position for a symbol by calculating from trades.
 func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
 	// Create a complex query with CTEs using raw SQL as Squirrel doesn't directly support this complex case
 	query := `
@@ -298,7 +321,7 @@ func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
 	return position, nil
 }
 
-// GetAllTrades returns all trades from the database
+// GetAllTrades returns all trades from the database.
 func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 	selectQuery := b.sq.
 		Select(
@@ -317,8 +340,10 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 	defer rows.Close()
 
 	var trades []types.Trade
+
 	for rows.Next() {
 		var trade types.Trade
+
 		err := rows.Scan(
 			&trade.Order.OrderID,
 			&trade.Order.Symbol,
@@ -339,6 +364,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan trade: %w", err)
 		}
+
 		trades = append(trades, trade)
 	}
 
@@ -349,8 +375,13 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 	return trades, nil
 }
 
-// Cleanup resets the database state
+// Cleanup resets the database state.
 func (b *BacktestState) Cleanup() error {
+	// Check for nil db
+	if b == nil || b.db == nil {
+		return fmt.Errorf("backtest state or database is nil")
+	}
+
 	// Use raw SQL for dropping tables - Squirrel doesn't have DROP syntax
 	_, err := b.db.Exec(`
 		DROP TABLE IF EXISTS trades;
@@ -365,8 +396,13 @@ func (b *BacktestState) Cleanup() error {
 	return b.Initialize()
 }
 
-// Write saves the backtest results to Parquet files in the specified directory
+// Write saves the backtest results to Parquet files in the specified directory.
 func (b *BacktestState) Write(path string) error {
+	// Check for nil fields
+	if b == nil || b.db == nil || b.logger == nil {
+		return fmt.Errorf("backtest state, database, or logger is nil")
+	}
+
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
@@ -374,6 +410,7 @@ func (b *BacktestState) Write(path string) error {
 
 	// Export trades to Parquet - using raw SQL as Squirrel doesn't support COPY
 	tradesPath := filepath.Join(path, "trades.parquet")
+
 	_, err := b.db.Exec(fmt.Sprintf(`COPY trades TO '%s' (FORMAT PARQUET)`, tradesPath))
 	if err != nil {
 		return fmt.Errorf("failed to export trades to Parquet: %w", err)
@@ -381,6 +418,7 @@ func (b *BacktestState) Write(path string) error {
 
 	// Export orders to Parquet
 	ordersPath := filepath.Join(path, "orders.parquet")
+
 	_, err = b.db.Exec(fmt.Sprintf(`COPY orders TO '%s' (FORMAT PARQUET)`, ordersPath))
 	if err != nil {
 		return fmt.Errorf("failed to export orders to Parquet: %w", err)
@@ -390,106 +428,11 @@ func (b *BacktestState) Write(path string) error {
 		zap.String("trades", tradesPath),
 		zap.String("orders", ordersPath),
 	)
+
 	return nil
 }
 
-// calculateTradeResult calculates the trade result statistics for a symbol
-func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
-	// Using raw SQL for CTE query - Squirrel doesn't natively support CTEs well
-	query := `
-		WITH trade_stats AS (
-			SELECT 
-				COUNT(*) as total_trades,
-				SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
-				SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
-				MIN(pnl) as min_pnl,
-				MAX(pnl) as max_pnl
-			FROM trades
-			WHERE symbol = ?
-		)
-		SELECT 
-			total_trades,
-			winning_trades,
-			losing_trades,
-			CASE WHEN total_trades > 0 THEN CAST(winning_trades AS DOUBLE) / total_trades ELSE 0 END as win_rate,
-			CASE WHEN min_pnl < 0 THEN ABS(min_pnl) ELSE 0 END as max_drawdown
-		FROM trade_stats
-	`
-
-	var result types.TradeResult
-	err := b.db.QueryRow(query, symbol).Scan(
-		&result.NumberOfTrades,
-		&result.NumberOfWinningTrades,
-		&result.NumberOfLosingTrades,
-		&result.WinRate,
-		&result.MaxDrawdown,
-	)
-	if err != nil {
-		return types.TradeResult{}, fmt.Errorf("failed to calculate trade result: %w", err)
-	}
-
-	return result, nil
-}
-
-// calculateTradeHoldingTime calculates the holding time statistics for a symbol
-func (b *BacktestState) calculateTradeHoldingTime(symbol string) (types.TradeHoldingTime, error) {
-	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex query
-	query := `
-		WITH buy_trades AS (
-			SELECT executed_at
-			FROM trades
-			WHERE symbol = ? AND order_type = ?
-		),
-		sell_trades AS (
-			SELECT executed_at
-			FROM trades
-			WHERE symbol = ? AND order_type = ?
-		),
-		trade_durations AS (
-			SELECT 
-				EXTRACT(EPOCH FROM (s.executed_at - b.executed_at)) / 3600 as duration
-			FROM buy_trades b
-			JOIN sell_trades s ON s.executed_at > b.executed_at
-		)
-		SELECT 
-			COALESCE(MIN(duration), 0) as min_duration,
-			COALESCE(MAX(duration), 0) as max_duration,
-			COALESCE(AVG(duration), 0) as avg_duration
-		FROM trade_durations
-	`
-
-	var holdingTime types.TradeHoldingTime
-	var avgDuration float64
-	err := b.db.QueryRow(query, symbol, types.PurchaseTypeBuy, symbol, types.PurchaseTypeSell).Scan(
-		&holdingTime.Min,
-		&holdingTime.Max,
-		&avgDuration,
-	)
-	if err != nil {
-		return types.TradeHoldingTime{}, fmt.Errorf("failed to calculate holding time: %w", err)
-	}
-	holdingTime.Avg = int(math.Round(avgDuration))
-	return holdingTime, nil
-}
-
-// calculateTotalFees calculates the total fees for a symbol
-func (b *BacktestState) calculateTotalFees(symbol string) (float64, error) {
-	// Using Squirrel for a simpler query
-	query := b.sq.
-		Select("SUM(commission)").
-		From("trades").
-		Where(squirrel.Eq{"symbol": symbol}).
-		RunWith(b.db)
-
-	var totalFees float64
-	err := query.QueryRow().Scan(&totalFees)
-	if err != nil {
-		return 0, fmt.Errorf("failed to calculate total fees: %w", err)
-	}
-	return totalFees, nil
-}
-
-// GetStats returns the statistics of the backtest
+// GetStats returns the statistics of the backtest.
 func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats, error) {
 	// Get all unique symbols that have trades using Squirrel
 	selectQuery := b.sq.
@@ -505,6 +448,7 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats
 	defer rows.Close()
 
 	var stats []types.TradeStats
+
 	for rows.Next() {
 		var symbol string
 		if err := rows.Scan(&symbol); err != nil {
@@ -562,10 +506,12 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats
 			RunWith(b.db)
 
 		var maxLoss, maxProfit float64
+
 		err = maxLossProfit.QueryRow().Scan(&maxLoss, &maxProfit)
 		if err != nil {
 			return nil, fmt.Errorf("failed to calculate max loss/profit: %w", err)
 		}
+
 		tradePnl.MaximumLoss = maxLoss
 		tradePnl.MaximumProfit = maxProfit
 
@@ -585,7 +531,7 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats
 	return stats, nil
 }
 
-// GetOrderById returns an order by its id
+// GetOrderById returns an order by its id.
 func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Order], error) {
 	query := b.sq.
 		Select("*").
@@ -594,6 +540,7 @@ func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Orde
 		RunWith(b.db)
 
 	var order types.Order
+
 	err := query.QueryRow().Scan(
 		&order.OrderID,
 		&order.Symbol,
@@ -611,12 +558,14 @@ func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Orde
 		if err == sql.ErrNoRows {
 			return optional.None[types.Order](), nil
 		}
+
 		return optional.None[types.Order](), fmt.Errorf("failed to get order by id: %w", err)
 	}
+
 	return optional.Some(order), nil
 }
 
-// GetAllPositions returns all positions from the database by calculating from trades
+// GetAllPositions returns all positions from the database by calculating from trades.
 func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex case
 	query := `
@@ -666,8 +615,10 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 	defer rows.Close()
 
 	var positions []types.Position
+
 	for rows.Next() {
 		var position types.Position
+
 		err := rows.Scan(
 			&position.Symbol,
 			&position.Quantity,
@@ -683,6 +634,7 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan position: %w", err)
 		}
+
 		positions = append(positions, position)
 	}
 
@@ -691,4 +643,107 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 	}
 
 	return positions, nil
+}
+
+// calculateTradeResult calculates the trade result statistics for a symbol.
+func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
+	// Using raw SQL for CTE query - Squirrel doesn't natively support CTEs well
+	query := `
+		WITH trade_stats AS (
+			SELECT 
+				COUNT(*) as total_trades,
+				SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
+				SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
+				MIN(pnl) as min_pnl,
+				MAX(pnl) as max_pnl
+			FROM trades
+			WHERE symbol = ?
+		)
+		SELECT 
+			total_trades,
+			winning_trades,
+			losing_trades,
+			CASE WHEN total_trades > 0 THEN CAST(winning_trades AS DOUBLE) / total_trades ELSE 0 END as win_rate,
+			CASE WHEN min_pnl < 0 THEN ABS(min_pnl) ELSE 0 END as max_drawdown
+		FROM trade_stats
+	`
+
+	var result types.TradeResult
+
+	err := b.db.QueryRow(query, symbol).Scan(
+		&result.NumberOfTrades,
+		&result.NumberOfWinningTrades,
+		&result.NumberOfLosingTrades,
+		&result.WinRate,
+		&result.MaxDrawdown,
+	)
+	if err != nil {
+		return types.TradeResult{}, fmt.Errorf("failed to calculate trade result: %w", err)
+	}
+
+	return result, nil
+}
+
+// calculateTradeHoldingTime calculates the holding time statistics for a symbol.
+func (b *BacktestState) calculateTradeHoldingTime(symbol string) (types.TradeHoldingTime, error) {
+	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex query
+	query := `
+		WITH buy_trades AS (
+			SELECT executed_at
+			FROM trades
+			WHERE symbol = ? AND order_type = ?
+		),
+		sell_trades AS (
+			SELECT executed_at
+			FROM trades
+			WHERE symbol = ? AND order_type = ?
+		),
+		trade_durations AS (
+			SELECT 
+				EXTRACT(EPOCH FROM (s.executed_at - b.executed_at)) / 3600 as duration
+			FROM buy_trades b
+			JOIN sell_trades s ON s.executed_at > b.executed_at
+		)
+		SELECT 
+			COALESCE(MIN(duration), 0) as min_duration,
+			COALESCE(MAX(duration), 0) as max_duration,
+			COALESCE(AVG(duration), 0) as avg_duration
+		FROM trade_durations
+	`
+
+	var holdingTime types.TradeHoldingTime
+
+	var avgDuration float64
+
+	err := b.db.QueryRow(query, symbol, types.PurchaseTypeBuy, symbol, types.PurchaseTypeSell).Scan(
+		&holdingTime.Min,
+		&holdingTime.Max,
+		&avgDuration,
+	)
+	if err != nil {
+		return types.TradeHoldingTime{}, fmt.Errorf("failed to calculate holding time: %w", err)
+	}
+
+	holdingTime.Avg = int(math.Round(avgDuration))
+
+	return holdingTime, nil
+}
+
+// calculateTotalFees calculates the total fees for a symbol.
+func (b *BacktestState) calculateTotalFees(symbol string) (float64, error) {
+	// Using Squirrel for a simpler query
+	query := b.sq.
+		Select("SUM(commission)").
+		From("trades").
+		Where(squirrel.Eq{"symbol": symbol}).
+		RunWith(b.db)
+
+	var totalFees float64
+
+	err := query.QueryRow().Scan(&totalFees)
+	if err != nil {
+		return 0, fmt.Errorf("failed to calculate total fees: %w", err)
+	}
+
+	return totalFees, nil
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
-// WaddahAttar represents the Waddah Attar Explosion indicator
+// WaddahAttar represents the Waddah Attar Explosion indicator.
 type WaddahAttar struct {
 	fastPeriod   int
 	slowPeriod   int
@@ -20,7 +20,7 @@ type WaddahAttar struct {
 	multiplier   float64
 }
 
-// NewWaddahAttar creates a new Waddah Attar Explosion indicator with default configuration
+// NewWaddahAttar creates a new Waddah Attar Explosion indicator with default configuration.
 func NewWaddahAttar() Indicator {
 	return &WaddahAttar{
 		fastPeriod:   20,    // Default fast period
@@ -31,13 +31,12 @@ func NewWaddahAttar() Indicator {
 	}
 }
 
-// Name returns the name of the indicator
+// Name returns the name of the indicator.
 func (wa *WaddahAttar) Name() types.IndicatorType {
 	return types.IndicatorTypeWaddahAttar
 }
 
-// Config configures the Waddah Attar indicator with the given parameters
-// Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64)
+// Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64).
 func (wa *WaddahAttar) Config(params ...any) error {
 	if len(params) != 5 {
 		return fmt.Errorf("Config expects 5 parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64)")
@@ -47,6 +46,7 @@ func (wa *WaddahAttar) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for fastPeriod parameter, expected int")
 	}
+
 	if fastPeriod <= 0 {
 		return fmt.Errorf("fastPeriod must be a positive integer, got %d", fastPeriod)
 	}
@@ -55,6 +55,7 @@ func (wa *WaddahAttar) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for slowPeriod parameter, expected int")
 	}
+
 	if slowPeriod <= 0 {
 		return fmt.Errorf("slowPeriod must be a positive integer, got %d", slowPeriod)
 	}
@@ -63,6 +64,7 @@ func (wa *WaddahAttar) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for signalPeriod parameter, expected int")
 	}
+
 	if signalPeriod <= 0 {
 		return fmt.Errorf("signalPeriod must be a positive integer, got %d", signalPeriod)
 	}
@@ -71,6 +73,7 @@ func (wa *WaddahAttar) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for atrPeriod parameter, expected int")
 	}
+
 	if atrPeriod <= 0 {
 		return fmt.Errorf("atrPeriod must be a positive integer, got %d", atrPeriod)
 	}
@@ -79,6 +82,7 @@ func (wa *WaddahAttar) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for multiplier parameter, expected float64")
 	}
+
 	if multiplier <= 0 {
 		return fmt.Errorf("multiplier must be a positive number, got %f", multiplier)
 	}
@@ -88,10 +92,11 @@ func (wa *WaddahAttar) Config(params ...any) error {
 	wa.signalPeriod = signalPeriod
 	wa.atrPeriod = atrPeriod
 	wa.multiplier = multiplier
+
 	return nil
 }
 
-// WaddahAttarData holds the calculated indicator values
+// WaddahAttarData holds the calculated indicator values.
 type WaddahAttarData struct {
 	macd        float64
 	signal      float64
@@ -102,7 +107,7 @@ type WaddahAttarData struct {
 	initialized bool
 }
 
-// GetSignal calculates the Waddah Attar Explosion signal
+// GetSignal calculates the Waddah Attar Explosion signal.
 func (wa *WaddahAttar) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
 	// Calculate the Waddah Attar values
 	waData, err := wa.calculateWaddahAttar(marketData, ctx)
@@ -112,9 +117,11 @@ func (wa *WaddahAttar) GetSignal(marketData types.MarketData, ctx IndicatorConte
 
 	// Determine Signal Type
 	signalType := types.SignalTypeNoAction
+
 	reason := "No trend detected or uninitialized"
 	if waData.initialized {
 		reason = "No trend detected"
+
 		if waData.explosion > 0 && waData.trend > 0 {
 			signalType = types.SignalTypeBuyLong
 			reason = fmt.Sprintf("Waddah Attar bullish explosion (explosion=%.4f, trend=%.4f)", waData.explosion, waData.trend)
@@ -144,7 +151,65 @@ func (wa *WaddahAttar) GetSignal(marketData types.MarketData, ctx IndicatorConte
 	return signal, nil
 }
 
-// calculateWaddahAttar performs the actual Waddah Attar calculation
+// RawValue implements the Indicator interface.
+func (wa *WaddahAttar) RawValue(params ...any) (float64, error) {
+	// Validate and extract parameters
+	if len(params) < 3 {
+		return 0, fmt.Errorf("RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
+	}
+
+	symbol, ok := params[0].(string)
+	if !ok {
+		return 0, fmt.Errorf("first parameter must be of type string (symbol)")
+	}
+
+	currentTime, ok := params[1].(time.Time)
+	if !ok {
+		return 0, fmt.Errorf("second parameter must be of type time.Time")
+	}
+
+	ctx, ok := params[2].(IndicatorContext)
+	if !ok {
+		return 0, fmt.Errorf("third parameter must be of type IndicatorContext")
+	}
+
+	// Get market data
+	var marketData types.MarketData
+
+	var err error
+
+	if !currentTime.IsZero() {
+		endTime := currentTime
+		startTime := endTime.Add(-time.Hour * 24)
+
+		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
+		if err != nil {
+			return 0, fmt.Errorf("failed to get historical data: %w", err)
+		}
+
+		if len(historicalData) == 0 {
+			return 0, fmt.Errorf("no historical data available for the specified time range")
+		}
+
+		marketData = historicalData[len(historicalData)-1]
+	} else {
+		marketData, err = ctx.DataSource.ReadLastData(symbol)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get latest market data: %w", err)
+		}
+	}
+
+	// Calculate Waddah Attar values
+	waData, err := wa.calculateWaddahAttar(marketData, ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to calculate Waddah Attar: %w", err)
+	}
+
+	// Return the explosion value
+	return waData.explosion, nil
+}
+
+// calculateWaddahAttar performs the actual Waddah Attar calculation.
 func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx IndicatorContext) (WaddahAttarData, error) {
 	result := WaddahAttarData{}
 
@@ -164,6 +229,7 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	if err != nil {
 		return result, err
 	}
+
 	if value.Symbol != marketData.Symbol {
 		cacheV1.WaddahAttarState = optional.Some(cache.WaddahAttarState{
 			PrevMACD:   math.NaN(),
@@ -227,58 +293,4 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 	result.initialized = true
 
 	return result, nil
-}
-
-// RawValue implements the Indicator interface
-func (wa *WaddahAttar) RawValue(params ...any) (float64, error) {
-	// Validate and extract parameters
-	if len(params) < 3 {
-		return 0, fmt.Errorf("RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
-	}
-
-	symbol, ok := params[0].(string)
-	if !ok {
-		return 0, fmt.Errorf("first parameter must be of type string (symbol)")
-	}
-
-	currentTime, ok := params[1].(time.Time)
-	if !ok {
-		return 0, fmt.Errorf("second parameter must be of type time.Time")
-	}
-
-	ctx, ok := params[2].(IndicatorContext)
-	if !ok {
-		return 0, fmt.Errorf("third parameter must be of type IndicatorContext")
-	}
-
-	// Get market data
-	var marketData types.MarketData
-	var err error
-
-	if !currentTime.IsZero() {
-		endTime := currentTime
-		startTime := endTime.Add(-time.Hour * 24)
-		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
-		if err != nil {
-			return 0, fmt.Errorf("failed to get historical data: %w", err)
-		}
-		if len(historicalData) == 0 {
-			return 0, fmt.Errorf("no historical data available for the specified time range")
-		}
-		marketData = historicalData[len(historicalData)-1]
-	} else {
-		marketData, err = ctx.DataSource.ReadLastData(symbol)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get latest market data: %w", err)
-		}
-	}
-
-	// Calculate Waddah Attar values
-	waData, err := wa.calculateWaddahAttar(marketData, ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to calculate Waddah Attar: %w", err)
-	}
-
-	// Return the explosion value
-	return waData.explosion, nil
 }

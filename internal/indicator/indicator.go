@@ -12,7 +12,7 @@ type IndicatorContext struct {
 	Cache             cache.Cache
 }
 
-// Indicator interface defines methods that any technical indicator must implement
+// Indicator interface defines methods that any technical indicator must implement.
 type Indicator interface {
 	// BuySignal returns a signal to buy
 	GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error)

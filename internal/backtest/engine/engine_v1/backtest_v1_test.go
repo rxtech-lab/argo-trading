@@ -287,7 +287,7 @@ endTime: "2023-01-31T23:59:59Z"
 		assert.NoError(t, err, "Result directory should be created")
 
 		// Also check for the trades.parquet file which should exist
-		tradesFile := filepath.Join(resultDir, "trades.parquet")
+		tradesFile := filepath.Join(resultDir, "state.db", "trades.parquet")
 		_, err = os.Stat(tradesFile)
 		assert.NoError(t, err, "Trades file should be created")
 	})

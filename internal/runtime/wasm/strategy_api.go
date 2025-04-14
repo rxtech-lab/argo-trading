@@ -24,6 +24,7 @@ func (s StrategyApiForWasm) CancelAllOrders(ctx context.Context, _ *emptypb.Empt
 	if err != nil {
 		return nil, err
 	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -33,18 +34,21 @@ func (s StrategyApiForWasm) CancelOrder(ctx context.Context, req *strategy.Cance
 	if err != nil {
 		return nil, err
 	}
+
 	return &emptypb.Empty{}, nil
 }
 
 // ConfigureIndicator implements strategy.StrategyApi.
 func (s StrategyApiForWasm) ConfigureIndicator(ctx context.Context, req *strategy.ConfigureRequest) (*emptypb.Empty, error) {
 	registry := s.runtimeContext.IndicatorRegistry
+
 	indicator, err := registry.GetIndicator(runtime.StrategyIndicatorTypeToIndicatorType(req.IndicatorType))
 	if err != nil {
 		return nil, err
 	}
 	// JSON unmarshal config to any[]
 	var configArray []any
+
 	err = json.Unmarshal([]byte(req.Config), &configArray)
 	if err != nil {
 		return nil, err
@@ -54,6 +58,7 @@ func (s StrategyApiForWasm) ConfigureIndicator(ctx context.Context, req *strateg
 	if err != nil {
 		return nil, err
 	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -61,10 +66,12 @@ func (s StrategyApiForWasm) ConfigureIndicator(ctx context.Context, req *strateg
 func (s StrategyApiForWasm) Count(ctx context.Context, req *strategy.CountRequest) (*strategy.CountResponse, error) {
 	startTime := optional.Some(req.StartTime.AsTime())
 	endTime := optional.Some(req.EndTime.AsTime())
+
 	count, err := s.runtimeContext.DataSource.Count(startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
+
 	return &strategy.CountResponse{
 		Count: int32(count),
 	}, nil
@@ -76,6 +83,7 @@ func (s StrategyApiForWasm) ExecuteSQL(ctx context.Context, req *strategy.Execut
 	for i, param := range req.Params {
 		params[i] = param
 	}
+
 	results, err := s.runtimeContext.DataSource.ExecuteSQL(req.Query, params...)
 	if err != nil {
 		return nil, err
@@ -87,6 +95,7 @@ func (s StrategyApiForWasm) ExecuteSQL(ctx context.Context, req *strategy.Execut
 
 	for i, result := range results {
 		fields := make(map[string]string)
+
 		for k, v := range result.Values {
 			if strVal, ok := v.(string); ok {
 				fields[k] = strVal
@@ -94,6 +103,7 @@ func (s StrategyApiForWasm) ExecuteSQL(ctx context.Context, req *strategy.Execut
 				fields[k] = fmt.Sprintf("%v", v)
 			}
 		}
+
 		response.Results[i] = &strategy.SQLResult{
 			Fields: fields,
 		}
@@ -151,6 +161,7 @@ func (s StrategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*
 		}
 
 		var signalType strategy.SignalType
+
 		switch marker.Signal.Type {
 		case types.SignalTypeBuyLong:
 			signalType = strategy.SignalType_SIGNAL_TYPE_BUY_LONG
@@ -191,6 +202,7 @@ func (s StrategyApiForWasm) GetOrderStatus(ctx context.Context, req *strategy.Ge
 	}
 
 	var orderStatus strategy.OrderStatus
+
 	switch status {
 	case types.OrderStatusPending:
 		orderStatus = strategy.OrderStatus_ORDER_STATUS_PENDING
@@ -264,6 +276,7 @@ func (s StrategyApiForWasm) GetPositions(ctx context.Context, _ *emptypb.Empty) 
 // GetRange implements strategy.StrategyApi.
 func (s StrategyApiForWasm) GetRange(ctx context.Context, req *strategy.GetRangeRequest) (*strategy.GetRangeResponse, error) {
 	intervalValue := runtime.StrategyIntervalToDataSourceInterval(req.Interval)
+
 	data, err := s.runtimeContext.DataSource.GetRange(req.StartTime.AsTime(), req.EndTime.AsTime(), intervalValue)
 	if err != nil {
 		return nil, err
@@ -291,6 +304,7 @@ func (s StrategyApiForWasm) GetRange(ctx context.Context, req *strategy.GetRange
 // GetSignal implements strategy.StrategyApi.
 func (s StrategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSignalRequest) (*strategy.GetSignalResponse, error) {
 	registry := s.runtimeContext.IndicatorRegistry
+
 	indicator, err := registry.GetIndicator(runtime.StrategyIndicatorTypeToIndicatorType(req.IndicatorType))
 	if err != nil {
 		return nil, err
@@ -385,11 +399,14 @@ func (s StrategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strate
 // PlaceOrder implements strategy.StrategyApi.
 func (s StrategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.ExecuteOrder) (*emptypb.Empty, error) {
 	var reasonName string
+
 	var reasonMessage string
+
 	if req.Reason != nil {
 		reasonName = req.Reason.Reason
 		reasonMessage = req.Reason.Message
 	}
+
 	order := types.ExecuteOrder{
 		ID:           req.Id,
 		Symbol:       req.Symbol,

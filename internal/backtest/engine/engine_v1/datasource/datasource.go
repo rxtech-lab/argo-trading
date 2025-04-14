@@ -24,7 +24,7 @@ const (
 	Interval1M  Interval = "1M"
 )
 
-// SQLResult represents a row of data from a SQL query
+// SQLResult represents a row of data from a SQL query.
 type SQLResult struct {
 	Values map[string]interface{}
 }

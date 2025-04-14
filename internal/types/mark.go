@@ -1,6 +1,6 @@
 package types
 
-// Mark a point in time with a signal and a reason
+// Mark a point in time with a signal and a reason.
 type Mark struct {
 	// Signal is the signal that was generated
 	Signal Signal
