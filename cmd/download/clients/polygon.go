@@ -28,7 +28,11 @@ type PolygonClient struct {
 }
 
 func NewPolygonClient() *PolygonClient {
-	client := polygon.New(os.Getenv("POLYGON_API_KEY"))
+	apiKey := os.Getenv("POLYGON_API_KEY")
+	if apiKey == "" {
+		log.Fatal("POLYGON_API_KEY is not set")
+	}
+	client := polygon.New(apiKey)
 	return &PolygonClient{
 		client: client,
 	}
