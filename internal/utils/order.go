@@ -2,7 +2,7 @@ package utils
 
 import "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 
-// Calculate the maximum quantity that can be bought with the given balance. Returns the quantity in integer
+// Calculate the maximum quantity that can be bought with the given balance. Returns the quantity in integer.
 func CalculateMaxQuantity(balance float64, price float64, commissionFee commission_fee.CommissionFee) int {
 	// Handle edge cases
 	if price <= 0 || balance <= 0 {
@@ -20,6 +20,7 @@ func CalculateMaxQuantity(balance float64, price float64, commissionFee commissi
 	for left <= right {
 		mid := (left + right) / 2
 		totalCost := float64(mid)*price + commissionFee.Calculate(float64(mid))
+
 		if totalCost <= balance {
 			maxQty = mid
 			left = mid + 1
@@ -31,8 +32,9 @@ func CalculateMaxQuantity(balance float64, price float64, commissionFee commissi
 	return maxQty
 }
 
-// Calculate the quantity of an order by the given percentage of the balance
+// Calculate the quantity of an order by the given percentage of the balance.
 func CalculateOrderQuantityByPercentage(balance float64, price float64, commissionFee commission_fee.CommissionFee, percentage float64) int {
 	quantity := balance * percentage
+
 	return CalculateMaxQuantity(quantity, price, commissionFee)
 }

@@ -8,41 +8,44 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
-// EMA indicator implements Exponential Moving Average calculation
+// EMA indicator implements Exponential Moving Average calculation.
 type EMA struct {
 	period int
 }
 
-// NewEMA creates a new EMA indicator with default configuration
+// NewEMA creates a new EMA indicator with default configuration.
 func NewEMA() Indicator {
 	return &EMA{
 		period: 20, // Default period
 	}
 }
 
-// Name returns the name of the indicator
+// Name returns the name of the indicator.
 func (e *EMA) Name() types.IndicatorType {
 	return types.IndicatorTypeEMA
 }
 
-// Config configures the EMA indicator with the given parameters
-// Expected parameters: period (int)
+// Expected parameters: period (int).
 func (e *EMA) Config(params ...any) error {
 	if len(params) != 1 {
 		return fmt.Errorf("Config expects 1 parameter: period (int)")
 	}
+
 	period, ok := params[0].(int)
 	if !ok {
 		return fmt.Errorf("invalid type for period parameter, expected int")
 	}
+
 	if period <= 0 {
 		return fmt.Errorf("period must be a positive integer, got %d", period)
 	}
+
 	e.period = period
+
 	return nil
 }
 
-// GetSignal calculates the EMA signal based on market data
+// GetSignal calculates the EMA signal based on market data.
 func (e *EMA) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
 	// Calculate EMA
 	emaValue, err := e.RawValue(marketData.Symbol, marketData.Time, ctx, e.period)
@@ -106,6 +109,7 @@ func (e *EMA) RawValue(params ...any) (float64, error) {
 				if err != nil {
 					return 0, fmt.Errorf("failed to get period value: %w", err)
 				}
+
 				period = periodValue
 			}
 		default:
@@ -136,17 +140,17 @@ func (e *EMA) RawValue(params ...any) (float64, error) {
 	return calculateExponentialMovingAverage(historicalData, period), nil
 }
 
-// calculateSimpleMovingAverage calculates a simple moving average from the given historical data
+// calculateSimpleMovingAverage calculates a simple moving average from the given historical data.
 func calculateSimpleMovingAverage(data []types.MarketData) float64 {
 	sum := 0.0
 	for _, d := range data {
 		sum += d.Close
 	}
+
 	return sum / float64(len(data))
 }
 
-// calculateExponentialMovingAverage calculates EMA using the formula: EMA = Price * Multiplier + EMA(previous) * (1 - Multiplier)
-// where Multiplier = 2 / (Period + 1)
+// where Multiplier = 2 / (Period + 1).
 func calculateExponentialMovingAverage(data []types.MarketData, period int) float64 {
 	// Check if we have enough data
 	if len(data) == 0 {
@@ -161,6 +165,7 @@ func calculateExponentialMovingAverage(data []types.MarketData, period int) floa
 	for i := 0; i < period && i < len(data); i++ {
 		sma += data[i].Close
 	}
+
 	sma /= float64(period)
 
 	// Calculate multiplier

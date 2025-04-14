@@ -12,5 +12,6 @@ func (c *InteractiveBrokerCommissionFee) Calculate(quantity float64) float64 {
 	if fee < 1.0 {
 		return 1.0
 	}
+
 	return fee
 }

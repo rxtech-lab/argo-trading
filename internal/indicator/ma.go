@@ -8,29 +8,29 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
-// MA indicator implements Simple Moving Average calculation
+// MA indicator implements Simple Moving Average calculation.
 type MA struct {
 	period int
 }
 
-// NewMA creates a new MA indicator with default configuration
+// NewMA creates a new MA indicator with default configuration.
 func NewMA() Indicator {
 	return &MA{
 		period: 20, // Default period
 	}
 }
 
-// Name returns the name of the indicator
+// Name returns the name of the indicator.
 func (m *MA) Name() types.IndicatorType {
 	return types.IndicatorTypeMA
 }
 
-// Config configures the MA indicator with the given parameters
-// Expected parameters: period (int)
+// Expected parameters: period (int).
 func (m *MA) Config(params ...any) error {
 	if len(params) != 1 {
 		return fmt.Errorf("Config expects 1 parameter: period (int)")
 	}
+
 	period, ok := params[0].(int)
 	if !ok {
 		// Try to convert to float first
@@ -38,16 +38,20 @@ func (m *MA) Config(params ...any) error {
 		if !ok {
 			return fmt.Errorf("invalid type for period parameter, expected int or float")
 		}
+
 		period = int(periodFloat)
 	}
+
 	if period <= 0 {
 		return fmt.Errorf("period must be a positive integer, got %d", period)
 	}
+
 	m.period = period
+
 	return nil
 }
 
-// GetSignal calculates the MA signal based on market data
+// GetSignal calculates the MA signal based on market data.
 func (m *MA) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
 	// Calculate MA
 	maValue, err := m.RawValue(marketData.Symbol, marketData.Time, ctx, m.period)
@@ -111,6 +115,7 @@ func (m *MA) RawValue(params ...any) (float64, error) {
 				if err != nil {
 					return 0, fmt.Errorf("failed to get period value: %w", err)
 				}
+
 				period = periodValue
 			}
 		default:

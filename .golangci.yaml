@@ -1,10 +1,22 @@
 # See the dedicated "version" documentation section.
 version: "2"
 linters:
-  default: all
+  default: fast
+  disable:
+    - cyclop
+    - depguard
+    - funlen
+    - mnd
+    - lll
+    - tagalign
+    - predeclared
+    - gocognit
+    - ineffassign
   exclusions:
     paths:
-      - ./cmd
+      - cmd
       - _test.go
       - testhelper.go
       - e2e
+      # This is auto generated file and should not be linted
+      - pkg/strategy

@@ -21,7 +21,7 @@ type Trade struct {
 	PnL float64 `csv:"pnl"`
 }
 
-// Position represents current holdings of an asset
+// Position represents current holdings of an asset.
 type Position struct {
 	Symbol           string    `csv:"symbol"`
 	Quantity         float64   `csv:"quantity"`
@@ -35,19 +35,21 @@ type Position struct {
 	StrategyName     string    `csv:"strategy_name"`
 }
 
-// GetAverageEntryPrice calculates the average entry price including fees
+// GetAverageEntryPrice calculates the average entry price including fees.
 func (p *Position) GetAverageEntryPrice() float64 {
 	if p.TotalInQuantity == 0 {
 		return 0
 	}
+
 	return (p.TotalInAmount + p.TotalInFee) / p.TotalInQuantity
 }
 
-// GetAverageExitPrice calculates the average exit price including fees
+// GetAverageExitPrice calculates the average exit price including fees.
 func (p *Position) GetAverageExitPrice() float64 {
 	if p.TotalOutQuantity == 0 {
 		return 0
 	}
+
 	return (p.TotalOutAmount - p.TotalOutFee) / p.TotalOutQuantity
 }
 
@@ -64,5 +66,6 @@ func (p *Position) GetTotalPnL() float64 {
 	exitDec := decimal.NewFromFloat(p.TotalOutQuantity).Mul(decimal.NewFromFloat(p.GetAverageExitPrice()))
 	resultDec := exitDec.Sub(entryDec)
 	result, _ := resultDec.Float64()
+
 	return result
 }

@@ -7,14 +7,14 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
-// RSI represents the Relative Strength Index indicator
+// RSI represents the Relative Strength Index indicator.
 type RSI struct {
 	period            int
 	rsiLowerThreshold float64
 	rsiUpperThreshold float64
 }
 
-// NewRSI creates a new RSI indicator with default configuration
+// NewRSI creates a new RSI indicator with default configuration.
 func NewRSI() Indicator {
 	return &RSI{
 		period:            14, // Default period
@@ -23,13 +23,12 @@ func NewRSI() Indicator {
 	}
 }
 
-// Name returns the name of the indicator
+// Name returns the name of the indicator.
 func (r *RSI) Name() types.IndicatorType {
 	return types.IndicatorTypeRSI
 }
 
-// Config configures the RSI indicator with the given parameters
-// Expected parameters: period (int)
+// Expected parameters: period (int).
 func (r *RSI) Config(params ...any) error {
 	if len(params) < 1 {
 		return fmt.Errorf("Config expects at least 1 parameter: period (int)")
@@ -39,6 +38,7 @@ func (r *RSI) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for period parameter, expected int")
 	}
+
 	if period <= 0 {
 		return fmt.Errorf("period must be a positive integer, got %d", period)
 	}
@@ -51,6 +51,7 @@ func (r *RSI) Config(params ...any) error {
 		if !ok {
 			return fmt.Errorf("invalid type for threshold parameter, expected float64")
 		}
+
 		r.rsiLowerThreshold = threshold
 	}
 
@@ -59,13 +60,14 @@ func (r *RSI) Config(params ...any) error {
 		if !ok {
 			return fmt.Errorf("invalid type for threshold parameter, expected float64")
 		}
+
 		r.rsiUpperThreshold = threshold
 	}
 
 	return nil
 }
 
-// GetSignal calculates the RSI signal
+// GetSignal calculates the RSI signal.
 func (r *RSI) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
 	rsiValue, err := r.RawValue(marketData.Symbol, marketData.Time, ctx, r.period)
 	if err != nil {
@@ -74,6 +76,7 @@ func (r *RSI) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 
 	signalType := types.SignalTypeNoAction
 	reason := "No signal"
+
 	if rsiValue < r.rsiLowerThreshold {
 		signalType = types.SignalTypeBuyLong
 		reason = fmt.Sprintf("RSI oversold (value=%.2f)", rsiValue)
@@ -94,7 +97,7 @@ func (r *RSI) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 	}, nil
 }
 
-// RawValue implements the Indicator interface
+// RawValue implements the Indicator interface.
 func (r *RSI) RawValue(params ...any) (float64, error) {
 	if len(params) < 3 {
 		return 0, fmt.Errorf("RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
@@ -119,6 +122,7 @@ func (r *RSI) RawValue(params ...any) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to get historical data for symbol %s: %w", symbol, err)
 	}
+
 	if len(historicalData) < r.period+1 {
 		return 0, fmt.Errorf("insufficient historical data for RSI calculation for symbol %s", symbol)
 	}
@@ -147,6 +151,7 @@ func (r *RSI) RawValue(params ...any) (float64, error) {
 		avgGain += gains[i]
 		avgLoss += losses[i]
 	}
+
 	avgGain /= float64(r.period)
 	avgLoss /= float64(r.period)
 
