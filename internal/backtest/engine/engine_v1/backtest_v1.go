@@ -86,7 +86,19 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 	}
 
 	b.balance = b.config.InitialCapital
-	b.tradingSystem = NewBacktestTrading(b.state, b.config.InitialCapital, commission_fee.NewInteractiveBrokerCommissionFee())
+	// Use the configured broker for the commission fee and decimal precision for quantity precision
+	var commissionFee commission_fee.CommissionFee
+
+	switch b.config.Broker {
+	case commission_fee.BrokerInteractiveBroker:
+		commissionFee = commission_fee.NewInteractiveBrokerCommissionFee()
+	case commission_fee.BrokerZero:
+		commissionFee = commission_fee.NewZeroCommissionFee()
+	default:
+		commissionFee = commission_fee.NewInteractiveBrokerCommissionFee()
+	}
+
+	b.tradingSystem = NewBacktestTrading(b.state, b.config.InitialCapital, commissionFee, b.config.DecimalPrecision)
 
 	return nil
 }

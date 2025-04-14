@@ -21,7 +21,7 @@ func (suite *UtilsTestSuite) TestCalculateMaxQuantity() {
 		balance       float64
 		price         float64
 		commissionFee commission_fee.CommissionFee
-		expectedQty   int
+		expectedQty   float64
 		expectedError bool
 	}{
 		{
@@ -37,7 +37,7 @@ func (suite *UtilsTestSuite) TestCalculateMaxQuantity() {
 			balance:       1000.0,
 			price:         100.0,
 			commissionFee: &commission_fee.InteractiveBrokerCommissionFee{},
-			expectedQty:   9,
+			expectedQty:   9.99,
 			expectedError: false,
 		},
 		{
@@ -61,7 +61,7 @@ func (suite *UtilsTestSuite) TestCalculateMaxQuantity() {
 			balance:       50.0,
 			price:         100.0,
 			commissionFee: &commission_fee.InteractiveBrokerCommissionFee{},
-			expectedQty:   0,
+			expectedQty:   0.49,
 			expectedError: false,
 		},
 	}
@@ -69,7 +69,7 @@ func (suite *UtilsTestSuite) TestCalculateMaxQuantity() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			qty := CalculateMaxQuantity(tc.balance, tc.price, tc.commissionFee)
-			suite.Assert().Equal(tc.expectedQty, qty, "Quantity mismatch")
+			suite.Assert().Equal(float64(tc.expectedQty), qty, "Quantity mismatch")
 		})
 	}
 }
@@ -81,7 +81,7 @@ func (suite *UtilsTestSuite) TestCalculateOrderQuantityByPercentage() {
 		price         float64
 		percentage    float64
 		commissionFee commission_fee.CommissionFee
-		expectedQty   int
+		expectedQty   float64
 		expectedError bool
 	}{
 		{
@@ -90,7 +90,7 @@ func (suite *UtilsTestSuite) TestCalculateOrderQuantityByPercentage() {
 			price:         100.0,
 			percentage:    0.5,
 			commissionFee: commission_fee.NewZeroCommissionFee(),
-			expectedQty:   5,
+			expectedQty:   5.0,
 			expectedError: false,
 		},
 	}

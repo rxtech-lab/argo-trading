@@ -103,12 +103,12 @@ func (suite *StrategyTestSuite) SetupSuite() {
 	logger, err := logger.NewLogger()
 	suite.Require().NoError(err)
 	suite.logger = logger
-	
+
 	var stateErr error
 	suite.state, stateErr = engine.NewBacktestState(suite.logger)
 	suite.Require().NoError(stateErr)
 	suite.Require().NotNil(suite.state)
-	
+
 	suite.commission = commission_fee.NewZeroCommissionFee()
 }
 
@@ -128,7 +128,7 @@ func (suite *StrategyTestSuite) SetupTest() {
 	suite.Require().NoError(err)
 
 	// Create real trading system
-	suite.tradingSystem = engine.NewBacktestTrading(suite.state, 10000.0, suite.commission)
+	suite.tradingSystem = engine.NewBacktestTrading(suite.state, 10000.0, suite.commission, 1)
 
 	// Initialize strategy
 	suite.strategy = NewSimpleConsecutiveStrategy(suite.cache, runtime.RuntimeContext{
