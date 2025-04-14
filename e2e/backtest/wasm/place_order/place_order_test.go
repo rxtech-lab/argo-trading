@@ -25,6 +25,18 @@ initial_capital: 10000
 
 func (s *E2ETestSuite) TestPlaceOrderStrategy() {
 	s.Run("TestPlaceOrderStrategy", func() {
-		testhelper.RunWasmStrategyTest(&s.E2ETestSuite, "PlaceOrderStrategy", "./place_order_plugin.wasm")
+		tmpFolder := testhelper.RunWasmStrategyTest(&s.E2ETestSuite, "PlaceOrderStrategy", "./place_order_plugin.wasm")
+		// read stats
+		stats, err := testhelper.ReadStats(&s.E2ETestSuite, tmpFolder)
+		s.Require().NoError(err)
+		s.Require().Equal(stats.TradeResult.NumberOfTrades, 1)
+		s.Require().Equal(stats.Symbol, "AAPL")
+
+		// read trades
+		trades, err := testhelper.ReadTrades(&s.E2ETestSuite, tmpFolder)
+		s.Require().NoError(err)
+		s.Require().Equal(len(trades), 1)
+		s.Require().Greater(trades[0].ExecutedPrice, 0.0)
+		s.Require().Equal(trades[0].ExecutedQty, 1.0)
 	})
 }
