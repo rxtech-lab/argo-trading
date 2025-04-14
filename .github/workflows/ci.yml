@@ -23,11 +23,20 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install nilaway
+        run: go install go.uber.org/nilaway/cmd/nilaway@latest
+
       - name: Install go-plugin
         run: ./scripts/setup.sh
 
       - name: Generate sdk and mocks
         run: make generate
+
+      - name: Run Golangci-lint
+        uses: golangci/golangci-lint-action@v7
+
+      - name: Run nilaway
+        run: ./scripts/check-nil.sh
 
       - name: Compile wasm
         run: cd examples/strategy && make build

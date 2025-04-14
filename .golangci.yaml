@@ -1,0 +1,10 @@
+# See the dedicated "version" documentation section.
+version: "2"
+linters:
+  default: all
+  exclusions:
+    paths:
+      - ./cmd
+      - _test.go
+      - testhelper.go
+      - e2e

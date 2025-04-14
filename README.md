@@ -35,8 +35,16 @@ argo-trading/
 
 ## Implementing Your Strategy
 
-To create a new trading strategy:
+To create a new trading strategy, you can run
 
-1. Study the examples in `/examples/strategy` to understand the structure
-2. Create a new Go file for your strategy that implements the strategy interface
-3. Implement your strategy
+```bash
+pnpm create trading-strategy
+```
+
+Or
+
+```bash
+npx create-trading-strategy
+```
+
+This will automatically create a sample strategy on your local machine.
