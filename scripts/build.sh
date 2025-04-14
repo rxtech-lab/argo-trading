@@ -17,7 +17,11 @@ echo "Building trading-backtest binary version: ${VERSION}"
 # Build the Go binary with version information
 go build -o output/trading-backtest \
   -ldflags "-X main.Version=${VERSION} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  ./cmd/backtest
+  ./cmd/download
+
+go build -o output/trading-download \
+  -ldflags "-X main.Version=${VERSION} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  ./cmd/download
 
 echo "Build completed: output/trading-backtest"
 

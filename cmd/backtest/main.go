@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -14,11 +16,29 @@ import (
 )
 
 func main() {
+	// Define command-line flags
+	configFlag := flag.String("config", "config/backtest-engine-v1-config.yaml", "Path to backtest engine configuration file")
+	resultsFlag := flag.String("results", "results", "Path to results folder")
+	dataPathFlag := flag.String("data", "data/*.parquet", "Path pattern to data files")
+	strategyConfigFlag := flag.String("strategy-config", "config/strategy/*.yaml", "Path pattern to strategy configuration files")
+	strategyWasmFlag := flag.String("strategy-wasm", "", "Path to strategy WASM file (required)")
+	dbPathFlag := flag.String("db", ":memory:", "Path to database file")
+
+	// Parse command-line flags
+	flag.Parse()
+
+	// Validate required parameters
+	if *strategyWasmFlag == "" {
+		fmt.Println("Error: -strategy-wasm flag is required")
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	engine := engine.NewBacktestEngineV1()
 	var progressBar *progressbar.ProgressBar
 
-	// read config from config/backtest_config.yaml
-	config, err := os.ReadFile("config/backtest-engine-v1-config.yaml")
+	// read config from the provided path
+	config, err := os.ReadFile(*configFlag)
 	if err != nil {
 		log.Fatalf("Failed to read config: %v", err)
 	}
@@ -28,26 +48,26 @@ func main() {
 	}
 
 	// set the results folder
-	engine.SetResultsFolder("results")
+	engine.SetResultsFolder(*resultsFlag)
 
 	// set the data path
-	engine.SetDataPath("data/*.parquet")
+	engine.SetDataPath(*dataPathFlag)
 
 	logger, err := logger.NewLogger()
 	if err != nil {
 		log.Fatalf("Failed to create logger: %v", err)
 	}
 
-	engine.SetConfigPath("config/strategy/*.yaml")
+	engine.SetConfigPath(*strategyConfigFlag)
 
-	datasource, err := datasource.NewDataSource(":memory:", logger)
+	datasource, err := datasource.NewDataSource(*dbPathFlag, logger)
 	if err != nil {
 		log.Fatalf("Failed to create datasource: %v", err)
 	}
 	engine.SetDataSource(datasource)
 
 	// set strategy
-	strategy_runtime, err := wasm.NewStrategyWasmRuntime("e2e/backtest/wasm/place_order/place_order_plugin.wasm")
+	strategy_runtime, err := wasm.NewStrategyWasmRuntime(*strategyWasmFlag)
 	if err != nil {
 		log.Fatalf("Failed to create strategy runtime: %v", err)
 	}
