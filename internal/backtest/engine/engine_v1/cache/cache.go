@@ -53,11 +53,13 @@ func (c *CacheV1) Reset() {
 // This is for strategy only!
 func (c *CacheV1) Set(key string, value any) error {
 	c.otherData[key] = value
+
 	return nil
 }
 
 // Get cache data by key. Don't use this method if you want to get a state for indicator. Use the method in the indicator struct instead.
 func (c *CacheV1) Get(key string) (any, bool) {
 	value, ok := c.otherData[key]
+
 	return value, ok
 }

@@ -67,6 +67,7 @@ func (d *DuckDBDataSource) Initialize(path string) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -74,8 +75,11 @@ func (d *DuckDBDataSource) Initialize(path string) error {
 func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error) {
 	// Use raw SQL query for Count as it's simpler for this case
 	var count int
+
 	query := "SELECT COUNT(*) FROM market_data"
+
 	var params []interface{}
+
 	paramCount := 0
 
 	if start.IsSome() {
@@ -85,7 +89,9 @@ func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.
 		} else {
 			query += " AND"
 		}
+
 		query += fmt.Sprintf(" time >= $%d", paramCount)
+
 		params = append(params, start.Unwrap())
 	}
 
@@ -96,7 +102,9 @@ func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.
 		} else {
 			query += " AND"
 		}
+
 		query += fmt.Sprintf(" time <= $%d", paramCount)
+
 		params = append(params, end.Unwrap())
 	}
 
@@ -111,6 +119,7 @@ func (d *DuckDBDataSource) Count(start optional.Option[time.Time], end optional.
 	if err != nil {
 		return 0, err
 	}
+
 	return count, nil
 }
 
@@ -129,7 +138,9 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 
 		// Add time range conditions if provided
 		var conditions []string
+
 		var params []interface{}
+
 		paramCount := 0
 
 		if start.IsSome() {
@@ -154,6 +165,7 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 		stmt, err := d.db.Prepare(query)
 		if err != nil {
 			yield(types.MarketData{}, err)
+
 			return
 		}
 		defer stmt.Close()
@@ -164,14 +176,18 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 		} else {
 			rows, err = stmt.Query()
 		}
+
 		if err != nil {
 			yield(types.MarketData{}, err)
+
 			return
 		}
+
 		defer rows.Close()
 
 		// Process rows in batches
 		batch := make([]types.MarketData, 0, batchSize)
+
 		for rows.Next() {
 			var (
 				timestamp                      time.Time
@@ -182,6 +198,7 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 			err := rows.Scan(&timestamp, &symbol, &open, &high, &low, &close, &volume)
 			if err != nil {
 				yield(types.MarketData{}, err)
+
 				return
 			}
 
@@ -204,6 +221,7 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 						return
 					}
 				}
+
 				batch = batch[:0] // Reset slice while keeping capacity
 			}
 		}
@@ -217,64 +235,17 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 	}
 }
 
-// buildGetRangeQuery constructs the SQL query for GetRange method
-func (d *DuckDBDataSource) buildGetRangeQuery(start time.Time, end time.Time, intervalMinutes optional.Option[int]) (string, []interface{}, error) {
-	// If no interval is specified, use a simple query with squirrel
-	if !intervalMinutes.IsSome() {
-		query, args, err := d.sq.
-			Select("time", "symbol", "open", "high", "low", "close", "volume").
-			From("market_data").
-			Where(squirrel.And{
-				squirrel.GtOrEq{"time": start},
-				squirrel.LtOrEq{"time": end},
-			}).
-			OrderBy("time ASC").
-			ToSql()
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to build query: %w", err)
-		}
-		return query, args, nil
-	}
-
-	// For interval case, use raw SQL with window functions
-	minutes := intervalMinutes.Unwrap()
-	query := fmt.Sprintf(`
-		WITH time_buckets AS MATERIALIZED (
-			SELECT 
-				time_bucket(INTERVAL '%d minutes', time) as bucket_time,
-				symbol,
-				FIRST_VALUE(open) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time) as open,
-				MAX(high) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as high,
-				MIN(low) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as low,
-				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
-				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
-			FROM market_data 
-			WHERE time >= $1 AND time <= $2
-		)
-		SELECT DISTINCT
-			bucket_time as time,
-			symbol,
-			open,
-			high,
-			low,
-			close,
-			volume
-		FROM time_buckets
-		ORDER BY bucket_time ASC
-	`, minutes, minutes, minutes, minutes, minutes, minutes)
-
-	return query, []interface{}{start, end}, nil
-}
-
 // GetRange implements DataSource with optimized query.
 func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval optional.Option[Interval]) ([]types.MarketData, error) {
-	// Convert interval to minutes for aggregation
-	var intervalMinutes optional.Option[int]
+	// Process interval parameter
+	var intervalMinutes optional.Option[int] = optional.None[int]()
+
 	if interval.IsSome() {
 		minutes, err := getIntervalMinutes(interval.Unwrap())
 		if err != nil {
 			return nil, err
 		}
+
 		intervalMinutes = optional.Some(minutes)
 	}
 
@@ -299,6 +270,7 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval opt
 
 	// Pre-allocate slice with reasonable capacity
 	result := make([]types.MarketData, 0, 1000)
+
 	for rows.Next() {
 		var (
 			timestamp                      time.Time
@@ -331,7 +303,7 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval opt
 	return result, nil
 }
 
-// ReadRecordsFromStart reads number of records from the start time of the database
+// ReadRecordsFromStart reads number of records from the start time of the database.
 func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, interval Interval) ([]types.MarketData, error) {
 	// Convert interval to minutes for aggregation
 	intervalMinutes, err := getIntervalMinutes(interval)
@@ -382,6 +354,7 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 
 	// Pre-allocate slice with reasonable capacity
 	result := make([]types.MarketData, 0, number)
+
 	for rows.Next() {
 		var (
 			timestamp                      time.Time
@@ -414,7 +387,7 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 	return result, nil
 }
 
-// ReadRecordsFromEnd reads number of records from the end time of the database
+// ReadRecordsFromEnd reads number of records from the end time of the database.
 func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interval Interval) ([]types.MarketData, error) {
 	// Convert interval to minutes for aggregation
 	intervalMinutes, err := getIntervalMinutes(interval)
@@ -465,6 +438,7 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 
 	// Pre-allocate slice with reasonable capacity
 	result := make([]types.MarketData, 0, number)
+
 	for rows.Next() {
 		var (
 			timestamp                      time.Time
@@ -527,10 +501,12 @@ func (d *DuckDBDataSource) ExecuteSQL(query string, params ...interface{}) ([]SQ
 
 	// Pre-allocate slice with reasonable capacity
 	result := make([]SQLResult, 0, 1000)
+
 	for rows.Next() {
 		// Create a slice of interface{} to hold the values
 		values := make([]interface{}, len(columns))
 		valuePtrs := make([]interface{}, len(columns))
+
 		for i := range values {
 			valuePtrs[i] = &values[i]
 		}
@@ -588,6 +564,7 @@ func (d *DuckDBDataSource) ReadLastData(symbol string) (types.MarketData, error)
 		if err == sql.ErrNoRows {
 			return types.MarketData{}, fmt.Errorf("no data found for symbol: %s", symbol)
 		}
+
 		return types.MarketData{}, fmt.Errorf("failed to scan row: %w", err)
 	}
 
@@ -607,6 +584,7 @@ func (d *DuckDBDataSource) Close() error {
 	if d.db != nil {
 		return d.db.Close()
 	}
+
 	return nil
 }
 
@@ -639,6 +617,7 @@ func (d *DuckDBDataSource) GetMarketData(symbol string, timestamp time.Time) (ty
 		if err == sql.ErrNoRows {
 			return types.MarketData{}, fmt.Errorf("no market data found for symbol %s at time %v", symbol, timestamp)
 		}
+
 		return types.MarketData{}, fmt.Errorf("failed to get market data: %w", err)
 	}
 
@@ -691,6 +670,7 @@ func (d *DuckDBDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 
 	// Pre-allocate slice with reasonable capacity
 	result := make([]types.MarketData, 0, count)
+
 	for rows.Next() {
 		var (
 			timestamp                      time.Time
@@ -726,4 +706,54 @@ func (d *DuckDBDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 	}
 
 	return result, nil
+}
+
+// buildGetRangeQuery constructs the SQL query for GetRange method.
+func (d *DuckDBDataSource) buildGetRangeQuery(start time.Time, end time.Time, intervalMinutes optional.Option[int]) (string, []interface{}, error) {
+	// If no interval is specified, use a simple query with squirrel
+	if !intervalMinutes.IsSome() {
+		query, args, err := d.sq.
+			Select("time", "symbol", "open", "high", "low", "close", "volume").
+			From("market_data").
+			Where(squirrel.And{
+				squirrel.GtOrEq{"time": start},
+				squirrel.LtOrEq{"time": end},
+			}).
+			OrderBy("time ASC").
+			ToSql()
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to build query: %w", err)
+		}
+
+		return query, args, nil
+	}
+
+	// For interval case, use raw SQL with window functions
+	minutes := intervalMinutes.Unwrap()
+	query := fmt.Sprintf(`
+		WITH time_buckets AS MATERIALIZED (
+			SELECT 
+				time_bucket(INTERVAL '%d minutes', time) as bucket_time,
+				symbol,
+				FIRST_VALUE(open) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time) as open,
+				MAX(high) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as high,
+				MIN(low) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as low,
+				LAST_VALUE(close) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as close,
+				SUM(volume) OVER (PARTITION BY time_bucket(INTERVAL '%d minutes', time), symbol) as volume
+			FROM market_data 
+			WHERE time >= $1 AND time <= $2
+		)
+		SELECT DISTINCT
+			bucket_time as time,
+			symbol,
+			open,
+			high,
+			low,
+			close,
+			volume
+		FROM time_buckets
+		ORDER BY bucket_time ASC
+	`, minutes, minutes, minutes, minutes, minutes, minutes)
+
+	return query, []interface{}{start, end}, nil
 }

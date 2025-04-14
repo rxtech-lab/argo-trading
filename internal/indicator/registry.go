@@ -7,7 +7,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
-// IndicatorRegistry manages all available indicators
+// IndicatorRegistry manages all available indicators.
 type IndicatorRegistry interface {
 	RegisterIndicator(indicator Indicator) error
 	GetIndicator(name types.IndicatorType) (Indicator, error)
@@ -15,20 +15,20 @@ type IndicatorRegistry interface {
 	RemoveIndicator(name types.IndicatorType) error
 }
 
-// IndicatorRegistryV1 manages all available indicators
+// IndicatorRegistryV1 manages all available indicators.
 type IndicatorRegistryV1 struct {
 	indicators map[types.IndicatorType]Indicator
 	mu         sync.RWMutex
 }
 
-// NewIndicatorRegistry creates a new indicator registry
+// NewIndicatorRegistry creates a new indicator registry.
 func NewIndicatorRegistry() IndicatorRegistry {
 	return &IndicatorRegistryV1{
 		indicators: make(map[types.IndicatorType]Indicator),
 	}
 }
 
-// RegisterIndicator adds an indicator to the registry
+// RegisterIndicator adds an indicator to the registry.
 func (r *IndicatorRegistryV1) RegisterIndicator(indicator Indicator) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -39,10 +39,11 @@ func (r *IndicatorRegistryV1) RegisterIndicator(indicator Indicator) error {
 	}
 
 	r.indicators[name] = indicator
+
 	return nil
 }
 
-// GetIndicator retrieves an indicator by name
+// GetIndicator retrieves an indicator by name.
 func (r *IndicatorRegistryV1) GetIndicator(name types.IndicatorType) (Indicator, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -55,7 +56,7 @@ func (r *IndicatorRegistryV1) GetIndicator(name types.IndicatorType) (Indicator,
 	return indicator, nil
 }
 
-// ListIndicators returns a list of all registered indicator names
+// ListIndicators returns a list of all registered indicator names.
 func (r *IndicatorRegistryV1) ListIndicators() []types.IndicatorType {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -68,7 +69,7 @@ func (r *IndicatorRegistryV1) ListIndicators() []types.IndicatorType {
 	return names
 }
 
-// RemoveIndicator removes an indicator from the registry
+// RemoveIndicator removes an indicator from the registry.
 func (r *IndicatorRegistryV1) RemoveIndicator(name types.IndicatorType) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -78,5 +79,6 @@ func (r *IndicatorRegistryV1) RemoveIndicator(name types.IndicatorType) error {
 	}
 
 	delete(r.indicators, name)
+
 	return nil
 }

@@ -18,14 +18,14 @@ func (e *InsufficientDataError) Error() string {
 	return e.Message
 }
 
-// BollingerBands implements the Indicator interface for Bollinger Bands
+// BollingerBands implements the Indicator interface for Bollinger Bands.
 type BollingerBands struct {
 	period   int     // Number of periods for moving average
 	stdDev   float64 // Number of standard deviations
 	lookback time.Duration
 }
 
-// NewBollingerBands creates a new Bollinger Bands indicator with default configuration
+// NewBollingerBands creates a new Bollinger Bands indicator with default configuration.
 func NewBollingerBands() Indicator {
 	return &BollingerBands{
 		period:   20,             // Default period
@@ -34,13 +34,12 @@ func NewBollingerBands() Indicator {
 	}
 }
 
-// Name returns the name of the indicator
+// Name returns the name of the indicator.
 func (bb *BollingerBands) Name() types.IndicatorType {
 	return types.IndicatorTypeBollingerBands
 }
 
-// Config configures the Bollinger Bands indicator with the given parameters
-// Expected parameters: period (int), stdDev (float64), lookback (time.Duration)
+// Expected parameters: period (int), stdDev (float64), lookback (time.Duration).
 func (bb *BollingerBands) Config(params ...any) error {
 	if len(params) != 3 {
 		return fmt.Errorf("Config expects 3 parameters: period (int), stdDev (float64), lookback (time.Duration)")
@@ -50,6 +49,7 @@ func (bb *BollingerBands) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for period parameter, expected int")
 	}
+
 	if period <= 0 {
 		return fmt.Errorf("period must be a positive integer, got %d", period)
 	}
@@ -58,6 +58,7 @@ func (bb *BollingerBands) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for stdDev parameter, expected float64")
 	}
+
 	if stdDev <= 0 {
 		return fmt.Errorf("stdDev must be a positive number, got %f", stdDev)
 	}
@@ -66,6 +67,7 @@ func (bb *BollingerBands) Config(params ...any) error {
 	if !ok {
 		return fmt.Errorf("invalid type for lookback parameter, expected time.Duration")
 	}
+
 	if lookback <= 0 {
 		return fmt.Errorf("lookback must be a positive duration, got %v", lookback)
 	}
@@ -73,6 +75,7 @@ func (bb *BollingerBands) Config(params ...any) error {
 	bb.period = period
 	bb.stdDev = stdDev
 	bb.lookback = lookback
+
 	return nil
 }
 
@@ -85,7 +88,6 @@ func (bb *BollingerBands) RawValue(params ...any) (float64, error) {
 	// 2. Fetch historical data required for calculation.
 	// 3. Calculate the Bollinger Bands using the existing helper function.
 	// 4. Return the middle band value.
-
 	if len(params) < 2 {
 		return 0, fmt.Errorf("RawValue requires at least 2 parameters: types.MarketData and IndicatorContext")
 	}
@@ -120,7 +122,7 @@ func (bb *BollingerBands) RawValue(params ...any) (float64, error) {
 	return middle, nil
 }
 
-// GetSignal generates trading signals based on Bollinger Bands
+// GetSignal generates trading signals based on Bollinger Bands.
 func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
 	// Get historical data for the lookback period
 	startTime := marketData.Time.Add(-bb.lookback)
@@ -142,6 +144,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 				Name: "Bollinger Bands",
 			}, nil
 		}
+
 		return types.Signal{}, err
 	}
 
@@ -180,7 +183,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 	}, nil
 }
 
-// calculateBands calculates the Bollinger Bands values
+// calculateBands calculates the Bollinger Bands values.
 func (bb *BollingerBands) calculateBands(data []types.MarketData) (upper, middle, lower float64, err error) {
 	if len(data) < bb.period {
 		return 0, 0, 0, &InsufficientDataError{
@@ -193,14 +196,17 @@ func (bb *BollingerBands) calculateBands(data []types.MarketData) (upper, middle
 	for i := len(data) - bb.period; i < len(data); i++ {
 		sum += data[i].Close
 	}
+
 	middle = sum / float64(bb.period)
 
 	// Calculate standard deviation
 	var squaredDiffSum float64
+
 	for i := len(data) - bb.period; i < len(data); i++ {
 		diff := data[i].Close - middle
 		squaredDiffSum += diff * diff
 	}
+
 	stdDev := math.Sqrt(squaredDiffSum / float64(bb.period))
 
 	// Calculate upper and lower bands

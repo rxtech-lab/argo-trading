@@ -103,8 +103,12 @@ func (suite *StrategyTestSuite) SetupSuite() {
 	logger, err := logger.NewLogger()
 	suite.Require().NoError(err)
 	suite.logger = logger
-	suite.state = engine.NewBacktestState(suite.logger)
+	
+	var stateErr error
+	suite.state, stateErr = engine.NewBacktestState(suite.logger)
+	suite.Require().NoError(stateErr)
 	suite.Require().NotNil(suite.state)
+	
 	suite.commission = commission_fee.NewZeroCommissionFee()
 }
 

@@ -29,7 +29,10 @@ func (suite *BacktestStateTestSuite) SetupSuite() {
 	logger, err := logger.NewLogger()
 	suite.Require().NoError(err)
 	suite.logger = logger
-	suite.state = NewBacktestState(suite.logger)
+	
+	var stateErr error
+	suite.state, stateErr = NewBacktestState(suite.logger)
+	suite.Require().NoError(stateErr)
 	suite.Require().NotNil(suite.state)
 }
 

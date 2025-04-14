@@ -19,7 +19,7 @@ type BacktestEngineV1Config struct {
 	EndTime        optional.Option[time.Time] `yaml:"end_time" json:"end_time" jsonschema:"title=End Time,description=Optional end time for the backtest period"`
 }
 
-// UnmarshalYAML implements custom unmarshaling for BacktestEngineV1Config
+// UnmarshalYAML implements custom unmarshaling for BacktestEngineV1Config.
 func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type Config struct {
 		InitialCapital float64               `yaml:"initial_capital"`
@@ -35,9 +35,11 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 
 	c.InitialCapital = config.InitialCapital
 	c.Broker = config.Broker
+
 	if config.StartTime != nil {
 		c.StartTime = optional.Some(*config.StartTime)
 	}
+
 	if config.EndTime != nil {
 		c.EndTime = optional.Some(*config.EndTime)
 	}
@@ -45,7 +47,7 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 	return nil
 }
 
-// GenerateSchema generates a JSON schema for the BacktestEngineV1Config
+// GenerateSchema generates a JSON schema for the BacktestEngineV1Config.
 func (c *BacktestEngineV1Config) GenerateSchema() (*jsonschema.Schema, error) {
 	reflector := jsonschema.Reflector{
 		RequiredFromJSONSchemaTags: true,
@@ -65,6 +67,7 @@ func (c *BacktestEngineV1Config) GenerateSchema() (*jsonschema.Schema, error) {
 					Enum: commission_fee.AllBrokers,
 				}
 			}
+
 			return nil
 		},
 	}
@@ -80,7 +83,7 @@ func (c *BacktestEngineV1Config) GenerateSchema() (*jsonschema.Schema, error) {
 	return schema, nil
 }
 
-// GenerateSchemaJSON generates a JSON schema string for the BacktestEngineV1Config
+// GenerateSchemaJSON generates a JSON schema string for the BacktestEngineV1Config.
 func (c *BacktestEngineV1Config) GenerateSchemaJSON() (string, error) {
 	schema, err := c.GenerateSchema()
 	if err != nil {
@@ -104,7 +107,7 @@ func TestConfig(startTime time.Time, endTime time.Time, broker commission_fee.Br
 	}
 }
 
-// EmptyConfig returns a BacktestEngineV1Config with default values
+// EmptyConfig returns a BacktestEngineV1Config with default values.
 func EmptyConfig() BacktestEngineV1Config {
 	return BacktestEngineV1Config{
 		InitialCapital: 0,

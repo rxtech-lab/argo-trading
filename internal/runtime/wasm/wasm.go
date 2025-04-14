@@ -37,11 +37,13 @@ func (s *StrategyWasmRuntime) Initialize(config string) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
 func (s *StrategyWasmRuntime) InitializeApi(api strategy.StrategyApi) error {
 	ctx := context.Background()
+
 	p, err := strategy.NewTradingStrategyPlugin(ctx)
 	if err != nil {
 		return err
@@ -51,7 +53,9 @@ func (s *StrategyWasmRuntime) InitializeApi(api strategy.StrategyApi) error {
 	if err != nil {
 		return err
 	}
+
 	s.strategy = plugin
+
 	return nil
 }
 
@@ -70,6 +74,7 @@ func (s *StrategyWasmRuntime) ProcessData(data types.MarketData) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -78,5 +83,6 @@ func (s *StrategyWasmRuntime) Name() string {
 	if err != nil {
 		return ""
 	}
+
 	return name.Name
 }

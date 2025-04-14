@@ -5,12 +5,12 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Logger wraps the zap logger with additional functionality
+// Logger wraps the zap logger with additional functionality.
 type Logger struct {
 	*zap.Logger
 }
 
-// NewLogger creates a new logger instance with production configuration
+// NewLogger creates a new logger instance with production configuration.
 func NewLogger() (*Logger, error) {
 	config := zap.NewProductionConfig()
 
@@ -34,10 +34,11 @@ func NewLogger() (*Logger, error) {
 	}, nil
 }
 
-// Sync flushes any buffered log entries
+// Sync flushes any buffered log entries.
 func (l *Logger) Sync() error {
 	if l.Logger != nil {
 		return l.Logger.Sync()
 	}
+
 	return nil
 }

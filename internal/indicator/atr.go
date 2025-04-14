@@ -10,41 +10,44 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
-// ATR represents the Average True Range indicator
+// ATR represents the Average True Range indicator.
 type ATR struct {
 	period int
 }
 
-// NewATR creates a new ATR indicator with default configuration
+// NewATR creates a new ATR indicator with default configuration.
 func NewATR() Indicator {
 	return &ATR{
 		period: 14, // Default period
 	}
 }
 
-// Name returns the name of the indicator
+// Name returns the name of the indicator.
 func (a *ATR) Name() types.IndicatorType {
 	return types.IndicatorTypeATR
 }
 
-// Config configures the ATR indicator with the given parameters
-// Expected parameters: period (int)
+// Expected parameters: period (int).
 func (a *ATR) Config(params ...any) error {
 	if len(params) != 1 {
 		return fmt.Errorf("Config expects 1 parameter: period (int)")
 	}
+
 	period, ok := params[0].(int)
 	if !ok {
 		return fmt.Errorf("invalid type for period parameter, expected int")
 	}
+
 	if period <= 0 {
 		return fmt.Errorf("period must be a positive integer, got %d", period)
 	}
+
 	a.period = period
+
 	return nil
 }
 
-// GetSignal calculates the ATR signal
+// GetSignal calculates the ATR signal.
 func (a *ATR) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types.Signal, error) {
 	atrValue, err := a.RawValue(marketData.Symbol, marketData.Time, ctx, a.period)
 	if err != nil {
@@ -63,7 +66,7 @@ func (a *ATR) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 	}, nil
 }
 
-// RawValue implements the Indicator interface
+// RawValue implements the Indicator interface.
 func (a *ATR) RawValue(params ...any) (float64, error) {
 	if len(params) < 3 {
 		return 0, fmt.Errorf("RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
@@ -86,18 +89,22 @@ func (a *ATR) RawValue(params ...any) (float64, error) {
 
 	// Get market data
 	var marketData types.MarketData
+
 	var err error
 
 	if !currentTime.IsZero() {
 		endTime := currentTime
 		startTime := endTime.Add(-time.Hour * 24)
+
 		historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get historical data: %w", err)
 		}
+
 		if len(historicalData) == 0 {
 			return 0, fmt.Errorf("no historical data available for the specified time range")
 		}
+
 		marketData = historicalData[len(historicalData)-1]
 	} else {
 		marketData, err = ctx.DataSource.ReadLastData(symbol)

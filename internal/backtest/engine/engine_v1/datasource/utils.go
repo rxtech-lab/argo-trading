@@ -4,6 +4,7 @@ import "fmt"
 
 func getIntervalMinutes(interval Interval) (int, error) {
 	var intervalMinutes int
+
 	switch interval {
 	case Interval1m:
 		intervalMinutes = 1
@@ -30,5 +31,6 @@ func getIntervalMinutes(interval Interval) (int, error) {
 	default:
 		return 0, fmt.Errorf("unsupported interval: %s", interval)
 	}
+
 	return intervalMinutes, nil
 }

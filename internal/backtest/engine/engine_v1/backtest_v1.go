@@ -55,6 +55,7 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 
 	// initialize the logger
 	var loggerError error
+
 	b.log, loggerError = logger.NewLogger()
 	if loggerError != nil {
 		return loggerError
@@ -75,12 +76,18 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 	b.indicatorRegistry.RegisterIndicator(indicator.NewMA())
 
 	// initialize the state
-	b.state = NewBacktestState(b.log)
+	b.state, err = NewBacktestState(b.log)
+	if err != nil {
+		return fmt.Errorf("failed to create backtest state: %w", err)
+	}
+
 	if err := b.state.Initialize(); err != nil {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
+
 	b.balance = b.config.InitialCapital
 	b.tradingSystem = NewBacktestTrading(b.state, b.config.InitialCapital, commission_fee.NewInteractiveBrokerCommissionFee())
+
 	return nil
 }
 
@@ -90,6 +97,7 @@ func (b *BacktestEngineV1) LoadStrategy(strategy runtime.StrategyRuntime) error 
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
+
 	return nil
 }
 
@@ -102,6 +110,7 @@ func (b *BacktestEngineV1) SetConfigPath(path string) error {
 			zap.String("path", path),
 			zap.Error(err),
 		)
+
 		return err
 	}
 
@@ -109,6 +118,7 @@ func (b *BacktestEngineV1) SetConfigPath(path string) error {
 	b.log.Debug("Config paths set",
 		zap.Strings("files", files),
 	)
+
 	return nil
 }
 
@@ -121,11 +131,13 @@ func (b *BacktestEngineV1) SetDataPath(path string) error {
 			zap.String("path", path),
 			zap.Error(err),
 		)
+
 		return err
 	}
 
 	// Convert all paths to absolute paths
 	absolutePaths := make([]string, len(files))
+
 	for i, file := range files {
 		absPath, err := filepath.Abs(file)
 		if err != nil {
@@ -133,8 +145,10 @@ func (b *BacktestEngineV1) SetDataPath(path string) error {
 				zap.String("path", file),
 				zap.Error(err),
 			)
+
 			return err
 		}
+
 		absolutePaths[i] = absPath
 	}
 
@@ -142,6 +156,7 @@ func (b *BacktestEngineV1) SetDataPath(path string) error {
 	b.log.Debug("Data paths set",
 		zap.Strings("files", absolutePaths),
 	)
+
 	return nil
 }
 
@@ -151,43 +166,17 @@ func (b *BacktestEngineV1) SetResultsFolder(folder string) error {
 	b.log.Debug("Results folder set",
 		zap.String("folder", folder),
 	)
+
 	return nil
 }
 
 func (b *BacktestEngineV1) SetDataSource(datasource datasource.DataSource) error {
 	b.datasource = datasource
+
 	return nil
 }
 
-func (b *BacktestEngineV1) preRunCheck() error {
-	if len(b.strategies) == 0 {
-		b.log.Error("No strategies loaded")
-		return errors.New("no strategies loaded")
-	}
-
-	if len(b.strategyConfigPaths) == 0 {
-		b.log.Error("No strategy config paths loaded")
-		return errors.New("no strategy config paths loaded")
-	}
-
-	if len(b.dataPaths) == 0 {
-		b.log.Error("No data paths loaded")
-		return errors.New("no data paths loaded")
-	}
-
-	if b.resultsFolder == "" {
-		b.log.Error("No results folder set")
-		return errors.New("no results folder set")
-	}
-
-	if b.datasource == nil {
-		b.log.Error("No datasource set")
-		return errors.New("no datasource set")
-	}
-	return nil
-}
-
-// ParallelRunState holds the state for a single parallel run
+// ParallelRunState holds the state for a single parallel run.
 type ParallelRunState struct {
 	state      *BacktestState
 	balance    float64
@@ -217,10 +206,16 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					zap.String("config", configPath),
 					zap.Error(err),
 				)
+
 				return err
 			}
+
 			for _, dataPath := range b.dataPaths {
 				// Initialize the state
+				if b.state == nil {
+					return fmt.Errorf("backtest state is nil")
+				}
+
 				if err := b.state.Initialize(); err != nil {
 					return fmt.Errorf("failed to initialize state: %w", err)
 				}
@@ -238,10 +233,12 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 				if err != nil {
 					return fmt.Errorf("failed to initialize strategy api: %w", err)
 				}
+
 				err = strategy.Initialize(string(config))
 				if err != nil {
 					return fmt.Errorf("failed to initialize strategy: %w", err)
 				}
+
 				resultFolderPath := getResultFolder(configPath, dataPath, b, strategy)
 
 				b.log.Debug("Running strategy",
@@ -263,6 +260,7 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 				}
 
 				currentCount := 0
+
 				for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
 					if err != nil {
 						return fmt.Errorf("failed to read data: %w", err)
@@ -271,28 +269,50 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
 						backtestTrading.UpdateCurrentMarketData(data)
 					}
+
 					err = strategy.ProcessData(data)
 					if err != nil {
 						return fmt.Errorf("failed to process data: %w", err)
 					}
 					// Update progress bar
-					onProcessDataCallback.IfSome(func(callback engine.OnProcessDataCallback) {
-						callback(currentCount, count)
-					})
 					currentCount++
+
+					// Call callback if provided
+					if onProcessDataCallback.IsSome() {
+						onProcessDataCallback.Unwrap()(currentCount, count)
+					}
 				}
 
-				// Write results and cleanup
-				if err := b.state.Write(resultFolderPath); err != nil {
-					return fmt.Errorf("failed to write results: %w", err)
+				// Create result folder
+				os.MkdirAll(resultFolderPath, 0755)
+
+				// Get stats
+				if b.state == nil {
+					return fmt.Errorf("backtest state is nil")
 				}
 
 				stats, err := b.state.GetStats(strategyContext)
 				if err != nil {
 					return fmt.Errorf("failed to get stats: %w", err)
 				}
+
+				// Write stats to file
 				if err := types.WriteTradeStats(filepath.Join(resultFolderPath, "stats.yaml"), stats); err != nil {
 					return fmt.Errorf("failed to write stats: %w", err)
+				}
+
+				// Write state to disk
+				if b.state == nil {
+					return fmt.Errorf("backtest state is nil")
+				}
+
+				if err := b.state.Write(filepath.Join(resultFolderPath, "state.db")); err != nil {
+					return fmt.Errorf("failed to write state: %w", err)
+				}
+
+				// Cleanup state
+				if b.state == nil {
+					return fmt.Errorf("backtest state is nil")
 				}
 
 				if err := b.state.Cleanup(); err != nil {
@@ -301,6 +321,7 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -314,4 +335,38 @@ func (b *BacktestEngineV1) GetStrategyApi() (strategy.StrategyApi, error) {
 	})
 
 	return strategyApi, nil
+}
+
+func (b *BacktestEngineV1) preRunCheck() error {
+	if len(b.strategies) == 0 {
+		b.log.Error("No strategies loaded")
+
+		return errors.New("no strategies loaded")
+	}
+
+	if len(b.strategyConfigPaths) == 0 {
+		b.log.Error("No strategy config paths loaded")
+
+		return errors.New("no strategy config paths loaded")
+	}
+
+	if len(b.dataPaths) == 0 {
+		b.log.Error("No data paths loaded")
+
+		return errors.New("no data paths loaded")
+	}
+
+	if b.resultsFolder == "" {
+		b.log.Error("No results folder set")
+
+		return errors.New("no results folder set")
+	}
+
+	if b.datasource == nil {
+		b.log.Error("No datasource set")
+
+		return errors.New("no datasource set")
+	}
+
+	return nil
 }
