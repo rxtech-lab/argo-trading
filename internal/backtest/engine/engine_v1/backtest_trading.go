@@ -25,6 +25,9 @@ type BacktestTrading struct {
 
 func (b *BacktestTrading) UpdateCurrentMarketData(marketData types.MarketData) {
 	b.marketData = marketData
+
+	// Process pending orders with the updated market data
+	b.processPendingOrders()
 }
 
 func (b *BacktestTrading) UpdateBalance(balance float64) {
@@ -114,6 +117,16 @@ func (b *BacktestTrading) PlaceMultipleOrders(orders []types.ExecuteOrder) error
 }
 
 // PlaceOrder implements trading.TradingSystem.
+// Market orders:
+//   - Always use the average price of the market data.
+//   - Fail if AVG price * quantity > buying power for buy orders.
+//   - If selling quantity > current selling power (MAX Holding), set it to the max.
+//
+// Limit orders:
+//   - Fail if quantity * price > buying power.
+//   - If total sold quantity > max holding, sell all max holding and modify the order quantity.
+//   - For buy orders, if limit price is higher than market price, use market price.
+//   - For sell orders, only sell if market price is >= limit price, and use limit price as execution price.
 func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	// validate the order using go-playground/validator/v10
 	order.ID = uuid.New().String()
@@ -130,50 +143,135 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 		return fmt.Errorf("order quantity is too small or zero after rounding to configured precision")
 	}
 
-	// check if the order's price is within the price range
-	if order.Price < b.marketData.Low {
-		return fmt.Errorf("order price is out of range")
-	}
-
-	// check if the order's price is above the range
-	executePrice := order.Price
-	if order.Price > b.marketData.High {
-		executePrice = b.marketData.High
-	}
-
-	if executePrice <= 0 {
-		return fmt.Errorf("order price is out of range: %f", executePrice)
-	}
-
-	// check if the order's quantity is less than the current buying power
-	if order.Side == types.PurchaseTypeBuy {
-		buyingPower := b.getBuyingPower()
-		if order.Quantity > buyingPower {
-			return fmt.Errorf("order quantity is greater than the current buying power")
+	// Handle limit orders
+	if order.OrderType == types.OrderTypeLimit {
+		// Check if the order's price is valid (greater than zero)
+		if order.Price <= 0 {
+			return fmt.Errorf("limit order price must be greater than zero: %f", order.Price)
 		}
-	} else {
-		sellingPower := b.getSellingPower()
-		if order.Quantity > sellingPower {
-			return fmt.Errorf("order quantity is greater than the current selling power")
+
+		// For buy orders, check if quantity * price exceeds buying power
+		if order.Side == types.PurchaseTypeBuy {
+			// Check if we can afford this order
+			totalCost := order.Quantity * order.Price
+			if totalCost > b.balance {
+				return fmt.Errorf("limit buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+			}
+
+			// If current price is already below limit price, execute immediately with the current market price
+			if b.marketData.Low <= order.Price {
+				// Modify the order to use current market price if lower than limit price
+				marketOrder := order
+				// We'll let executeMarketOrder set the appropriate price
+				return b.executeMarketOrder(marketOrder)
+			}
+
+			// Otherwise, add to pending orders
+			b.pendingOrders = append(b.pendingOrders, order)
+
+			return nil
 		}
+
+		// For limit sell orders, check if the quantity exceeds current holdings
+		if order.Side == types.PurchaseTypeSell {
+			sellingPower := b.getSellingPower()
+
+			// If trying to sell more than available, adjust quantity to max available
+			if order.Quantity > sellingPower {
+				if sellingPower <= 0 {
+					return fmt.Errorf("no shares available to sell")
+				}
+
+				order.Quantity = sellingPower
+			}
+
+			// If current price is already above limit price, execute immediately with the limit price
+			if b.marketData.High >= order.Price {
+				return b.executeMarketOrder(order)
+			}
+
+			// Otherwise, add to pending orders
+			b.pendingOrders = append(b.pendingOrders, order)
+
+			return nil
+		}
+
+		return nil
 	}
-	// create the order
-	commission := b.commission.Calculate(order.Quantity)
-	executedOrder := types.Order{
-		Symbol:       order.Symbol,
-		Side:         order.Side,
-		Quantity:     order.Quantity,
-		Price:        executePrice,
-		Timestamp:    time.Now(),
-		IsCompleted:  false,
-		Reason:       order.Reason,
-		StrategyName: order.StrategyName,
-		Fee:          commission,
+
+	// For market orders, execute immediately
+	if order.OrderType == types.OrderTypeMarket {
+		// Calculate average market price
+		avgPrice := (b.marketData.High + b.marketData.Low) / 2
+
+		if avgPrice <= 0 {
+			return fmt.Errorf("invalid market data: average price is zero or negative")
+		}
+
+		// Set the order price to the average price
+		order.Price = avgPrice
+
+		// For buy orders, check if we can afford this order
+		if order.Side == types.PurchaseTypeBuy {
+			totalCost := order.Quantity * avgPrice
+			if totalCost > b.balance {
+				return fmt.Errorf("market buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+			}
+		} else {
+			// For sell orders, adjust quantity if needed
+			sellingPower := b.getSellingPower()
+			if order.Quantity > sellingPower {
+				if sellingPower <= 0 {
+					return fmt.Errorf("no shares available to sell")
+				}
+
+				order.Quantity = sellingPower
+			}
+		}
+
+		// Execute the market order
+		return b.executeMarketOrder(order)
 	}
-	// place the order
-	_, err = b.state.Update([]types.Order{executedOrder})
-	if err != nil {
-		return err
+
+	// Process take profit and stop loss orders if present
+	if !order.TakeProfit.IsNone() {
+		takeProfitOrder, _ := order.TakeProfit.Take()
+
+		// Create a limit order for take profit
+		tpOrder := types.ExecuteOrder{
+			ID:           uuid.New().String(),
+			Symbol:       order.Symbol,
+			Side:         takeProfitOrder.Side,
+			OrderType:    types.OrderTypeLimit,
+			Reason:       types.Reason{Reason: types.OrderReasonTakeProfit, Message: "Take profit order"},
+			Price:        order.Price, // This needs to be set by the caller based on the take profit level
+			StrategyName: order.StrategyName,
+			Quantity:     order.Quantity,
+			PositionType: order.PositionType,
+		}
+
+		// Add to pending orders
+		b.pendingOrders = append(b.pendingOrders, tpOrder)
+	}
+
+	if !order.StopLoss.IsNone() {
+		stopLossOrder, _ := order.StopLoss.Take()
+
+		// Create a limit order for stop loss
+		slOrder := types.ExecuteOrder{
+			ID:           uuid.New().String(),
+			Symbol:       order.Symbol,
+			Side:         stopLossOrder.Side,
+			OrderType:    types.OrderTypeLimit,
+			Reason:       types.Reason{Reason: types.OrderReasonStopLoss, Message: "Stop loss order"},
+			Price:        order.Price, // This needs to be set by the caller based on the stop loss level
+			StrategyName: order.StrategyName,
+			Quantity:     order.Quantity,
+			PositionType: order.PositionType,
+		}
+
+		// Add to pending orders
+		b.pendingOrders = append(b.pendingOrders, slOrder)
 	}
 
 	return nil
@@ -204,4 +302,126 @@ func NewBacktestTrading(state *BacktestState, initialBalance float64, commission
 		commission:       commission,
 		decimalPrecision: decimalPrecision,
 	}
+}
+
+// processPendingOrders processes all pending limit orders based on current market data.
+func (b *BacktestTrading) processPendingOrders() {
+	if len(b.pendingOrders) == 0 {
+		return
+	}
+
+	var remainingOrders []types.ExecuteOrder
+
+	var ordersToExecute []types.ExecuteOrder
+
+	// Check each pending order to see if it can be executed with current market data
+	for _, order := range b.pendingOrders {
+		canExecute := false
+
+		// For limit buy orders, we execute if market price has fallen below or equal to the limit price
+		if order.Side == types.PurchaseTypeBuy && order.OrderType == types.OrderTypeLimit {
+			// Buy when price falls to or below limit price
+			if b.marketData.Low <= order.Price {
+				canExecute = true
+			}
+		}
+
+		// For limit sell orders, we execute if market price has risen above or equal to the limit price
+		if order.Side == types.PurchaseTypeSell && order.OrderType == types.OrderTypeLimit {
+			// Sell when price rises to or above limit price
+			if b.marketData.High >= order.Price {
+				canExecute = true
+			}
+		}
+
+		if canExecute {
+			ordersToExecute = append(ordersToExecute, order)
+		} else {
+			remainingOrders = append(remainingOrders, order)
+		}
+	}
+
+	// Update the list of pending orders
+	b.pendingOrders = remainingOrders
+
+	// Execute the orders that can be executed
+	for _, order := range ordersToExecute {
+		// Execute the order with its original properties
+		// Ignore errors - if one order fails, try to execute the rest
+		_ = b.executeMarketOrder(order)
+	}
+}
+
+// executeMarketOrder executes a market order immediately.
+func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
+	// Validate the order (quantity, buying power, etc.)
+	order.Quantity = utils.RoundToDecimalPrecision(order.Quantity, b.decimalPrecision)
+	if order.Quantity <= 0 {
+		return fmt.Errorf("order quantity is too small or zero after rounding to configured precision")
+	}
+
+	// Determine execution price based on order type and market data
+	var executePrice float64
+
+	if order.OrderType == types.OrderTypeMarket {
+		// For market orders, always use the average price
+		executePrice = (b.marketData.High + b.marketData.Low) / 2
+	} else if order.OrderType == types.OrderTypeLimit {
+		if order.Side == types.PurchaseTypeBuy {
+			// For buy limit orders, use the lower of limit price and current market price
+			executePrice = order.Price
+			avgPrice := (b.marketData.High + b.marketData.Low) / 2
+
+			if avgPrice < executePrice {
+				executePrice = avgPrice
+			}
+		} else {
+			// For sell limit orders, use the limit price
+			executePrice = order.Price
+		}
+	}
+
+	if executePrice <= 0 {
+		return fmt.Errorf("execution price is invalid: %f", executePrice)
+	}
+
+	// Check buying/selling power again with final execution price
+	if order.Side == types.PurchaseTypeBuy {
+		totalCost := order.Quantity * executePrice
+		if totalCost > b.balance {
+			return fmt.Errorf("order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+		}
+	} else {
+		sellingPower := b.getSellingPower()
+		if order.Quantity > sellingPower {
+			if sellingPower <= 0 {
+				return fmt.Errorf("no shares available to sell")
+			}
+
+			order.Quantity = sellingPower
+		}
+	}
+
+	// Calculate commission fee
+	commission := b.commission.Calculate(order.Quantity)
+
+	// Create the executed order
+	executedOrder := types.Order{
+		OrderID:      order.ID,
+		Symbol:       order.Symbol,
+		Side:         order.Side,
+		Quantity:     order.Quantity,
+		Price:        executePrice,
+		Timestamp:    time.Now(),
+		IsCompleted:  true,
+		Reason:       order.Reason,
+		StrategyName: order.StrategyName,
+		Fee:          commission,
+		PositionType: order.PositionType,
+	}
+
+	// Update the order in the state
+	_, err := b.state.Update([]types.Order{executedOrder})
+
+	return err
 }

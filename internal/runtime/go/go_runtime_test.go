@@ -47,11 +47,12 @@ func (s *SimpleConsecutiveStrategy) ProcessData(data types.MarketData) error {
 	if data.Close > data.Open && prevMarketData.Close > prevMarketData.Open {
 		// Buy signal
 		order := types.ExecuteOrder{
-			Symbol:    data.Symbol,
-			Side:      types.PurchaseTypeBuy,
-			OrderType: types.OrderTypeLimit,
-			Quantity:  1.0, // Fixed quantity for testing
-			Price:     data.Close,
+			Symbol:       data.Symbol,
+			Side:         types.PurchaseTypeBuy,
+			OrderType:    types.OrderTypeLimit,
+			Quantity:     1.0, // Fixed quantity for testing
+			Price:        data.Close,
+			PositionType: types.PositionTypeLong,
 			Reason: types.Reason{
 				Reason:  "strategy",
 				Message: "Two consecutive up candles",
@@ -65,11 +66,12 @@ func (s *SimpleConsecutiveStrategy) ProcessData(data types.MarketData) error {
 	if data.Close < data.Open && prevMarketData.Close < prevMarketData.Open {
 		// Sell signal
 		order := types.ExecuteOrder{
-			Symbol:    data.Symbol,
-			Side:      types.PurchaseTypeSell,
-			OrderType: types.OrderTypeLimit,
-			Quantity:  1.0, // Fixed quantity for testing
-			Price:     data.Close,
+			Symbol:       data.Symbol,
+			Side:         types.PurchaseTypeSell,
+			OrderType:    types.OrderTypeLimit,
+			Quantity:     1.0, // Fixed quantity for testing
+			Price:        data.Close,
+			PositionType: types.PositionTypeLong,
 			Reason: types.Reason{
 				Reason:  "strategy",
 				Message: "Two consecutive down candles",
@@ -191,11 +193,12 @@ func (suite *StrategyTestSuite) TestConsecutiveDownCandles() {
 
 	// First establish a position by buying
 	buyOrder := types.ExecuteOrder{
-		Symbol:    "BTCUSDT",
-		Side:      types.PurchaseTypeBuy,
-		OrderType: types.OrderTypeLimit,
-		Quantity:  1,
-		Price:     10000.0, // Adjusted price to match the test data
+		Symbol:       "BTCUSDT",
+		Side:         types.PurchaseTypeBuy,
+		OrderType:    types.OrderTypeLimit,
+		Quantity:     1,
+		Price:        10000.0, // Adjusted price to match the test data
+		PositionType: types.PositionTypeLong,
 		Reason: types.Reason{
 			Reason:  "test",
 			Message: "Establish initial position",

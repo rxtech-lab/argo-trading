@@ -75,7 +75,8 @@ func (b *BacktestState) Initialize() error {
 			is_completed BOOLEAN,
 			reason TEXT,
 			message TEXT,
-			strategy_name TEXT
+			strategy_name TEXT,
+			position_type TEXT
 		)
 	`)
 	if err != nil {
@@ -99,7 +100,8 @@ func (b *BacktestState) Initialize() error {
 			executed_qty DOUBLE,
 			executed_price DOUBLE,
 			commission DOUBLE,
-			pnl DOUBLE
+			pnl DOUBLE,
+			position_type TEXT
 		)
 	`)
 	if err != nil {
@@ -138,12 +140,12 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			Insert("orders").
 			Columns(
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
-				"is_completed", "reason", "message", "strategy_name",
+				"is_completed", "reason", "message", "strategy_name", "position_type",
 			).
 			Values(
 				orderID, order.Symbol, order.Side, order.Quantity, order.Price,
 				order.Timestamp, order.IsCompleted, order.Reason.Reason, order.Reason.Message,
-				order.StrategyName,
+				order.StrategyName, order.PositionType,
 			).
 			RunWith(tx)
 
@@ -187,6 +189,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				Reason:       order.Reason,
 				StrategyName: order.StrategyName,
 				Fee:          order.Fee,
+				PositionType: order.PositionType,
 			},
 			ExecutedAt:    order.Timestamp,
 			ExecutedQty:   order.Quantity,
@@ -201,13 +204,13 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			Columns(
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 				"is_completed", "reason", "message", "strategy_name",
-				"executed_at", "executed_qty", "executed_price", "commission", "pnl",
+				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "position_type",
 			).
 			Values(
 				orderID, trade.Order.Symbol, trade.Order.Side, trade.Order.Quantity, trade.Order.Price,
 				trade.Order.Timestamp, trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
 				order.StrategyName, trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
-				trade.Fee, trade.PnL,
+				trade.Fee, trade.PnL, trade.Order.PositionType,
 			).
 			RunWith(tx)
 
@@ -327,7 +330,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 		Select(
 			"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 			"is_completed", "reason", "message", "strategy_name",
-			"executed_at", "executed_qty", "executed_price", "commission", "pnl",
+			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "position_type",
 		).
 		From("trades").
 		OrderBy("executed_at ASC").
@@ -360,6 +363,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 			&trade.ExecutedPrice,
 			&trade.Fee,
 			&trade.PnL,
+			&trade.Order.PositionType,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan trade: %w", err)
@@ -552,6 +556,7 @@ func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Orde
 		&order.Reason.Reason,
 		&order.Reason.Message,
 		&order.StrategyName,
+		&order.PositionType,
 	)
 	if err != nil {
 		// check if error is no rows in result set
@@ -643,6 +648,51 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 	}
 
 	return positions, nil
+}
+
+func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
+	query := b.sq.
+		Select("*").
+		From("orders").
+		OrderBy("timestamp ASC").
+		RunWith(b.db)
+
+	rows, err := query.Query()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query orders: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []types.Order
+
+	for rows.Next() {
+		var order types.Order
+
+		err := rows.Scan(
+			&order.OrderID,
+			&order.Symbol,
+			&order.Side,
+			&order.Quantity,
+			&order.Price,
+			&order.Timestamp,
+			&order.IsCompleted,
+			&order.Reason.Reason,
+			&order.Reason.Message,
+			&order.StrategyName,
+			&order.PositionType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan order: %w", err)
+		}
+
+		orders = append(orders, order)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating orders: %w", err)
+	}
+
+	return orders, nil
 }
 
 // calculateTradeResult calculates the trade result statistics for a symbol.

@@ -33,6 +33,17 @@ func StrategyPurchaseTypeToPurchaseType(purchaseType strategy.PurchaseType) type
 	}
 }
 
+func StrategyPositionTypeToPositionType(positionType strategy.PositionType) types.PositionType {
+	switch positionType {
+	case strategy.PositionType_POSITION_TYPE_LONG:
+		return types.PositionTypeLong
+	case strategy.PositionType_POSITION_TYPE_SHORT:
+		return types.PositionTypeShort
+	default:
+		return types.PositionTypeLong
+	}
+}
+
 func StrategyOrderTypeToOrderType(orderType strategy.OrderType) types.OrderType {
 	switch orderType {
 	case strategy.OrderType_ORDER_TYPE_MARKET:
