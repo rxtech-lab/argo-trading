@@ -12,12 +12,19 @@ type OrderType string
 
 type OrderStatus string
 
+type PositionType string
+
 const (
 	OrderStatusPending   OrderStatus = "PENDING"
 	OrderStatusFilled    OrderStatus = "FILLED"
 	OrderStatusCancelled OrderStatus = "CANCELLED"
 	OrderStatusRejected  OrderStatus = "REJECTED"
 	OrderStatusFailed    OrderStatus = "Failed"
+)
+
+const (
+	PositionTypeLong  PositionType = "LONG"
+	PositionTypeShort PositionType = "SHORT"
 )
 
 const (
@@ -56,6 +63,7 @@ type ExecuteOrder struct {
 	Price        float64      `yaml:"price" json:"price" csv:"price" validate:"required,gt=0"`
 	StrategyName string       `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name" validate:"required"`
 	Quantity     float64      `yaml:"quantity" json:"quantity" csv:"quantity" validate:"required,gt=0"`
+	PositionType PositionType `yaml:"position_type" json:"position_type" csv:"position_type" validate:"required,oneof=LONG SHORT"`
 	// TakeProfit is the take profit order. Can be nil if not set.
 	TakeProfit optional.Option[ExecuteOrderTakeProfitOrStopLoss] `yaml:"take_profit" json:"take_profit" csv:"take_profit"`
 	// StopLoss is the stop loss order. Can be nil if not set.
@@ -76,6 +84,7 @@ type Order struct {
 	// like "buy_signal", "sell_signal", "stop_loss", "take_profit", etc.
 	Reason Reason `yaml:"reason" json:"reason" csv:"reason"`
 	// StrategyName is the name of the strategy that created this order
-	StrategyName string  `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name"`
-	Fee          float64 `yaml:"fee" json:"fee" csv:"fee"`
+	StrategyName string       `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name"`
+	Fee          float64      `yaml:"fee" json:"fee" csv:"fee"`
+	PositionType PositionType `yaml:"position_type" json:"position_type" csv:"position_type"`
 }

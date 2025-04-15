@@ -92,6 +92,11 @@ enum Interval {
   INTERVAL_1MONTH = 11;
 }
 
+enum PositionType {
+  POSITION_TYPE_LONG = 0;
+  POSITION_TYPE_SHORT = 1;
+}
+
 message GetRangeRequest {
   string symbol = 1;
   google.protobuf.Timestamp start_time = 2;
@@ -260,6 +265,7 @@ message ExecuteOrder {
   double quantity = 8;
   ExecuteOrderTakeProfitOrStopLoss take_profit = 9;
   ExecuteOrderTakeProfitOrStopLoss stop_loss = 10;
+  PositionType position_type = 11;
 }
 
 message Order {
@@ -273,6 +279,7 @@ message Order {
   Reason reason = 8;
   string strategy_name = 9;
   double fee = 10;
+  PositionType position_type = 11;
 }
 
 message Position {

@@ -460,6 +460,7 @@ func (suite *StrategyApiTestSuite) TestPlaceOrder() {
 		Price:        order.Price,
 		StrategyName: order.StrategyName,
 		Quantity:     order.Quantity,
+		PositionType: types.PositionTypeLong,
 		Reason: types.Reason{
 			Reason:  order.Reason.Reason,
 			Message: order.Reason.Message,
@@ -498,6 +499,7 @@ func (suite *StrategyApiTestSuite) TestPlaceMultipleOrders() {
 			Price:        orders[0].Price,
 			StrategyName: orders[0].StrategyName,
 			Quantity:     orders[0].Quantity,
+			PositionType: types.PositionTypeLong,
 			Reason: types.Reason{
 				Reason:  orders[0].Reason.Reason,
 				Message: orders[0].Reason.Message,

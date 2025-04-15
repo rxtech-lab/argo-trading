@@ -76,6 +76,31 @@ func (x Interval) Enum() *Interval {
 	return p
 }
 
+type PositionType int32
+
+const (
+	PositionType_POSITION_TYPE_LONG  PositionType = 0
+	PositionType_POSITION_TYPE_SHORT PositionType = 1
+)
+
+// Enum value maps for PositionType.
+var (
+	PositionType_name = map[int32]string{
+		0: "POSITION_TYPE_LONG",
+		1: "POSITION_TYPE_SHORT",
+	}
+	PositionType_value = map[string]int32{
+		"POSITION_TYPE_LONG":  0,
+		"POSITION_TYPE_SHORT": 1,
+	}
+)
+
+func (x PositionType) Enum() *PositionType {
+	p := new(PositionType)
+	*p = x
+	return p
+}
+
 type SignalType int32
 
 const (
@@ -999,6 +1024,7 @@ type ExecuteOrder struct {
 	Quantity     float64                           `protobuf:"fixed64,8,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	TakeProfit   *ExecuteOrderTakeProfitOrStopLoss `protobuf:"bytes,9,opt,name=take_profit,json=takeProfit,proto3" json:"take_profit,omitempty"`
 	StopLoss     *ExecuteOrderTakeProfitOrStopLoss `protobuf:"bytes,10,opt,name=stop_loss,json=stopLoss,proto3" json:"stop_loss,omitempty"`
+	PositionType PositionType                      `protobuf:"varint,11,opt,name=position_type,json=positionType,proto3,enum=strategy.PositionType" json:"position_type,omitempty"`
 }
 
 func (x *ExecuteOrder) ProtoReflect() protoreflect.Message {
@@ -1075,6 +1101,13 @@ func (x *ExecuteOrder) GetStopLoss() *ExecuteOrderTakeProfitOrStopLoss {
 	return nil
 }
 
+func (x *ExecuteOrder) GetPositionType() PositionType {
+	if x != nil {
+		return x.PositionType
+	}
+	return PositionType_POSITION_TYPE_LONG
+}
+
 type Order struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1090,6 +1123,7 @@ type Order struct {
 	Reason       *Reason                `protobuf:"bytes,8,opt,name=reason,proto3" json:"reason,omitempty"`
 	StrategyName string                 `protobuf:"bytes,9,opt,name=strategy_name,json=strategyName,proto3" json:"strategy_name,omitempty"`
 	Fee          float64                `protobuf:"fixed64,10,opt,name=fee,proto3" json:"fee,omitempty"`
+	PositionType PositionType           `protobuf:"varint,11,opt,name=position_type,json=positionType,proto3,enum=strategy.PositionType" json:"position_type,omitempty"`
 }
 
 func (x *Order) ProtoReflect() protoreflect.Message {
@@ -1164,6 +1198,13 @@ func (x *Order) GetFee() float64 {
 		return x.Fee
 	}
 	return 0
+}
+
+func (x *Order) GetPositionType() PositionType {
+	if x != nil {
+		return x.PositionType
+	}
+	return PositionType_POSITION_TYPE_LONG
 }
 
 type Position struct {
