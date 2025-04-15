@@ -12,6 +12,7 @@ linters:
     - predeclared
     - gocognit
     - ineffassign
+    - nestif
   exclusions:
     paths:
       - cmd

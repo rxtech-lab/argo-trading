@@ -365,6 +365,7 @@ func (s StrategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strate
 			Price:        order.Price,
 			StrategyName: order.StrategyName,
 			Quantity:     order.Quantity,
+			PositionType: runtime.StrategyPositionTypeToPositionType(order.PositionType),
 			Reason: types.Reason{
 				Reason:  order.Reason.Reason,
 				Message: order.Reason.Message,
@@ -415,6 +416,7 @@ func (s StrategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.Execut
 		Price:        req.Price,
 		StrategyName: req.StrategyName,
 		Quantity:     req.Quantity,
+		PositionType: runtime.StrategyPositionTypeToPositionType(req.PositionType),
 		Reason: types.Reason{
 			Reason:  reasonName,
 			Message: reasonMessage,
