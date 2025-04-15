@@ -69,7 +69,7 @@ func (suite *UtilsTestSuite) TestCalculateMaxQuantity() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			qty := CalculateMaxQuantity(tc.balance, tc.price, tc.commissionFee)
-			suite.Assert().Equal(float64(tc.expectedQty), qty, "Quantity mismatch")
+			suite.Assert().Equal(float64(tc.expectedQty), qty, "TotalLongPositionQuantity mismatch")
 		})
 	}
 }
@@ -98,7 +98,7 @@ func (suite *UtilsTestSuite) TestCalculateOrderQuantityByPercentage() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			qty := CalculateOrderQuantityByPercentage(tc.balance, tc.price, tc.commissionFee, tc.percentage)
-			suite.Assert().Equal(tc.expectedQty, qty, "Quantity mismatch")
+			suite.Assert().Equal(tc.expectedQty, qty, "TotalLongPositionQuantity mismatch")
 		})
 	}
 }

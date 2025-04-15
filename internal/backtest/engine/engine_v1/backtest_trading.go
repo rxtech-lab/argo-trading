@@ -5,7 +5,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/go-playground/validator"
 	"github.com/google/uuid"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
@@ -130,10 +129,7 @@ func (b *BacktestTrading) PlaceMultipleOrders(orders []types.ExecuteOrder) error
 func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	// validate the order using go-playground/validator/v10
 	order.ID = uuid.New().String()
-	validate := validator.New()
-
-	err := validate.Struct(order)
-	if err != nil {
+	if err := order.Validate(); err != nil {
 		return err
 	}
 
@@ -290,7 +286,7 @@ func (b *BacktestTrading) getSellingPower() float64 {
 		return 0
 	}
 
-	return utils.RoundToDecimalPrecision(position.Quantity, b.decimalPrecision)
+	return utils.RoundToDecimalPrecision(position.TotalLongPositionQuantity, b.decimalPrecision)
 }
 
 func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) trading.TradingSystem {

@@ -24,9 +24,9 @@ func (suite *TradeTestSuite) TestGetAverageEntryPrice() {
 		{
 			name: "Valid position with fees",
 			position: Position{
-				TotalInQuantity: 100,
-				TotalInAmount:   10000,
-				TotalInFee:      10,
+				TotalLongInPositionQuantity: 100,
+				TotalLongInPositionAmount:   10000,
+				TotalLongInFee:              10,
 			},
 			expectedPrice: 100.1, // (10000 + 10) / 100
 			expectedError: false,
@@ -34,9 +34,9 @@ func (suite *TradeTestSuite) TestGetAverageEntryPrice() {
 		{
 			name: "Zero quantity",
 			position: Position{
-				TotalInQuantity: 0,
-				TotalInAmount:   10000,
-				TotalInFee:      10,
+				TotalLongInPositionQuantity: 0,
+				TotalLongInPositionAmount:   10000,
+				TotalLongInFee:              10,
 			},
 			expectedPrice: 0,
 			expectedError: false,
@@ -45,7 +45,7 @@ func (suite *TradeTestSuite) TestGetAverageEntryPrice() {
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			result := tt.position.GetAverageEntryPrice()
+			result := tt.position.GetAverageLongPositionEntryPrice()
 			suite.Equal(tt.expectedPrice, result)
 		})
 	}
@@ -61,9 +61,9 @@ func (suite *TradeTestSuite) TestGetAverageExitPrice() {
 		{
 			name: "Valid position with fees",
 			position: Position{
-				TotalOutQuantity: 100,
-				TotalOutAmount:   11000,
-				TotalOutFee:      10,
+				TotalLongOutPositionQuantity: 100,
+				TotalLongOutPositionAmount:   11000,
+				TotalLongOutFee:              10,
 			},
 			expectedPrice: 109.9, // (11000 - 10) / 100
 			expectedError: false,
@@ -71,9 +71,9 @@ func (suite *TradeTestSuite) TestGetAverageExitPrice() {
 		{
 			name: "Zero quantity",
 			position: Position{
-				TotalOutQuantity: 0,
-				TotalOutAmount:   11000,
-				TotalOutFee:      10,
+				TotalLongOutPositionQuantity: 0,
+				TotalLongOutPositionAmount:   11000,
+				TotalLongOutFee:              10,
 			},
 			expectedPrice: 0,
 			expectedError: false,
@@ -82,7 +82,7 @@ func (suite *TradeTestSuite) TestGetAverageExitPrice() {
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			result := tt.position.GetAverageExitPrice()
+			result := tt.position.GetAverageLongPositionExitPrice()
 			suite.Equal(tt.expectedPrice, result)
 		})
 	}
@@ -98,12 +98,12 @@ func (suite *TradeTestSuite) TestGetTotalPnL() {
 		{
 			name: "Profitable trade",
 			position: Position{
-				TotalInQuantity:  100,
-				TotalInAmount:    10000,
-				TotalInFee:       10,
-				TotalOutQuantity: 100,
-				TotalOutAmount:   11000,
-				TotalOutFee:      10,
+				TotalLongInPositionQuantity:  100,
+				TotalLongInPositionAmount:    10000,
+				TotalLongInFee:               10,
+				TotalLongOutPositionQuantity: 100,
+				TotalLongOutPositionAmount:   11000,
+				TotalLongOutFee:              10,
 			},
 			expectedPnL:   980, // (11000 - 10) - (10000 + 10)
 			expectedError: false,
@@ -111,12 +111,12 @@ func (suite *TradeTestSuite) TestGetTotalPnL() {
 		{
 			name: "Zero in quantity",
 			position: Position{
-				TotalInQuantity:  0,
-				TotalInAmount:    10000,
-				TotalInFee:       10,
-				TotalOutQuantity: 100,
-				TotalOutAmount:   11000,
-				TotalOutFee:      10,
+				TotalLongInPositionQuantity:  0,
+				TotalLongInPositionAmount:    10000,
+				TotalLongInFee:               10,
+				TotalLongOutPositionQuantity: 100,
+				TotalLongOutPositionAmount:   11000,
+				TotalLongOutFee:              10,
 			},
 			expectedPnL:   0,
 			expectedError: false,
@@ -124,12 +124,12 @@ func (suite *TradeTestSuite) TestGetTotalPnL() {
 		{
 			name: "Zero out quantity",
 			position: Position{
-				TotalInQuantity:  100,
-				TotalInAmount:    10000,
-				TotalInFee:       10,
-				TotalOutQuantity: 0,
-				TotalOutAmount:   11000,
-				TotalOutFee:      10,
+				TotalLongInPositionQuantity:  100,
+				TotalLongInPositionAmount:    10000,
+				TotalLongInFee:               10,
+				TotalLongOutPositionQuantity: 0,
+				TotalLongOutPositionAmount:   11000,
+				TotalLongOutFee:              10,
 			},
 			expectedPnL:   0,
 			expectedError: false,

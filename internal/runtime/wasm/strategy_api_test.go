@@ -110,16 +110,16 @@ func (suite *StrategyApiTestSuite) TestGetOrderStatus() {
 func (suite *StrategyApiTestSuite) TestGetPosition() {
 	symbol := "BTCUSDT"
 	position := types.Position{
-		Symbol:           symbol,
-		Quantity:         1.0,
-		TotalInQuantity:  1.0,
-		TotalOutQuantity: 0.0,
-		TotalInAmount:    50000.0,
-		TotalOutAmount:   0.0,
-		TotalInFee:       0.1,
-		TotalOutFee:      0.0,
-		OpenTimestamp:    time.Now(),
-		StrategyName:     "test-strategy",
+		Symbol:                       symbol,
+		TotalLongPositionQuantity:    1.0,
+		TotalLongInPositionQuantity:  1.0,
+		TotalLongOutPositionQuantity: 0.0,
+		TotalLongInPositionAmount:    50000.0,
+		TotalLongOutPositionAmount:   0.0,
+		TotalLongInFee:               0.1,
+		TotalLongOutFee:              0.0,
+		OpenTimestamp:                time.Now(),
+		StrategyName:                 "test-strategy",
 	}
 
 	// Setup expectations
@@ -134,7 +134,7 @@ func (suite *StrategyApiTestSuite) TestGetPosition() {
 
 	suite.NoError(err)
 	suite.Equal(symbol, response.Symbol)
-	suite.Equal(position.Quantity, response.Quantity)
+	suite.Equal(position.TotalLongPositionQuantity, response.Quantity)
 	suite.Equal(position.StrategyName, response.StrategyName)
 }
 
@@ -142,16 +142,16 @@ func (suite *StrategyApiTestSuite) TestGetPosition() {
 func (suite *StrategyApiTestSuite) TestGetPositions() {
 	positions := []types.Position{
 		{
-			Symbol:           "BTCUSDT",
-			Quantity:         1.0,
-			TotalInQuantity:  1.0,
-			TotalOutQuantity: 0.0,
-			TotalInAmount:    50000.0,
-			TotalOutAmount:   0.0,
-			TotalInFee:       0.1,
-			TotalOutFee:      0.0,
-			OpenTimestamp:    time.Now(),
-			StrategyName:     "test-strategy",
+			Symbol:                       "BTCUSDT",
+			TotalLongPositionQuantity:    1.0,
+			TotalLongInPositionQuantity:  1.0,
+			TotalLongOutPositionQuantity: 0.0,
+			TotalLongInPositionAmount:    50000.0,
+			TotalLongOutPositionAmount:   0.0,
+			TotalLongInFee:               0.1,
+			TotalLongOutFee:              0.0,
+			OpenTimestamp:                time.Now(),
+			StrategyName:                 "test-strategy",
 		},
 	}
 
@@ -166,7 +166,7 @@ func (suite *StrategyApiTestSuite) TestGetPositions() {
 	suite.NoError(err)
 	suite.Len(response.Positions, 1)
 	suite.Equal(positions[0].Symbol, response.Positions[0].Symbol)
-	suite.Equal(positions[0].Quantity, response.Positions[0].Quantity)
+	suite.Equal(positions[0].TotalLongPositionQuantity, response.Positions[0].Quantity)
 }
 
 // TestReadLastData tests the ReadLastData method

@@ -184,7 +184,7 @@ func (suite *StrategyTestSuite) TestConsecutiveUpCandles() {
 	// Verify that a buy order was placed
 	position, err := suite.tradingSystem.GetPosition("BTCUSDT")
 	suite.NoError(err)
-	suite.Equal(1.0, position.Quantity)
+	suite.Equal(1.0, position.TotalLongPositionQuantity)
 }
 
 func (suite *StrategyTestSuite) TestConsecutiveDownCandles() {
@@ -223,7 +223,7 @@ func (suite *StrategyTestSuite) TestConsecutiveDownCandles() {
 	var position types.Position
 	position, err = suite.tradingSystem.GetPosition("BTCUSDT")
 	suite.NoError(err)
-	suite.Equal(1.0, position.Quantity)
+	suite.Equal(1.0, position.TotalLongPositionQuantity)
 
 	// First down candle
 	data1 := types.MarketData{
@@ -263,7 +263,7 @@ func (suite *StrategyTestSuite) TestConsecutiveDownCandles() {
 	// Verify that the position was sold
 	position, err = suite.tradingSystem.GetPosition("BTCUSDT")
 	suite.NoError(err)
-	suite.Equal(0.0, position.Quantity)
+	suite.Equal(0.0, position.TotalLongPositionQuantity)
 }
 
 func TestStrategySuite(t *testing.T) {
