@@ -25,6 +25,6 @@ initial_capital: 10000
 
 func (s *E2ETestSuite) TestSimpleMAStrategy() {
 	s.Run("TestSimpleMAStrategy", func() {
-		testhelper.RunWasmStrategyTest(&s.E2ETestSuite, "SimpleMAStrategy", "./sma_plugin.wasm")
+		testhelper.RunWasmStrategyTest(&s.E2ETestSuite, "SimpleMAStrategy", "./sma_plugin.wasm", "")
 	})
 }
