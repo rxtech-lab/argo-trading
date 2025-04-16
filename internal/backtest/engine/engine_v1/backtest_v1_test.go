@@ -10,6 +10,8 @@ import (
 
 	"github.com/moznion/go-optional"
 	engine_types "github.com/rxtech-lab/argo-trading/internal/backtest/engine"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/mocks"
 	"github.com/stretchr/testify/assert"
@@ -470,4 +472,106 @@ func matchMarketData(expected types.MarketData) gomock.Matcher {
 		}),
 		gomock.Eq(expected),
 	)
+}
+
+// TestBacktestTrading_MismatchedSymbol tests that orders with mismatched symbols
+// are added to pending orders instead of being executed or returning an error
+func TestBacktestTrading_MismatchedSymbol(t *testing.T) {
+	// Setup real logger
+	testLogger, err := logger.NewLogger()
+	require.NoError(t, err)
+
+	// Create a BacktestState for testing
+	state, err := NewBacktestState(testLogger)
+	require.NoError(t, err)
+	require.NotNil(t, state)
+
+	// Initialize the state
+	err = state.Initialize()
+	require.NoError(t, err)
+
+	// Create a BacktestTrading instance
+	initialBalance := 10000.0
+	commission := commission_fee.NewZeroCommissionFee() // No commission for simplicity
+	decimalPrecision := 2
+	tradingSystem := NewBacktestTrading(state, initialBalance, commission, decimalPrecision)
+	backtestTrading := tradingSystem.(*BacktestTrading)
+
+	// Set current market data for symbol "SPY"
+	marketData := types.MarketData{
+		Symbol: "SPY",
+		Open:   100.0,
+		High:   105.0,
+		Low:    95.0,
+		Close:  102.0,
+		Volume: 1000,
+	}
+	backtestTrading.UpdateCurrentMarketData(marketData)
+
+	// Test Case 1: Place a market order with a different symbol
+	mismatchedOrder := types.ExecuteOrder{
+		Symbol:       "AAPL", // Different from current market data symbol "SPY"
+		Side:         types.PurchaseTypeBuy,
+		OrderType:    types.OrderTypeMarket,
+		Quantity:     10.0,
+		Price:        100.0,
+		StrategyName: "TestStrategy",
+		Reason: types.Reason{
+			Reason:  types.OrderReasonStrategy,
+			Message: "Test order with different symbol",
+		},
+		PositionType: types.PositionTypeLong,
+	}
+
+	// Place the order
+	err = backtestTrading.PlaceOrder(mismatchedOrder)
+
+	// Verify no error is returned
+	require.NoError(t, err, "PlaceOrder with mismatched symbol should not return an error")
+
+	// Verify the order is added to pending orders
+	require.Equal(t, 1, len(backtestTrading.pendingOrders), "Order with mismatched symbol should be added to pending orders")
+	require.Equal(t, "AAPL", backtestTrading.pendingOrders[0].Symbol, "Pending order should have the mismatched symbol")
+
+	// Test Case 2: Place a limit order with a different symbol
+	mismatchedLimitOrder := types.ExecuteOrder{
+		Symbol:       "MSFT", // Different from current market data symbol "SPY"
+		Side:         types.PurchaseTypeSell,
+		OrderType:    types.OrderTypeLimit,
+		Quantity:     5.0,
+		Price:        150.0,
+		StrategyName: "TestStrategy",
+		Reason: types.Reason{
+			Reason:  types.OrderReasonStrategy,
+			Message: "Test limit order with different symbol",
+		},
+		PositionType: types.PositionTypeLong,
+	}
+
+	// Place the limit order
+	err = backtestTrading.PlaceOrder(mismatchedLimitOrder)
+
+	// Verify no error is returned
+	require.NoError(t, err, "PlaceOrder with mismatched symbol should not return an error")
+
+	// Verify the order is added to pending orders
+	require.Equal(t, 2, len(backtestTrading.pendingOrders), "Order with mismatched symbol should be added to pending orders")
+	require.Equal(t, "MSFT", backtestTrading.pendingOrders[1].Symbol, "Pending order should have the mismatched symbol")
+
+	// Test Case 3: Update market data to match one of the pending orders and verify it gets processed
+	newMarketData := types.MarketData{
+		Symbol: "AAPL", // Now matches the first pending order
+		Open:   150.0,
+		High:   155.0,
+		Low:    145.0,
+		Close:  152.0,
+		Volume: 2000,
+	}
+
+	backtestTrading.UpdateCurrentMarketData(newMarketData)
+
+	// Verify that the matching order was processed and removed from pending orders
+	// Only the MSFT order should remain
+	require.Equal(t, 1, len(backtestTrading.pendingOrders), "Order with now matching symbol should be processed")
+	require.Equal(t, "MSFT", backtestTrading.pendingOrders[0].Symbol, "Remaining pending order should be the one still not matching")
 }

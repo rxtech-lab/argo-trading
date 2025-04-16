@@ -139,6 +139,14 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 		return fmt.Errorf("order quantity is too small or zero after rounding to configured precision")
 	}
 
+	// Check if the symbol matches current market data symbol
+	// If not, add to pending orders and return (no errors)
+	if order.Symbol != b.marketData.Symbol {
+		b.pendingOrders = append(b.pendingOrders, order)
+
+		return nil
+	}
+
 	// Handle limit orders
 	if order.OrderType == types.OrderTypeLimit {
 		// Check if the order's price is valid (greater than zero)
@@ -273,6 +281,23 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	return nil
 }
 
+func (b *BacktestTrading) Reset(initialBalance float64) {
+	b.pendingOrders = []types.ExecuteOrder{}
+	b.balance = initialBalance
+	b.marketData = types.MarketData{}
+}
+
+func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) trading.TradingSystem {
+	return &BacktestTrading{
+		state:            state,
+		balance:          initialBalance,
+		marketData:       types.MarketData{},
+		pendingOrders:    []types.ExecuteOrder{},
+		commission:       commission,
+		decimalPrecision: decimalPrecision,
+	}
+}
+
 func (b *BacktestTrading) getBuyingPower() float64 {
 	maxQty := utils.CalculateMaxQuantity(b.balance, (b.marketData.High+b.marketData.Low)/2, b.commission)
 
@@ -289,17 +314,6 @@ func (b *BacktestTrading) getSellingPower() float64 {
 	return utils.RoundToDecimalPrecision(position.TotalLongPositionQuantity, b.decimalPrecision)
 }
 
-func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) trading.TradingSystem {
-	return &BacktestTrading{
-		state:            state,
-		balance:          initialBalance,
-		marketData:       types.MarketData{},
-		pendingOrders:    []types.ExecuteOrder{},
-		commission:       commission,
-		decimalPrecision: decimalPrecision,
-	}
-}
-
 // processPendingOrders processes all pending limit orders based on current market data.
 func (b *BacktestTrading) processPendingOrders() {
 	if len(b.pendingOrders) == 0 {
@@ -313,6 +327,14 @@ func (b *BacktestTrading) processPendingOrders() {
 	// Check each pending order to see if it can be executed with current market data
 	for _, order := range b.pendingOrders {
 		canExecute := false
+
+		// check if symbol matches current market data
+		if order.Symbol != b.marketData.Symbol {
+			// Keep orders with different symbols in pending orders
+			remainingOrders = append(remainingOrders, order)
+
+			continue
+		}
 
 		// For limit buy orders, we execute if market price has fallen below or equal to the limit price
 		if order.Side == types.PurchaseTypeBuy && order.OrderType == types.OrderTypeLimit {
@@ -328,6 +350,11 @@ func (b *BacktestTrading) processPendingOrders() {
 			if b.marketData.High >= order.Price {
 				canExecute = true
 			}
+		}
+
+		// For market orders, always execute them when their symbol matches current market data
+		if order.OrderType == types.OrderTypeMarket {
+			canExecute = true
 		}
 
 		if canExecute {
@@ -358,6 +385,11 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 
 	// Determine execution price based on order type and market data
 	var executePrice float64
+
+	// check if symbol matches current market data
+	if order.Symbol != b.marketData.Symbol {
+		return nil
+	}
 
 	if order.OrderType == types.OrderTypeMarket {
 		// For market orders, always use the average price
