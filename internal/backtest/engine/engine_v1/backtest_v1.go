@@ -330,6 +330,9 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 				if err := b.state.Cleanup(); err != nil {
 					return fmt.Errorf("failed to cleanup state: %w", err)
 				}
+
+				// Cleanup the cache
+				b.cache.Reset()
 			}
 		}
 	}
