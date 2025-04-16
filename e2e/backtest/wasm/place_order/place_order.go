@@ -54,7 +54,7 @@ func (s *PlaceOrderStrategy) ProcessData(ctx context.Context, req *strategy.Proc
 	}
 
 	_, err = api.PlaceOrder(ctx, &strategy.ExecuteOrder{
-		Symbol:       "AAPL",
+		Symbol:       data.Symbol,
 		Quantity:     1,
 		Side:         strategy.PurchaseType_PURCHASE_TYPE_BUY,
 		OrderType:    strategy.OrderType_ORDER_TYPE_MARKET,

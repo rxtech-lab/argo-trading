@@ -10,17 +10,17 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// E2ETestSuite extends the base test suite
-type E2ETestSuite struct {
+// MultipleDataTestSuite extends the base test suite
+type MultipleDataTestSuite struct {
 	testhelper.E2ETestSuite
 }
 
-func TestE2ETestSuite(t *testing.T) {
-	suite.Run(t, new(E2ETestSuite))
+func TestMultipleDataTestSuite(t *testing.T) {
+	suite.Run(t, new(MultipleDataTestSuite))
 }
 
 // SetupTest initializes the test with config
-func (s *E2ETestSuite) SetupTest() {
+func (s *MultipleDataTestSuite) SetupTest() {
 	s.E2ETestSuite.SetupTest(`
 initial_capital: 10000
 `)
@@ -32,24 +32,23 @@ initial_capital: 10000
 // 1. Successfully processes all files
 // 2. Places one order per file (3 total orders)
 // 3. Generates corresponding statistics for each file (3 total stats)
-func (s *E2ETestSuite) TestPlaceOrderStrategyWithMultipleData() {
+func (s *MultipleDataTestSuite) TestPlaceOrderStrategyWithMultipleData() {
 	s.Run("TestPlaceOrderStrategy", func() {
 		// create multiple test data in tmp folder
 		originalTestData := "../../../../internal/indicator/test_data/test_data.parquet"
 		tempDataPath := filepath.Join(s.T().TempDir(), "data")
 		testDataPattern := filepath.Join(tempDataPath, "*.parquet")
-		// create multiple test data in tmp folder
+
+		// Create multiple test data files with different symbols using our helper
 		err := os.MkdirAll(tempDataPath, 0755)
 		s.Require().NoError(err)
 
-		// copy original test data to tmp folder as test_data_1.parquet, test_data_2.parquet, test_data_3.parquet
+		// Create three copies of the original test data with different symbols
 		for i := 1; i <= 3; i++ {
-			// Read the original file
-			data, err := os.ReadFile(originalTestData)
-			s.Require().NoError(err)
+			outputFile := filepath.Join(tempDataPath, fmt.Sprintf("test_data_%d.parquet", i))
+			symbol := fmt.Sprintf("SYMBOL%d", i)
 
-			// Write to new file
-			err = os.WriteFile(filepath.Join(tempDataPath, fmt.Sprintf("test_data_%d.parquet", i)), data, 0644)
+			err := testhelper.UpdateParquetSymbol(originalTestData, outputFile, symbol)
 			s.Require().NoError(err)
 		}
 
