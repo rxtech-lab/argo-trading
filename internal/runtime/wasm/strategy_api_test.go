@@ -322,7 +322,7 @@ func (suite *StrategyApiTestSuite) TestGetMarkers() {
 
 	// Setup expectations
 	suite.mockMarker.EXPECT().
-		GetMarkers().
+		GetMarks().
 		Return(markers, nil)
 
 	// Execute test
@@ -518,4 +518,123 @@ func (suite *StrategyApiTestSuite) TestPlaceMultipleOrders() {
 func (suite *StrategyApiTestSuite) TestNewStrategyApi() {
 	api := NewWasmStrategyApi(suite.runtimeContext)
 	suite.NotNil(api)
+}
+
+// TestMark tests the Mark method
+func (suite *StrategyApiTestSuite) TestMark() {
+	// Create test data
+	now := time.Now()
+	protoTime := timestamppb.New(now)
+	
+	marketData := &strategy.MarketData{
+		Symbol: "BTCUSDT",
+		Time:   protoTime,
+		Open:   50000.0,
+		High:   51000.0,
+		Low:    49000.0,
+		Close:  50500.0,
+		Volume: 1000.0,
+	}
+	
+	reason := "Test mark reason"
+	
+	// Expected internal types
+	expectedMarketData := types.MarketData{
+		Symbol: "BTCUSDT",
+		Time:   now,
+		Open:   50000.0,
+		High:   51000.0,
+		Low:    49000.0,
+		Close:  50500.0,
+		Volume: 1000.0,
+	}
+	
+	expectedSignal := types.Signal{
+		Time:   now,
+		Type:   types.SignalTypeBuyLong,
+		Symbol: "BTCUSDT",
+		Name:   string(types.SignalTypeBuyLong),
+		Reason: reason,
+	}
+	
+	// Setup expectations
+	suite.mockMarker.EXPECT().
+		Mark(gomock.Any(), gomock.Any(), gomock.Eq(reason)).
+		DoAndReturn(func(md types.MarketData, signal types.Signal, r string) error {
+			// Verify the market data
+			suite.Equal(expectedMarketData.Symbol, md.Symbol)
+			suite.Equal(expectedMarketData.Time.Unix(), md.Time.Unix())
+			suite.Equal(expectedMarketData.Open, md.Open)
+			suite.Equal(expectedMarketData.High, md.High)
+			suite.Equal(expectedMarketData.Low, md.Low)
+			suite.Equal(expectedMarketData.Close, md.Close)
+			suite.Equal(expectedMarketData.Volume, md.Volume)
+			
+			// Verify the signal
+			suite.Equal(expectedSignal.Type, signal.Type)
+			suite.Equal(expectedSignal.Symbol, signal.Symbol)
+			suite.Equal(expectedSignal.Reason, signal.Reason)
+			
+			return nil
+		})
+	
+	// Execute test
+	_, err := suite.api.Mark(context.Background(), &strategy.MarkRequest{
+		MarketData: marketData,
+		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+		Reason:     reason,
+	})
+	
+	suite.NoError(err)
+}
+
+// TestMarkWithNilMarker tests the Mark method when the marker is nil
+func (suite *StrategyApiTestSuite) TestMarkWithNilMarker() {
+	// Save the original marker
+	originalMarker := suite.runtimeContext.Marker
+	
+	// Set the marker to nil
+	suite.runtimeContext.Marker = nil
+	
+	// Create test data
+	now := time.Now()
+	protoTime := timestamppb.New(now)
+	
+	marketData := &strategy.MarketData{
+		Symbol: "BTCUSDT",
+		Time:   protoTime,
+		Open:   50000.0,
+		High:   51000.0,
+		Low:    49000.0,
+		Close:  50500.0,
+		Volume: 1000.0,
+	}
+	
+	// Execute test
+	_, err := suite.api.Mark(context.Background(), &strategy.MarkRequest{
+		MarketData: marketData,
+		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+		Reason:     "Test mark reason",
+	})
+	
+	// Verify error
+	suite.Error(err)
+	suite.Contains(err.Error(), "marker is not available")
+	
+	// Restore the original marker
+	suite.runtimeContext.Marker = originalMarker
+}
+
+// TestMarkWithNilMarketData tests the Mark method when market data is nil
+func (suite *StrategyApiTestSuite) TestMarkWithNilMarketData() {
+	// Execute test
+	_, err := suite.api.Mark(context.Background(), &strategy.MarkRequest{
+		MarketData: nil,
+		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+		Reason:     "Test mark reason",
+	})
+	
+	// Verify error
+	suite.Error(err)
+	suite.Contains(err.Error(), "market data is required")
 }

@@ -227,6 +227,11 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					return fmt.Errorf("backtest state is nil")
 				}
 
+				b.marker, err = NewBacktestMarker(b.log)
+				if err != nil {
+					return fmt.Errorf("failed to create backtest marker: %w", err)
+				}
+
 				if err := b.state.Initialize(); err != nil {
 					return fmt.Errorf("failed to initialize state: %w", err)
 				}
@@ -302,42 +307,76 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					return fmt.Errorf("backtest state is nil")
 				}
 
-				stats, err := b.state.GetStats(strategyContext)
-				if err != nil {
-					return fmt.Errorf("failed to get stats: %w", err)
-				}
-
-				// Write stats to file
-				if err := types.WriteTradeStats(filepath.Join(resultFolderPath, "stats.yaml"), stats); err != nil {
-					return fmt.Errorf("failed to write stats: %w", err)
-				}
-
-				// Write state to disk
-				if b.state == nil {
-					return fmt.Errorf("backtest state is nil")
-				}
-
-				if err := b.state.Write(filepath.Join(resultFolderPath, "state.db")); err != nil {
-					return fmt.Errorf("failed to write state: %w", err)
+				if err := b.writeResults(strategyContext, resultFolderPath); err != nil {
+					return fmt.Errorf("failed to write results: %w", err)
 				}
 
 				// Cleanup state
-				if b.state == nil {
-					return fmt.Errorf("backtest state is nil")
-				}
-
-				if err := b.state.Cleanup(); err != nil {
-					return fmt.Errorf("failed to cleanup state: %w", err)
-				}
-
-				// Cleanup the cache
-				b.cache.Reset()
-
-				// clean up the trading system
-				if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
-					backtestTrading.Reset(b.config.InitialCapital)
+				if err := b.cleanUpRun(); err != nil {
+					return fmt.Errorf("failed to cleanup run: %w", err)
 				}
 			}
+		}
+	}
+
+	return nil
+}
+
+func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, resultFolderPath string) error {
+	if b.state == nil {
+		return fmt.Errorf("backtest state is nil")
+	}
+
+	stats, err := b.state.GetStats(strategyContext)
+	if err != nil {
+		return fmt.Errorf("failed to get stats: %w", err)
+	}
+
+	// Write stats to file
+	if err := types.WriteTradeStats(filepath.Join(resultFolderPath, "stats.yaml"), stats); err != nil {
+		return fmt.Errorf("failed to write stats: %w", err)
+	}
+
+	// Write state to disk
+	if b.state == nil {
+		return fmt.Errorf("backtest state is nil")
+	}
+
+	if err := b.state.Write(filepath.Join(resultFolderPath, "state.db")); err != nil {
+		return fmt.Errorf("failed to write state: %w", err)
+	}
+
+	// write the marker to disk
+	if marker, ok := b.marker.(*BacktestMarker); ok {
+		if err := marker.Write(resultFolderPath); err != nil {
+			return fmt.Errorf("failed to write marker: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (b *BacktestEngineV1) cleanUpRun() error {
+	if b.state == nil {
+		return fmt.Errorf("backtest state is nil")
+	}
+
+	if err := b.state.Cleanup(); err != nil {
+		return fmt.Errorf("failed to cleanup state: %w", err)
+	}
+
+	// Cleanup the cache
+	b.cache.Reset()
+
+	// clean up the trading system
+	if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
+		backtestTrading.Reset(b.config.InitialCapital)
+	}
+
+	// Cleanup the marker
+	if marker, ok := b.marker.(*BacktestMarker); ok {
+		if err := marker.Cleanup(); err != nil {
+			return fmt.Errorf("failed to cleanup marker: %w", err)
 		}
 	}
 
