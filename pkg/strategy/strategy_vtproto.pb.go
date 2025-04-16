@@ -5745,7 +5745,7 @@ func (m *ExecuteOrder) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 8:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Quantity", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalLongPositionQuantity", wireType)
 			}
 			var v uint64
 			if (iNdEx + 8) > l {
@@ -5981,7 +5981,7 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			}
 		case 4:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Quantity", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalLongPositionQuantity", wireType)
 			}
 			var v uint64
 			if (iNdEx + 8) > l {
@@ -6248,7 +6248,7 @@ func (m *Position) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Quantity", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalLongPositionQuantity", wireType)
 			}
 			var v uint64
 			if (iNdEx + 8) > l {
@@ -6303,7 +6303,7 @@ func (m *Position) UnmarshalVT(dAtA []byte) error {
 			m.TotalOutAmount = float64(math.Float64frombits(v))
 		case 7:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TotalInFee", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalLongInFee", wireType)
 			}
 			var v uint64
 			if (iNdEx + 8) > l {
@@ -6314,7 +6314,7 @@ func (m *Position) UnmarshalVT(dAtA []byte) error {
 			m.TotalInFee = float64(math.Float64frombits(v))
 		case 8:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TotalOutFee", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalLongOutFee", wireType)
 			}
 			var v uint64
 			if (iNdEx + 8) > l {

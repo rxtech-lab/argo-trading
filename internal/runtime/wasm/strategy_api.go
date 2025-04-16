@@ -232,13 +232,13 @@ func (s StrategyApiForWasm) GetPosition(ctx context.Context, req *strategy.GetPo
 
 	return &strategy.Position{
 		Symbol:           position.Symbol,
-		Quantity:         position.Quantity,
-		TotalInQuantity:  position.TotalInQuantity,
-		TotalOutQuantity: position.TotalOutQuantity,
-		TotalInAmount:    position.TotalInAmount,
-		TotalOutAmount:   position.TotalOutAmount,
-		TotalInFee:       position.TotalInFee,
-		TotalOutFee:      position.TotalOutFee,
+		Quantity:         position.TotalLongPositionQuantity,
+		TotalInQuantity:  position.TotalLongInPositionQuantity,
+		TotalOutQuantity: position.TotalLongOutPositionQuantity,
+		TotalInAmount:    position.TotalLongInPositionAmount,
+		TotalOutAmount:   position.TotalLongOutPositionAmount,
+		TotalInFee:       position.TotalLongInFee,
+		TotalOutFee:      position.TotalLongOutFee,
 		OpenTimestamp:    timestamppb.New(position.OpenTimestamp),
 		StrategyName:     position.StrategyName,
 	}, nil
@@ -258,13 +258,13 @@ func (s StrategyApiForWasm) GetPositions(ctx context.Context, _ *emptypb.Empty) 
 	for i, position := range positions {
 		response.Positions[i] = &strategy.Position{
 			Symbol:           position.Symbol,
-			Quantity:         position.Quantity,
-			TotalInQuantity:  position.TotalInQuantity,
-			TotalOutQuantity: position.TotalOutQuantity,
-			TotalInAmount:    position.TotalInAmount,
-			TotalOutAmount:   position.TotalOutAmount,
-			TotalInFee:       position.TotalInFee,
-			TotalOutFee:      position.TotalOutFee,
+			Quantity:         position.TotalLongPositionQuantity,
+			TotalInQuantity:  position.TotalLongInPositionQuantity,
+			TotalOutQuantity: position.TotalLongOutPositionQuantity,
+			TotalInAmount:    position.TotalLongInPositionAmount,
+			TotalOutAmount:   position.TotalLongOutPositionAmount,
+			TotalInFee:       position.TotalLongInFee,
+			TotalOutFee:      position.TotalLongOutFee,
 			OpenTimestamp:    timestamppb.New(position.OpenTimestamp),
 			StrategyName:     position.StrategyName,
 		}

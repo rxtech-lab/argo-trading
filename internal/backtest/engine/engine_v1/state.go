@@ -2,11 +2,11 @@ package engine
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -129,6 +129,11 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 
 	for _, order := range orders {
 		orderID := uuid.New().String()
+
+		if err := order.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid order: %w", err)
+		}
+
 		// Start transaction
 		tx, err := b.db.Begin()
 		if err != nil {
@@ -167,12 +172,21 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		// Calculate PnL if closing position
 		var pnl float64 = 0
 
-		if order.Side == types.PurchaseTypeSell && currentPosition.Quantity > 0 {
+		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && currentPosition.TotalLongPositionQuantity > 0 {
 			// For sell orders, calculate PnL using decimal arithmetic
-			avgEntryPrice := currentPosition.GetAverageEntryPrice()
+			avgEntryPrice := currentPosition.GetAverageLongPositionEntryPrice()
 			entryDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(avgEntryPrice))
 			exitDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(order.Price)).Sub(decimal.NewFromFloat(order.Fee))
 			resultDec := exitDec.Sub(entryDec)
+			pnl, _ = resultDec.Float64()
+		}
+
+		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && currentPosition.TotalShortPositionQuantity > 0 {
+			// For sell orders, calculate PnL using decimal arithmetic
+			avgEntryPrice := currentPosition.GetAverageShortPositionEntryPrice()
+			entryDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(avgEntryPrice))
+			exitDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(order.Price)).Add(decimal.NewFromFloat(order.Fee))
+			resultDec := entryDec.Sub(exitDec)
 			pnl, _ = resultDec.Float64()
 		}
 
@@ -222,7 +236,19 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		// Determine if this is a new position
-		isNewPosition := order.Side == types.PurchaseTypeBuy && currentPosition.Quantity == 0
+		var isNewPosition bool = false
+
+		if order.Side == types.PurchaseTypeBuy && order.PositionType == types.PositionTypeLong {
+			if currentPosition.TotalLongPositionQuantity == 0 {
+				isNewPosition = true
+			}
+		}
+
+		if order.Side == types.PurchaseTypeBuy && order.PositionType == types.PositionTypeShort {
+			if currentPosition.TotalShortPositionQuantity == 0 {
+				isNewPosition = true
+			}
+		}
 
 		// Commit transaction
 		err = tx.Commit()
@@ -244,76 +270,108 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 
 // GetPosition retrieves the current position for a symbol by calculating from trades.
 func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
-	// Create a complex query with CTEs using raw SQL as Squirrel doesn't directly support this complex case
+	// Extended CTEs to calculate both long (buy/sell) and short (sell/buy) position fields
 	query := `
-		WITH buy_trades AS (
-			SELECT 
-				SUM(executed_qty) as total_in_qty,
-				SUM(commission) as total_in_fee,
-				SUM(executed_qty * executed_price) as total_in_amount,
-				MIN(executed_at) as first_trade_time
-			FROM trades 
-			WHERE symbol = ? AND order_type = ?
-		),
-		sell_trades AS (
-			SELECT 
-				SUM(executed_qty) as total_out_qty,
-				SUM(commission) as total_out_fee,
-				SUM(executed_qty * executed_price) as total_out_amount
-			FROM trades 
-			WHERE symbol = ? AND order_type = ?
-		)
-		SELECT 
-			? as symbol,
-			COALESCE(b.total_in_qty, 0) - COALESCE(s.total_out_qty, 0) as quantity,
-			COALESCE(b.total_in_qty, 0) as total_in_quantity,
-			COALESCE(s.total_out_qty, 0) as total_out_quantity,
-			COALESCE(b.total_in_amount, 0) as total_in_amount,
-			COALESCE(s.total_out_amount, 0) as total_out_amount,
-			COALESCE(b.total_in_fee, 0) as total_in_fee,
-			COALESCE(s.total_out_fee, 0) as total_out_fee,
-			COALESCE(b.first_trade_time, CURRENT_TIMESTAMP) as open_timestamp,
-			MAX(t.strategy_name) as strategy_name
-		FROM trades t
-		LEFT JOIN buy_trades b ON 1=1
-		LEFT JOIN sell_trades s ON 1=1
-		WHERE t.symbol = ?
-		GROUP BY b.total_in_qty, s.total_out_qty, b.total_in_amount, s.total_out_amount, b.total_in_fee, s.total_out_fee, b.first_trade_time
-	`
+    WITH long_buy_trades AS (
+       SELECT 
+          SUM(executed_qty) as total_long_in_qty,
+          SUM(commission) as total_long_in_fee,
+          SUM(executed_qty * executed_price) as total_long_in_amount
+       FROM trades 
+       WHERE symbol = ? AND order_type = ? AND position_type = ?
+    ),
+    long_sell_trades AS (
+       SELECT 
+          SUM(executed_qty) as total_long_out_qty,
+          SUM(commission) as total_long_out_fee,
+          SUM(executed_qty * executed_price) as total_long_out_amount
+       FROM trades 
+       WHERE symbol = ? AND order_type = ? AND position_type = ?
+    ),
+    short_sell_trades AS (
+       SELECT 
+          SUM(executed_qty) as total_out_short_qty,
+          SUM(commission) as total_short_out_fee,
+          SUM(executed_qty * executed_price) as total_short_out_amount
+       FROM trades 
+       WHERE symbol = ? AND order_type = ? AND position_type = ?
+    ),
+    short_buy_trades AS (
+       SELECT 
+          SUM(executed_qty) as total_short_in_qty,
+          SUM(commission) as total_short_in_fee,
+          SUM(executed_qty * executed_price) as total_short_in_amount
+       FROM trades 
+       WHERE symbol = ? AND order_type = ? AND position_type = ?
+    ),
+    first_trade AS (
+       SELECT 
+          MIN(executed_at) as first_trade_time
+       FROM trades 
+       WHERE symbol = ?
+    )
+    SELECT 
+       ? as symbol,
+       COALESCE(b.total_long_in_qty, 0) - COALESCE(s.total_long_out_qty, 0) as quantity,
+       COALESCE(b.total_long_in_qty, 0) as total_in_long_position_quantity,
+       COALESCE(s.total_long_out_qty, 0) as total_out_long_position_quantity,
+       COALESCE(b.total_long_in_amount, 0) as total_in_long_position_amount,
+       COALESCE(s.total_long_out_amount, 0) as total_out_long_position_amount,
+       COALESCE(b.total_long_in_fee, 0) as total_long_in_fee,
+       COALESCE(s.total_long_out_fee, 0)  as total_long_out_fee,
+       COALESCE(sb.total_short_in_fee, 0) as total_short_in_fee,
+       COALESCE(ss.total_short_out_fee, 0)  as total_short_out_fee,
+       ft.first_trade_time as open_timestamp,
+       MAX(t.strategy_name) as strategy_name,
+       COALESCE(sb.total_short_in_qty, 0) as total_in_short_position_quantity,
+       COALESCE(ss.total_out_short_qty, 0) as total_out_short_position_quantity,
+       COALESCE(sb.total_short_in_amount, 0) as total_in_short_position_amount,
+       COALESCE(ss.total_short_out_amount, 0) as total_out_short_position_amount,
+       COALESCE(sb.total_short_in_qty, 0) - COALESCE(ss.total_out_short_qty, 0) as short_quantity
+    FROM trades t
+    LEFT JOIN long_buy_trades b ON 1=1
+    LEFT JOIN long_sell_trades s ON 1=1
+    LEFT JOIN short_sell_trades ss ON 1=1
+    LEFT JOIN short_buy_trades sb ON 1=1
+    CROSS JOIN first_trade ft
+    WHERE t.symbol = ?
+    GROUP BY b.total_long_in_qty, s.total_long_out_qty, b.total_long_in_amount, s.total_long_out_amount, b.total_long_in_fee, s.total_long_out_fee, sb.total_short_in_fee, ss.total_short_out_fee, ss.total_out_short_qty, sb.total_short_in_qty, ss.total_short_out_amount, sb.total_short_in_amount, ss.total_short_out_fee, sb.total_short_in_fee, ft.first_trade_time
+    `
 
 	args := []interface{}{
-		symbol, types.PurchaseTypeBuy,
-		symbol, types.PurchaseTypeSell,
-		symbol,
-		symbol,
+		symbol, types.PurchaseTypeBuy, types.PositionTypeLong, // long_buy_trades
+		symbol, types.PurchaseTypeSell, types.PositionTypeLong, // long_sell_trades
+		symbol, types.PurchaseTypeSell, types.PositionTypeShort, // short_sell_trades
+		symbol, types.PurchaseTypeBuy, types.PositionTypeShort, // short_buy_trades
+		symbol, // first_trade CTE symbol parameter
+		symbol, // symbol for select
+		symbol, // symbol for WHERE
 	}
 
 	var position types.Position
 	err := b.db.QueryRow(query, args...).Scan(
 		&position.Symbol,
-		&position.Quantity,
-		&position.TotalInQuantity,
-		&position.TotalOutQuantity,
-		&position.TotalInAmount,
-		&position.TotalOutAmount,
-		&position.TotalInFee,
-		&position.TotalOutFee,
+		&position.TotalLongPositionQuantity,
+		&position.TotalLongInPositionQuantity,
+		&position.TotalLongOutPositionQuantity,
+		&position.TotalLongInPositionAmount,
+		&position.TotalLongOutPositionAmount,
+		&position.TotalLongInFee,
+		&position.TotalLongOutFee,
+		&position.TotalShortInFee,
+		&position.TotalShortOutFee,
 		&position.OpenTimestamp,
 		&position.StrategyName,
+		&position.TotalShortInPositionQuantity,
+		&position.TotalShortOutPositionQuantity,
+		&position.TotalShortInPositionAmount,
+		&position.TotalShortOutPositionAmount,
+		&position.TotalShortPositionQuantity,
 	)
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return types.Position{
-			Symbol:           symbol,
-			Quantity:         0,
-			TotalInQuantity:  0,
-			TotalOutQuantity: 0,
-			TotalInAmount:    0,
-			TotalOutAmount:   0,
-			TotalInFee:       0,
-			TotalOutFee:      0,
-			OpenTimestamp:    time.Time{},
-			StrategyName:     "",
+			Symbol: symbol,
 		}, nil
 	}
 
@@ -492,9 +550,9 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats
 		tradePnl := types.TradePnl{}
 
 		// Calculate unrealized PnL if there's an open position
-		if position.Quantity > 0 {
-			entryDec := decimal.NewFromFloat(position.Quantity).Mul(decimal.NewFromFloat(position.GetAverageEntryPrice()))
-			exitDec := decimal.NewFromFloat(position.Quantity).Mul(decimal.NewFromFloat(lastData.Close))
+		if position.TotalLongPositionQuantity > 0 {
+			entryDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(position.GetAverageLongPositionEntryPrice()))
+			exitDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(lastData.Close))
 			unrealizedPnL, _ := exitDec.Sub(entryDec).Float64()
 			realizedPnl := position.GetTotalPnL()
 			tradePnl.TotalPnL = realizedPnl + unrealizedPnL
@@ -572,9 +630,9 @@ func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Orde
 
 // GetAllPositions returns all positions from the database by calculating from trades.
 func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
-	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex case
+	// Extended CTEs to calculate both long and short position fields for all symbols
 	query := `
-		WITH buy_trades AS (
+		WITH long_buy_trades AS (
 			SELECT 
 				symbol,
 				SUM(executed_qty) as total_in_qty,
@@ -583,37 +641,63 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 				MIN(executed_at) as first_trade_time,
 				MAX(strategy_name) as strategy_name
 			FROM trades 
-			WHERE order_type = ?
+			WHERE order_type = ? AND position_type = ?
 			GROUP BY symbol
 		),
-		sell_trades AS (
+		long_sell_trades AS (
 			SELECT 
 				symbol,
 				SUM(executed_qty) as total_out_qty,
 				SUM(commission) as total_out_fee,
 				SUM(executed_qty * executed_price) as total_out_amount
 			FROM trades 
-			WHERE order_type = ?
+			WHERE order_type = ? AND position_type = ?
+			GROUP BY symbol
+		),
+		short_sell_trades AS (
+			SELECT 
+				symbol,
+				SUM(executed_qty) as total_in_short_qty,
+				SUM(commission) as total_in_short_fee,
+				SUM(executed_qty * executed_price) as total_in_short_amount
+			FROM trades 
+			WHERE order_type = ? AND position_type = ?
+			GROUP BY symbol
+		),
+		short_cover_trades AS (
+			SELECT 
+				symbol,
+				SUM(executed_qty) as total_out_short_qty,
+				SUM(commission) as total_out_short_fee,
+				SUM(executed_qty * executed_price) as total_out_short_amount
+			FROM trades 
+			WHERE order_type = ? AND position_type = ?
 			GROUP BY symbol
 		)
 		SELECT 
-			COALESCE(b.symbol, s.symbol) as symbol,
+			COALESCE(b.symbol, s.symbol, ss.symbol, sc.symbol) as symbol,
 			COALESCE(b.total_in_qty, 0) - COALESCE(s.total_out_qty, 0) as quantity,
-			COALESCE(b.total_in_qty, 0) as total_in_quantity,
-			COALESCE(s.total_out_qty, 0) as total_out_quantity,
-			COALESCE(b.total_in_amount, 0) as total_in_amount,
-			COALESCE(s.total_out_amount, 0) as total_out_amount,
+			COALESCE(b.total_in_qty, 0) as total_in_long_position_quantity,
+			COALESCE(s.total_out_qty, 0) as total_out_long_position_quantity,
+			COALESCE(b.total_in_amount, 0) as total_in_long_position_amount,
+			COALESCE(s.total_out_amount, 0) as total_out_long_position_amount,
 			COALESCE(b.total_in_fee, 0) as total_in_fee,
 			COALESCE(s.total_out_fee, 0) as total_out_fee,
 			COALESCE(b.first_trade_time, CURRENT_TIMESTAMP) as open_timestamp,
-			COALESCE(b.strategy_name, '') as strategy_name
-		FROM buy_trades b
-		FULL OUTER JOIN sell_trades s ON b.symbol = s.symbol
-		WHERE COALESCE(b.total_in_qty, 0) - COALESCE(s.total_out_qty, 0) != 0
+			COALESCE(b.strategy_name, '') as strategy_name,
+			COALESCE(ss.total_in_short_qty, 0) as total_in_short_position_quantity,
+			COALESCE(sc.total_out_short_qty, 0) as total_out_short_position_quantity,
+			COALESCE(ss.total_in_short_amount, 0) as total_in_short_position_amount,
+			COALESCE(sc.total_out_short_amount, 0) as total_out_short_position_amount
+		FROM long_buy_trades b
+		FULL OUTER JOIN long_sell_trades s ON b.symbol = s.symbol
+		FULL OUTER JOIN short_sell_trades ss ON COALESCE(b.symbol, s.symbol) = ss.symbol
+		FULL OUTER JOIN short_cover_trades sc ON COALESCE(b.symbol, s.symbol, ss.symbol) = sc.symbol
+		WHERE (COALESCE(b.total_in_qty, 0) - COALESCE(s.total_out_qty, 0)) != 0
 		ORDER BY symbol
 	`
 
-	rows, err := b.db.Query(query, types.PurchaseTypeBuy, types.PurchaseTypeSell)
+	rows, err := b.db.Query(query, types.PurchaseTypeBuy, types.PositionTypeLong, types.PurchaseTypeSell, types.PositionTypeLong, types.PurchaseTypeSell, types.PositionTypeShort, types.PurchaseTypeBuy, types.PositionTypeShort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query positions: %w", err)
 	}
@@ -626,15 +710,19 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 
 		err := rows.Scan(
 			&position.Symbol,
-			&position.Quantity,
-			&position.TotalInQuantity,
-			&position.TotalOutQuantity,
-			&position.TotalInAmount,
-			&position.TotalOutAmount,
-			&position.TotalInFee,
-			&position.TotalOutFee,
+			&position.TotalLongPositionQuantity,
+			&position.TotalLongInPositionQuantity,
+			&position.TotalLongOutPositionQuantity,
+			&position.TotalLongInPositionAmount,
+			&position.TotalLongOutPositionAmount,
+			&position.TotalLongInFee,
+			&position.TotalLongOutFee,
 			&position.OpenTimestamp,
 			&position.StrategyName,
+			&position.TotalShortInPositionQuantity,
+			&position.TotalShortOutPositionQuantity,
+			&position.TotalShortInPositionAmount,
+			&position.TotalShortOutPositionAmount,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan position: %w", err)

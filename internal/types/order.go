@@ -1,8 +1,10 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/moznion/go-optional"
 )
 
@@ -44,14 +46,14 @@ const (
 )
 
 type Reason struct {
-	Reason  string `yaml:"reason" json:"reason" csv:"reason"`
-	Message string `yaml:"message" json:"message" csv:"message"`
+	Reason  string `yaml:"reason" json:"reason" csv:"reason" validate:"required"`
+	Message string `yaml:"message" json:"message" csv:"message" validate:"required"`
 }
 
 type ExecuteOrderTakeProfitOrStopLoss struct {
-	Symbol    string       `yaml:"symbol" json:"symbol" csv:"symbol"`
-	Side      PurchaseType `yaml:"side" json:"side" csv:"side"`
-	OrderType OrderType    `yaml:"order_type" json:"order_type" csv:"order_type"`
+	Symbol    string       `yaml:"symbol" json:"symbol" csv:"symbol" validate:"required"`
+	Side      PurchaseType `yaml:"side" json:"side" csv:"side" validate:"required,oneof=BUY SELL"`
+	OrderType OrderType    `yaml:"order_type" json:"order_type" csv:"order_type" validate:"required,oneof=MARKET LIMIT"`
 }
 
 type ExecuteOrder struct {
@@ -72,19 +74,57 @@ type ExecuteOrder struct {
 
 type Order struct {
 	OrderID   string       `yaml:"order_id" json:"order_id" csv:"order_id"`
-	Symbol    string       `yaml:"symbol" json:"symbol" csv:"symbol"`
-	Side      PurchaseType `yaml:"side" json:"side" csv:"side"`
-	Quantity  float64      `yaml:"quantity" json:"quantity" csv:"quantity"`
-	Price     float64      `yaml:"price" json:"price" csv:"price"`
-	Timestamp time.Time    `yaml:"timestamp" json:"timestamp" csv:"timestamp"`
+	Symbol    string       `yaml:"symbol" json:"symbol" csv:"symbol" validate:"required"`
+	Side      PurchaseType `yaml:"side" json:"side" csv:"side" validate:"required,oneof=BUY SELL"`
+	Quantity  float64      `yaml:"quantity" json:"quantity" csv:"quantity" validate:"required,gt=0"`
+	Price     float64      `yaml:"price" json:"price" csv:"price" validate:"required,gt=0"`
+	Timestamp time.Time    `yaml:"timestamp" json:"timestamp" csv:"timestamp" validate:"required"`
 	// IsCompleted is true if the order has been filled or cancelled
 	IsCompleted bool `yaml:"is_completed" json:"is_completed" csv:"is_completed"`
 	// Reason is the reason for the order
 	// It can be used to store the reason for the order
 	// like "buy_signal", "sell_signal", "stop_loss", "take_profit", etc.
-	Reason Reason `yaml:"reason" json:"reason" csv:"reason"`
+	Reason Reason `yaml:"reason" json:"reason" csv:"reason" validate:"required"`
 	// StrategyName is the name of the strategy that created this order
-	StrategyName string       `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name"`
-	Fee          float64      `yaml:"fee" json:"fee" csv:"fee"`
-	PositionType PositionType `yaml:"position_type" json:"position_type" csv:"position_type"`
+	StrategyName string       `yaml:"strategy_name" json:"strategy_name" csv:"strategy_name" validate:"required"`
+	Fee          float64      `yaml:"fee" json:"fee" csv:"fee" validate:"gte=0"`
+	PositionType PositionType `yaml:"position_type" json:"position_type" csv:"position_type" validate:"required,oneof=LONG SHORT"`
+}
+
+// Validate validates the ExecuteOrder struct.
+func (eo *ExecuteOrder) Validate() error {
+	validate := validator.New()
+
+	err := validate.Struct(eo)
+	if err != nil {
+		return fmt.Errorf("invalid execute order: %w", err)
+	}
+
+	// Validate take profit if present
+	if eo.TakeProfit.IsSome() {
+		tp := eo.TakeProfit.Unwrap()
+		if err := validate.Struct(tp); err != nil {
+			return fmt.Errorf("invalid take profit: %w", err)
+		}
+	}
+
+	// Validate stop loss if present
+	if eo.StopLoss.IsSome() {
+		sl := eo.StopLoss.Unwrap()
+		if err := validate.Struct(sl); err != nil {
+			return fmt.Errorf("invalid stop loss: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Validate validates the Order struct.
+func (o *Order) Validate() error {
+	validate := validator.New()
+	if err := validate.Struct(o); err != nil {
+		return fmt.Errorf("invalid order: %w", err)
+	}
+
+	return nil
 }
