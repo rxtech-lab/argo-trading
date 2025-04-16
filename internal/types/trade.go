@@ -23,49 +23,104 @@ type Trade struct {
 
 // Position represents current holdings of an asset.
 type Position struct {
-	Symbol           string    `csv:"symbol"`
-	Quantity         float64   `csv:"quantity"`
-	TotalInQuantity  float64   `csv:"total_in_quantity"`
-	TotalOutQuantity float64   `csv:"total_out_quantity"`
-	TotalInAmount    float64   `csv:"total_in_amount"`
-	TotalOutAmount   float64   `csv:"total_out_amount"`
-	TotalInFee       float64   `csv:"total_in_fee"`
-	TotalOutFee      float64   `csv:"total_out_fee"`
-	OpenTimestamp    time.Time `csv:"open_timestamp"`
-	StrategyName     string    `csv:"strategy_name"`
+	Symbol                     string  `csv:"symbol"`
+	TotalLongPositionQuantity  float64 `csv:"long_position_quantity"`
+	TotalShortPositionQuantity float64 `csv:"short_position_quantity"`
+
+	TotalLongInPositionQuantity  float64 `csv:"total_in_long_position_quantity"`
+	TotalLongOutPositionQuantity float64 `csv:"total_out_long_position_quantity"`
+	TotalLongInPositionAmount    float64 `csv:"total_in_long_position_amount"`
+	TotalLongOutPositionAmount   float64 `csv:"total_out_long_position_amount"`
+
+	TotalShortInPositionQuantity  float64 `csv:"total_in_short_position_quantity"`
+	TotalShortOutPositionQuantity float64 `csv:"total_out_short_position_quantity"`
+	TotalShortInPositionAmount    float64 `csv:"total_in_short_position_amount"`
+	TotalShortOutPositionAmount   float64 `csv:"total_out_short_position_amount"`
+
+	TotalLongInFee   float64 `csv:"total_long_in_fee"`
+	TotalLongOutFee  float64 `csv:"total_long_out_fee"`
+	TotalShortInFee  float64 `csv:"total_short_in_fee"`
+	TotalShortOutFee float64 `csv:"total_short_out_fee"`
+
+	OpenTimestamp time.Time `csv:"open_timestamp"`
+	StrategyName  string    `csv:"strategy_name"`
 }
 
-// GetAverageEntryPrice calculates the average entry price including fees.
-func (p *Position) GetAverageEntryPrice() float64 {
-	if p.TotalInQuantity == 0 {
+// GetAverageLongPositionEntryPrice calculates the average entry price including fees.
+func (p *Position) GetAverageLongPositionEntryPrice() float64 {
+	if p.TotalLongInPositionQuantity == 0 {
 		return 0
 	}
 
-	return (p.TotalInAmount + p.TotalInFee) / p.TotalInQuantity
+	return (p.TotalLongInPositionAmount + p.TotalLongInFee) / p.TotalLongInPositionQuantity
 }
 
-// GetAverageExitPrice calculates the average exit price including fees.
-func (p *Position) GetAverageExitPrice() float64 {
-	if p.TotalOutQuantity == 0 {
+func (p *Position) GetAverageShortPositionEntryPrice() float64 {
+	if p.TotalShortInPositionQuantity == 0 {
 		return 0
 	}
 
-	return (p.TotalOutAmount - p.TotalOutFee) / p.TotalOutQuantity
+	return (p.TotalShortInPositionAmount - p.TotalShortInFee) / p.TotalShortInPositionQuantity
+}
+
+// GetAverageLongPositionExitPrice calculates the average exit price including fees.
+func (p *Position) GetAverageLongPositionExitPrice() float64 {
+	if p.TotalLongOutPositionQuantity == 0 {
+		return 0
+	}
+
+	return (p.TotalLongOutPositionAmount - p.TotalLongOutFee) / p.TotalLongOutPositionQuantity
+}
+
+// GetAverageShortPositionExitPrice calculates the average exit price including fees.
+func (p *Position) GetAverageShortPositionExitPrice() float64 {
+	if p.TotalShortOutPositionQuantity == 0 {
+		return 0
+	}
+
+	return (p.TotalShortOutPositionAmount + p.TotalShortOutFee) / p.TotalShortOutPositionQuantity
+}
+
+// GetTotalShortPositionPnl calculates the total pnl for short position.
+func (p *Position) GetTotalShortPositionPnl() decimal.Decimal {
+	if p.TotalShortInPositionQuantity == 0 {
+		return decimal.Zero
+	}
+
+	if p.TotalShortOutPositionQuantity == 0 {
+		return decimal.Zero
+	}
+
+	shortEntryDec := decimal.NewFromFloat(p.TotalShortOutPositionQuantity).Mul(decimal.NewFromFloat(p.GetAverageShortPositionEntryPrice()))
+	shortExitDec := decimal.NewFromFloat(p.TotalShortOutPositionQuantity).Mul(decimal.NewFromFloat(p.GetAverageShortPositionExitPrice()))
+	// the way we calculate short pnl is the opposite of long pnl
+	// for example, if the exit price is higher than the entry price, the pnl is negative
+	shortResultDec := shortEntryDec.Sub(shortExitDec)
+
+	return shortResultDec
+}
+
+func (p *Position) GetTotalLongPositionPnl() decimal.Decimal {
+	if p.TotalLongInPositionQuantity == 0 {
+		return decimal.Zero
+	}
+
+	if p.TotalLongOutPositionQuantity == 0 {
+		return decimal.Zero
+	}
+
+	longEntryDec := decimal.NewFromFloat(p.TotalLongOutPositionQuantity).Mul(decimal.NewFromFloat(p.GetAverageLongPositionEntryPrice()))
+	longExitDec := decimal.NewFromFloat(p.TotalLongOutPositionQuantity).Mul(decimal.NewFromFloat(p.GetAverageLongPositionExitPrice()))
+	longResultDec := longExitDec.Sub(longEntryDec)
+
+	return longResultDec
 }
 
 func (p *Position) GetTotalPnL() float64 {
-	if p.TotalInQuantity == 0 {
-		return 0
-	}
+	longResult := p.GetTotalLongPositionPnl()
+	shortResult := p.GetTotalShortPositionPnl()
 
-	if p.TotalOutQuantity == 0 {
-		return 0
-	}
-
-	entryDec := decimal.NewFromFloat(p.TotalOutQuantity).Mul(decimal.NewFromFloat(p.GetAverageEntryPrice()))
-	exitDec := decimal.NewFromFloat(p.TotalOutQuantity).Mul(decimal.NewFromFloat(p.GetAverageExitPrice()))
-	resultDec := exitDec.Sub(entryDec)
-	result, _ := resultDec.Float64()
+	result, _ := longResult.Add(shortResult).Float64()
 
 	return result
 }

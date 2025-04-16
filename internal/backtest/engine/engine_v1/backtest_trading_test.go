@@ -183,7 +183,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				decimalPrecision:     0,
@@ -208,7 +209,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				decimalPrecision:     0,
@@ -233,7 +235,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				decimalPrecision:     0,
@@ -258,7 +261,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				decimalPrecision:     0,
@@ -283,7 +287,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				decimalPrecision:     0,
@@ -315,7 +320,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				marketDataAfterOrder: optional.None[types.MarketData](),
@@ -339,7 +345,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				marketDataAfterOrder: optional.Some(types.MarketData{
@@ -368,7 +375,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					StrategyName: "test_strategy",
 					PositionType: types.PositionTypeLong,
 					Reason: types.Reason{
-						Reason: "test",
+						Reason:  "test",
+						Message: "reason",
 					},
 				},
 				marketDataAfterOrder: optional.None[types.MarketData](),
@@ -392,10 +400,10 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 		Low:    90.0,
 	}
 	suite.trading.UpdateCurrentMarketData(marketData)
-	
+
 	// Calculate expected average price
 	avgPrice := (marketData.High + marketData.Low) / 2 // 95.0
-	
+
 	testCases := []struct {
 		name         string
 		balance      float64
@@ -404,10 +412,10 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 		errorMessage string
 	}{
 		{
-			name:         "Successful buy - sufficient balance",
-			balance:      10000.0,
-			quantity:     10.0,  // Total cost: 950.0 (10 * 95.0)
-			expectError:  false,
+			name:        "Successful buy - sufficient balance",
+			balance:     10000.0,
+			quantity:    10.0, // Total cost: 950.0 (10 * 95.0)
+			expectError: false,
 		},
 		{
 			name:         "Failed buy - insufficient balance",
@@ -417,10 +425,10 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 			errorMessage: "market buy order cost (950.00) exceeds available balance (500.00)",
 		},
 		{
-			name:         "Successful buy - exact balance",
-			balance:      950.0,
-			quantity:     10.0, // Total cost: 950.0 (10 * 95.0)
-			expectError:  false,
+			name:        "Successful buy - exact balance",
+			balance:     950.0,
+			quantity:    10.0, // Total cost: 950.0 (10 * 95.0)
+			expectError: false,
 		},
 		{
 			name:         "Failed buy - zero quantity after rounding",
@@ -430,7 +438,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 			errorMessage: "order quantity is too small or zero after rounding to configured precision",
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			// Reset state for each test case
@@ -438,10 +446,10 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 			suite.Require().NoError(err)
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
-			
+
 			// Set balance for this test
 			suite.trading.UpdateBalance(tc.balance)
-			
+
 			// Create order
 			order := types.ExecuteOrder{
 				Symbol:       "AAPL",
@@ -452,13 +460,14 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 				StrategyName: "test_strategy",
 				PositionType: types.PositionTypeLong,
 				Reason: types.Reason{
-					Reason: "test",
+					Reason:  "test",
+					Message: "reason",
 				},
 			}
-			
+
 			// Execute the order
 			err = suite.trading.PlaceOrder(order)
-			
+
 			if tc.expectError {
 				suite.Assert().Error(err)
 				if tc.errorMessage != "" {
@@ -466,12 +475,12 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 				}
 			} else {
 				suite.Assert().NoError(err)
-				
+
 				// Verify the trade was executed correctly
 				trades, err := suite.state.GetAllTrades()
 				suite.Require().NoError(err)
 				suite.Require().NotEmpty(trades)
-				
+
 				// Check that the trade was executed at the average price
 				suite.Assert().Equal(avgPrice, trades[0].Order.Price)
 				suite.Assert().Equal(tc.quantity, trades[0].Order.Quantity)
@@ -492,49 +501,54 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 		Timestamp:    time.Now(),
 		IsCompleted:  true,
 		StrategyName: "test_strategy",
+		PositionType: types.PositionTypeLong,
+		Reason: types.Reason{
+			Reason:  "test",
+			Message: "reason",
+		},
 	}
-	
+
 	// Setup market data
 	marketData := types.MarketData{
 		Symbol: "AAPL",
 		High:   100.0,
 		Low:    90.0,
 	}
-	
+
 	// Calculate expected average price
 	avgPrice := (marketData.High + marketData.Low) / 2 // 95.0
-	
+
 	testCases := []struct {
-		name            string
-		sellQuantity    float64
-		expectError     bool
+		name             string
+		sellQuantity     float64
+		expectError      bool
 		expectedQuantity float64 // Expected quantity to be sold after adjustment
 	}{
 		{
-			name:            "Successful sell - within holdings",
-			sellQuantity:    20.0,
-			expectError:     false,
+			name:             "Successful sell - within holdings",
+			sellQuantity:     20.0,
+			expectError:      false,
 			expectedQuantity: 20.0,
 		},
 		{
-			name:            "Successful sell - exact holdings",
-			sellQuantity:    50.0,
-			expectError:     false,
+			name:             "Successful sell - exact holdings",
+			sellQuantity:     50.0,
+			expectError:      false,
 			expectedQuantity: 50.0,
 		},
 		{
-			name:            "Successful sell - adjusted to max holdings",
-			sellQuantity:    100.0, // More than we have
-			expectError:     false,
+			name:             "Successful sell - adjusted to max holdings",
+			sellQuantity:     100.0, // More than we have
+			expectError:      false,
 			expectedQuantity: 50.0, // Should adjust to available 50.0
 		},
 		{
-			name:            "Failed sell - no holdings",
-			sellQuantity:    10.0,
-			expectError:     true, // No shares in a clean state
+			name:         "Failed sell - no holdings",
+			sellQuantity: 10.0,
+			expectError:  true, // No shares in a clean state
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			// Reset state for each test case
@@ -542,16 +556,16 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 			suite.Require().NoError(err)
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
-			
+
 			// Only add initial position for non-error cases or when testing oversize sells
 			if !tc.expectError {
 				_, err = suite.state.Update([]types.Order{initialOrder})
 				suite.Require().NoError(err)
 			}
-			
+
 			// Update market data
 			suite.trading.UpdateCurrentMarketData(marketData)
-			
+
 			// Create sell order
 			order := types.ExecuteOrder{
 				Symbol:       "AAPL",
@@ -562,23 +576,24 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 				StrategyName: "test_strategy",
 				PositionType: types.PositionTypeLong,
 				Reason: types.Reason{
-					Reason: "test",
+					Reason:  "test",
+					Message: "reason",
 				},
 			}
-			
+
 			// Execute the order
 			err = suite.trading.PlaceOrder(order)
-			
+
 			if tc.expectError {
 				suite.Assert().Error(err)
 			} else {
 				suite.Assert().NoError(err)
-				
+
 				// Verify the trade was executed correctly
 				trades, err := suite.state.GetAllTrades()
 				suite.Require().NoError(err)
 				suite.Assert().GreaterOrEqual(len(trades), 2) // Initial buy + our sell
-				
+
 				// Find our sell trade (most recent one)
 				var sellTrade types.Trade
 				for _, trade := range trades {
@@ -587,7 +602,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 						break
 					}
 				}
-				
+
 				// Check that the trade was adjusted properly
 				suite.Assert().Equal(tc.expectedQuantity, sellTrade.Order.Quantity)
 				// Check that the avg price was used
@@ -604,17 +619,17 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 		High:   100.0,
 		Low:    90.0,
 	}
-	
+
 	testCases := []struct {
-		name            string
-		balance         float64
-		limitPrice      float64
-		quantity        float64
-		updatedMarketData *types.MarketData  // To simulate price changes
-		expectError     bool
-		errorMessage    string
-		shouldExecute   bool      // Should the order execute immediately or be pending?
-		executionPrice  float64   // Expected execution price
+		name              string
+		balance           float64
+		limitPrice        float64
+		quantity          float64
+		updatedMarketData *types.MarketData // To simulate price changes
+		expectError       bool
+		errorMessage      string
+		shouldExecute     bool    // Should the order execute immediately or be pending?
+		executionPrice    float64 // Expected execution price
 	}{
 		{
 			name:           "Buy limit below market - execute immediately",
@@ -635,18 +650,18 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 			executionPrice: 95.0, // Should use the lower average market price (95.0) instead of limit (98.0)
 		},
 		{
-			name:           "Buy limit above current market - order pending",
-			balance:        10000.0,
-			limitPrice:     85.0, // Below current market low of 90
-			quantity:       10.0,
-			expectError:    false,
-			shouldExecute:  false, // Should be pending
+			name:          "Buy limit above current market - order pending",
+			balance:       10000.0,
+			limitPrice:    85.0, // Below current market low of 90
+			quantity:      10.0,
+			expectError:   false,
+			shouldExecute: false, // Should be pending
 		},
 		{
-			name:            "Buy limit above market initially pending, then executed",
-			balance:         10000.0,
-			limitPrice:      85.0, // Below current market
-			quantity:        10.0,
+			name:       "Buy limit above market initially pending, then executed",
+			balance:    10000.0,
+			limitPrice: 85.0, // Below current market
+			quantity:   10.0,
 			updatedMarketData: &types.MarketData{
 				Symbol: "AAPL",
 				High:   90.0,
@@ -657,15 +672,15 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 			executionPrice: 85.0, // Should use our limit price
 		},
 		{
-			name:           "Buy limit - insufficient balance",
-			balance:        500.0,
-			limitPrice:     95.0,
-			quantity:       10.0, // Total cost: 950.0
-			expectError:    true,
-			errorMessage:   "limit buy order cost (950.00) exceeds available balance (500.00)",
+			name:         "Buy limit - insufficient balance",
+			balance:      500.0,
+			limitPrice:   95.0,
+			quantity:     10.0, // Total cost: 950.0
+			expectError:  true,
+			errorMessage: "limit buy order cost (950.00) exceeds available balance (500.00)",
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			// Reset state for each test case
@@ -673,11 +688,11 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 			suite.Require().NoError(err)
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
-			
+
 			// Set balance and market data
 			suite.trading.UpdateBalance(tc.balance)
 			suite.trading.UpdateCurrentMarketData(marketData)
-			
+
 			// Create limit order
 			order := types.ExecuteOrder{
 				Symbol:       "AAPL",
@@ -688,13 +703,14 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 				StrategyName: "test_strategy",
 				PositionType: types.PositionTypeLong,
 				Reason: types.Reason{
-					Reason: "test",
+					Reason:  "test",
+					Message: "reason",
 				},
 			}
-			
+
 			// Place the order
 			err = suite.trading.PlaceOrder(order)
-			
+
 			if tc.expectError {
 				suite.Assert().Error(err)
 				if tc.errorMessage != "" {
@@ -702,18 +718,18 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 				}
 				return
 			}
-			
+
 			suite.Assert().NoError(err)
-			
+
 			// If we have updated market data, simulate a price change
 			if tc.updatedMarketData != nil {
 				suite.trading.UpdateCurrentMarketData(*tc.updatedMarketData)
 			}
-			
+
 			// Get all trades
 			trades, err := suite.state.GetAllTrades()
 			suite.Require().NoError(err)
-			
+
 			if tc.shouldExecute {
 				// Order should be executed
 				suite.Assert().NotEmpty(trades)
@@ -735,29 +751,34 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 	initialOrder := types.Order{
 		Symbol:       "AAPL",
 		Side:         types.PurchaseTypeBuy,
+		PositionType: types.PositionTypeLong,
 		Quantity:     initialQuantity,
 		Price:        90.0,
 		Timestamp:    time.Now(),
 		IsCompleted:  true,
 		StrategyName: "test_strategy",
+		Reason: types.Reason{
+			Reason:  "test",
+			Message: "reason",
+		},
 	}
-	
+
 	// Setup market data
 	marketData := types.MarketData{
 		Symbol: "AAPL",
 		High:   100.0,
 		Low:    90.0,
 	}
-	
+
 	testCases := []struct {
-		name             string
-		limitPrice       float64
-		sellQuantity     float64
+		name              string
+		limitPrice        float64
+		sellQuantity      float64
 		updatedMarketData *types.MarketData // To simulate price changes
-		expectError      bool
-		expectedQuantity float64            // Expected quantity after adjustment
-		shouldExecute    bool               // Should execute immediately or be pending
-		executionPrice   float64            // Expected execution price
+		expectError       bool
+		expectedQuantity  float64 // Expected quantity after adjustment
+		shouldExecute     bool    // Should execute immediately or be pending
+		executionPrice    float64 // Expected execution price
 	}{
 		{
 			name:             "Sell limit below current high - execute immediately",
@@ -777,9 +798,9 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			shouldExecute:    false, // Should be pending
 		},
 		{
-			name:             "Sell limit initially pending, then executed",
-			limitPrice:       110.0,
-			sellQuantity:     20.0,
+			name:         "Sell limit initially pending, then executed",
+			limitPrice:   110.0,
+			sellQuantity: 20.0,
 			updatedMarketData: &types.MarketData{
 				Symbol: "AAPL",
 				High:   120.0, // Now above our limit price
@@ -800,13 +821,13 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			executionPrice:   95.0,
 		},
 		{
-			name:             "Sell limit with no holdings",
-			limitPrice:       95.0,
-			sellQuantity:     10.0,
-			expectError:      true, // No shares in a clean state
+			name:         "Sell limit with no holdings",
+			limitPrice:   95.0,
+			sellQuantity: 10.0,
+			expectError:  true, // No shares in a clean state
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			// Reset state for each test case
@@ -814,16 +835,16 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			suite.Require().NoError(err)
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
-			
+
 			// Only add initial position for non-error cases or when testing oversize sells
 			if !tc.expectError {
 				_, err = suite.state.Update([]types.Order{initialOrder})
 				suite.Require().NoError(err)
 			}
-			
+
 			// Update market data
 			suite.trading.UpdateCurrentMarketData(marketData)
-			
+
 			// Create sell limit order
 			order := types.ExecuteOrder{
 				Symbol:       "AAPL",
@@ -834,38 +855,39 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 				StrategyName: "test_strategy",
 				PositionType: types.PositionTypeLong,
 				Reason: types.Reason{
-					Reason: "test",
+					Reason:  "test",
+					Message: "reason",
 				},
 			}
-			
+
 			// Place the order
 			err = suite.trading.PlaceOrder(order)
-			
+
 			if tc.expectError {
 				suite.Assert().Error(err)
 				return
 			}
-			
+
 			suite.Assert().NoError(err)
-			
+
 			// If we have updated market data, simulate a price change
 			if tc.updatedMarketData != nil {
 				suite.trading.UpdateCurrentMarketData(*tc.updatedMarketData)
 			}
-			
+
 			// Get all trades
 			trades, err := suite.state.GetAllTrades()
 			suite.Require().NoError(err)
-			
+
 			// Initial buy should always be there if not an error case
 			if !tc.expectError {
 				suite.Assert().GreaterOrEqual(len(trades), 1)
 			}
-			
+
 			if tc.shouldExecute {
 				// Should have at least 2 trades (initial buy + our sell)
 				suite.Assert().GreaterOrEqual(len(trades), 2)
-				
+
 				// Find our sell trade
 				var sellTrade types.Trade
 				for _, trade := range trades {
@@ -874,7 +896,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 						break
 					}
 				}
-				
+
 				// Check trade details
 				suite.Assert().Equal(tc.executionPrice, sellTrade.Order.Price)
 				suite.Assert().Equal(tc.expectedQuantity, sellTrade.Order.Quantity)
@@ -912,7 +934,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceMultipleOrders() {
 			StrategyName: "test_strategy",
 			PositionType: types.PositionTypeLong,
 			Reason: types.Reason{
-				Reason: "test",
+				Reason:  "test",
+				Message: "reason",
 			},
 		},
 		{
@@ -924,7 +947,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceMultipleOrders() {
 			StrategyName: "test_strategy",
 			PositionType: types.PositionTypeLong,
 			Reason: types.Reason{
-				Reason: "test",
+				Reason:  "test",
+				Message: "reason",
 			},
 		},
 	}
@@ -941,6 +965,10 @@ func (suite *BacktestTradingTestSuite) TestPlaceMultipleOrders() {
 		Price:        95.0,
 		StrategyName: "test_strategy",
 		PositionType: types.PositionTypeLong,
+		Reason: types.Reason{
+			Reason:  "test",
+			Message: "reason",
+		},
 	})
 	err = suite.trading.PlaceMultipleOrders(invalidOrders)
 	suite.Assert().Error(err)
@@ -953,6 +981,15 @@ func (suite *BacktestTradingTestSuite) TestGetOrderStatus() {
 		Symbol:       "AAPL",
 		IsCompleted:  true,
 		StrategyName: "test_strategy",
+		Side:         types.PurchaseTypeBuy,
+		Quantity:     10,
+		Price:        95.0,
+		Timestamp:    time.Now(),
+		PositionType: types.PositionTypeLong,
+		Reason: types.Reason{
+			Reason:  "test",
+			Message: "test",
+		},
 	}
 	result, err := suite.state.Update([]types.Order{completedOrder})
 	suite.Require().NoError(err)
@@ -1066,7 +1103,8 @@ func (suite *BacktestTradingTestSuite) TestDecimalPrecisionHandling() {
 				StrategyName: "crypto_strategy",
 				PositionType: types.PositionTypeLong,
 				Reason: types.Reason{
-					Reason: "test",
+					Reason:  "test",
+					Message: "test",
 				},
 			}
 
@@ -1132,7 +1170,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrderWithDecimalPrecision() {
 				StrategyName: "crypto_strategy",
 				PositionType: types.PositionTypeLong,
 				Reason: types.Reason{
-					Reason: "test",
+					Reason:  "test",
+					Message: "reason",
 				},
 			}
 
@@ -1160,6 +1199,11 @@ func (suite *BacktestTradingTestSuite) TestGetPosition() {
 		Timestamp:    time.Now(),
 		IsCompleted:  true,
 		StrategyName: "test_strategy",
+		PositionType: types.PositionTypeLong,
+		Reason: types.Reason{
+			Reason:  "test",
+			Message: "test",
+		},
 	}
 	_, err := suite.state.Update([]types.Order{order})
 	suite.Require().NoError(err)
@@ -1168,13 +1212,13 @@ func (suite *BacktestTradingTestSuite) TestGetPosition() {
 	position, err := suite.trading.GetPosition("AAPL")
 	suite.Require().NoError(err)
 	suite.Assert().Equal("AAPL", position.Symbol)
-	suite.Assert().Equal(float64(100), position.Quantity)
+	suite.Assert().Equal(float64(100), position.TotalLongPositionQuantity)
 
 	// Test getting non-existent position
 	position, err = suite.trading.GetPosition("GOOGL")
 	suite.Require().NoError(err)
 	suite.Assert().Equal("GOOGL", position.Symbol)
-	suite.Assert().Equal(float64(0), position.Quantity)
+	suite.Assert().Equal(float64(0), position.TotalLongPositionQuantity)
 }
 
 func (suite *BacktestTradingTestSuite) TestGetPositions() {
@@ -1189,6 +1233,11 @@ func (suite *BacktestTradingTestSuite) TestGetPositions() {
 			Timestamp:    time.Now(),
 			IsCompleted:  true,
 			StrategyName: "test_strategy",
+			PositionType: types.PositionTypeLong,
+			Reason: types.Reason{
+				Reason:  "test",
+				Message: "reason",
+			},
 		},
 		{
 			OrderID:      "order2",
@@ -1199,6 +1248,11 @@ func (suite *BacktestTradingTestSuite) TestGetPositions() {
 			Timestamp:    time.Now(),
 			IsCompleted:  true,
 			StrategyName: "test_strategy",
+			PositionType: types.PositionTypeLong,
+			Reason: types.Reason{
+				Reason:  "test",
+				Message: "reason",
+			},
 		},
 	}
 
@@ -1216,9 +1270,9 @@ func (suite *BacktestTradingTestSuite) TestGetPositions() {
 	for _, position := range positions {
 		switch position.Symbol {
 		case "AAPL":
-			suite.Assert().Equal(float64(100), position.Quantity)
+			suite.Assert().Equal(float64(100), position.TotalLongPositionQuantity)
 		case "GOOGL":
-			suite.Assert().Equal(float64(50), position.Quantity)
+			suite.Assert().Equal(float64(50), position.TotalLongPositionQuantity)
 		default:
 			suite.Fail("Unexpected position symbol")
 		}
