@@ -1,0 +1,1 @@
+codesign --force --sign "$SIGNING_CERTIFICATE_NAME" --options runtime --timestamp pkg/swift-argo/ArgoTrading.xcframework
