@@ -140,7 +140,11 @@ func (s StrategyApiForWasm) GetCache(ctx context.Context, req *strategy.GetReque
 
 // GetMarkers implements strategy.StrategyApi.
 func (s StrategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*strategy.GetMarkersResponse, error) {
-	markers, err := (s.runtimeContext.Marker).GetMarkers()
+	if s.runtimeContext.Marker == nil {
+		return nil, fmt.Errorf("marker is not available")
+	}
+	
+	markers, err := (s.runtimeContext.Marker).GetMarks()
 	if err != nil {
 		return nil, err
 	}
@@ -160,28 +164,7 @@ func (s StrategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*
 			Time:   timestamppb.New(marker.Signal.Time),
 		}
 
-		var signalType strategy.SignalType
-
-		switch marker.Signal.Type {
-		case types.SignalTypeBuyLong:
-			signalType = strategy.SignalType_SIGNAL_TYPE_BUY_LONG
-		case types.SignalTypeSellLong:
-			signalType = strategy.SignalType_SIGNAL_TYPE_SELL_LONG
-		case types.SignalTypeBuyShort:
-			signalType = strategy.SignalType_SIGNAL_TYPE_BUY_SHORT
-		case types.SignalTypeSellShort:
-			signalType = strategy.SignalType_SIGNAL_TYPE_SELL_SHORT
-		case types.SignalTypeNoAction:
-			signalType = strategy.SignalType_SIGNAL_TYPE_NO_ACTION
-		case types.SignalTypeClosePosition:
-			signalType = strategy.SignalType_SIGNAL_TYPE_CLOSE_POSITION
-		case types.SignalTypeWait:
-			signalType = strategy.SignalType_SIGNAL_TYPE_WAIT
-		case types.SignalTypeAbort:
-			signalType = strategy.SignalType_SIGNAL_TYPE_ABORT
-		default:
-			signalType = strategy.SignalType_SIGNAL_TYPE_NO_ACTION
-		}
+		signalType := runtime.SignalTypeToStrategySignalType(marker.Signal.Type)
 
 		response.Markers[i] = &strategy.Mark{
 			MarketData: marketData,
@@ -350,7 +333,45 @@ func (s StrategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSign
 
 // Mark implements strategy.StrategyApi.
 func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest) (*emptypb.Empty, error) {
-	panic("not implemented")
+	// Check if Marker is available
+	if s.runtimeContext.Marker == nil {
+		return nil, fmt.Errorf("marker is not available")
+	}
+
+	// Convert protobuf MarketData to internal MarketData
+	if req.MarketData == nil {
+		return nil, fmt.Errorf("market data is required")
+	}
+
+	marketData := types.MarketData{
+		Symbol: req.MarketData.Symbol,
+		Time:   req.MarketData.Time.AsTime(),
+		Open:   req.MarketData.Open,
+		High:   req.MarketData.High,
+		Low:    req.MarketData.Low,
+		Close:  req.MarketData.Close,
+		Volume: req.MarketData.Volume,
+	}
+
+	// Convert protobuf SignalType to internal SignalType
+	signalType := runtime.StrategySignalTypeToSignalType(req.Signal)
+
+	// Create the signal
+	signal := types.Signal{
+		Time:   marketData.Time,
+		Type:   signalType,
+		Symbol: marketData.Symbol,
+		Name:   string(signalType), // Use signal type as name if not provided
+		Reason: req.Reason,
+	}
+
+	// Mark the signal
+	err := s.runtimeContext.Marker.Mark(marketData, signal, req.Reason)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark signal: %w", err)
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 // PlaceMultipleOrders implements strategy.StrategyApi.

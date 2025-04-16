@@ -7,5 +7,5 @@ type Marker interface {
 	// Mark a point in time with a signal and a reason
 	Mark(marketData types.MarketData, signal types.Signal, reason string) error
 	// GetMarkers returns all the markers
-	GetMarkers() ([]types.Mark, error)
+	GetMarks() ([]types.Mark, error)
 }

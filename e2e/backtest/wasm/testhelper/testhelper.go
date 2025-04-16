@@ -328,3 +328,105 @@ func ReadOrders(s *E2ETestSuite, tmpFolder string) (orders []types.Order, err er
 
 	return orders, nil
 }
+
+func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err error) {
+	var markerPaths []string
+
+	err = filepath.Walk(tmpFolder, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && filepath.Base(path) == "marks.parquet" {
+			markerPaths = append(markerPaths, path)
+		}
+		return nil
+	})
+
+	require.NoError(s.T(), err)
+	// require at least one marks file
+	require.Greater(s.T(), len(markerPaths), 0)
+
+	// read the first marks file
+	marksPath := markerPaths[0]
+
+	// Create an in-memory DuckDB instance for reading the parquet file
+	db, err := sql.Open("duckdb", ":memory:")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
+	}
+	defer db.Close()
+
+	// Create a view from the parquet file - using raw SQL as Squirrel doesn't support CREATE VIEW
+	createViewSQL := fmt.Sprintf(`CREATE VIEW marks_view AS SELECT * FROM read_parquet('%s');`, marksPath)
+	_, err = db.Exec(createViewSQL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create view from parquet file: %w", err)
+	}
+
+	// Initialize Squirrel with dollar placeholder format
+	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+
+	// Construct query using Squirrel
+	query, args, err := sq.
+		Select(
+			"id", "symbol", "time", "open", "high", "low", "close",
+			"volume", "signal_type", "signal_name", "reason",
+		).
+		From("marks_view").
+		OrderBy("time ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build SQL query: %w", err)
+	}
+
+	// Execute query
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query marks: %w", err)
+	}
+	defer rows.Close()
+
+	// Scan rows into mark structs
+	marks := []types.Mark{}
+	for rows.Next() {
+		var (
+			id         int
+			marketData types.MarketData
+			signal     types.Signal
+			signalType string
+			mark       types.Mark
+		)
+
+		err := rows.Scan(
+			&id,
+			&marketData.Symbol,
+			&marketData.Time,
+			&marketData.Open,
+			&marketData.High,
+			&marketData.Low,
+			&marketData.Close,
+			&marketData.Volume,
+			&signalType,
+			&signal.Name,
+			&mark.Reason,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan mark row: %w", err)
+		}
+
+		// Set the Signal data
+		signal.Type = types.SignalType(signalType)
+		signal.Time = marketData.Time
+		signal.Symbol = marketData.Symbol
+
+		// Set market data and signal
+		mark.Signal = signal
+		marks = append(marks, mark)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating mark rows: %w", err)
+	}
+
+	return marks, nil
+}

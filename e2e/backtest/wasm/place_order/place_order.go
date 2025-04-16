@@ -70,6 +70,15 @@ func (s *PlaceOrderStrategy) ProcessData(ctx context.Context, req *strategy.Proc
 		return nil, fmt.Errorf("failed to place order: %w", err)
 	}
 
+	_, err = api.Mark(ctx, &strategy.MarkRequest{
+		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+		MarketData: data,
+		Reason:     "PlaceOrderStrategy",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to mark: %w", err)
+	}
+
 	// set cache
 	_, err = api.SetCache(ctx, &strategy.SetRequest{
 		Key:   key,
