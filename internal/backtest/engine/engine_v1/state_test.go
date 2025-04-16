@@ -192,6 +192,11 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 		Close:  2100.0,
 	}, nil).AnyTimes()
 
+	mockSource.EXPECT().ReadLastData("TSLA").Return(types.MarketData{
+		Symbol: "TSLA",
+		Close:  800.0,
+	}, nil).AnyTimes()
+
 	// For GetPreviousNumberOfDataPoints (required by interface but not used in test)
 	mockSource.EXPECT().GetPreviousNumberOfDataPoints(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 		[]types.MarketData{}, nil,
@@ -262,6 +267,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 						Max: 1,
 						Avg: 1,
 					},
+					BuyAndHoldPnl: 2000.0, // (120 - 100) * 100
 				},
 			},
 			expectError: false,
@@ -325,6 +331,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 						Max: 0,
 						Avg: 0,
 					},
+					BuyAndHoldPnl: 2000.0,
 				},
 				{
 					Symbol: "GOOGL",
@@ -348,6 +355,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 						Max: 0,
 						Avg: 0,
 					},
+					BuyAndHoldPnl: 5000,
 				},
 			},
 			expectError: false,
@@ -357,6 +365,54 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			orders:        []types.Order{},
 			expectedStats: []types.TradeStats{},
 			expectError:   false,
+		},
+		{
+			name: "Short position calculation",
+			orders: []types.Order{
+				{
+					OrderID:      "order1",
+					Symbol:       "TSLA",
+					Side:         types.PurchaseTypeSell,
+					PositionType: types.PositionTypeShort,
+					Quantity:     10,
+					Price:        1000.0,
+					Fee:          5.0,
+					Timestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted:  true,
+					StrategyName: "short_strategy",
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "short position test",
+					},
+				},
+			},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "TSLA",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   0,
+						TotalPnL:      2000, // (1000 - 800) * 10 = 2000 profit for a short position
+						UnrealizedPnL: 2000,
+						MaximumLoss:   0,
+						MaximumProfit: 0,
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        1,
+						NumberOfWinningTrades: 0,
+						NumberOfLosingTrades:  0,
+						WinRate:               0,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 5.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 0,
+						Max: 0,
+						Avg: 0,
+					},
+					BuyAndHoldPnl: 2000.0, // (1000 - 800) * 10 = positive 2000 for a short position
+				},
+			},
+			expectError: false,
 		},
 	}
 
@@ -405,6 +461,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				suite.Assert().Equal(expected.TradeHoldingTime.Min, actual.TradeHoldingTime.Min, "Min holding time mismatch")
 				suite.Assert().Equal(expected.TradeHoldingTime.Max, actual.TradeHoldingTime.Max, "Max holding time mismatch")
 				suite.Assert().Equal(expected.TradeHoldingTime.Avg, actual.TradeHoldingTime.Avg, "Avg holding time mismatch")
+				suite.Assert().Equal(expected.BuyAndHoldPnl, actual.BuyAndHoldPnl, "Buy and hold PnL mismatch")
 			}
 		})
 	}
