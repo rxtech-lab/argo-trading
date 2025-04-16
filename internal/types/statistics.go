@@ -53,6 +53,8 @@ type TradeStats struct {
 	TradeHoldingTime TradeHoldingTime `yaml:"trade_holding_time"`
 	// PnL of all trades.
 	TradePnl TradePnl `yaml:"trade_pnl"`
+	// Buy and hold PnL.
+	BuyAndHoldPnl float64 `yaml:"buy_and_hold_pnl"`
 }
 
 func WriteTradeStats(path string, stats []TradeStats) error {
