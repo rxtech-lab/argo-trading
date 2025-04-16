@@ -46,7 +46,7 @@ func (s *E2ETestSuite) SetupTest(engineConfig string) {
 }
 
 // RunWasmStrategyTest runs a test for a WASM strategy
-func RunWasmStrategyTest(s *E2ETestSuite, strategyName string, wasmPath string) (tmpFolder string) {
+func RunWasmStrategyTest(s *E2ETestSuite, strategyName string, wasmPath string, dataPath string) (tmpFolder string) {
 	type config struct {
 		FastPeriod int    `yaml:"fastPeriod"`
 		SlowPeriod int    `yaml:"slowPeriod"`
@@ -81,7 +81,9 @@ func RunWasmStrategyTest(s *E2ETestSuite, strategyName string, wasmPath string) 
 	runtime, err := wasm.NewStrategyWasmRuntime(wasmPath)
 	require.NoError(s.T(), err)
 
-	dataPath := "../../../../internal/indicator/test_data/test_data.parquet"
+	if dataPath == "" {
+		dataPath = "../../../../internal/indicator/test_data/test_data.parquet"
+	}
 	err = s.Backtest.SetDataPath(dataPath)
 	require.NoError(s.T(), err)
 
@@ -102,10 +104,10 @@ func RunWasmStrategyTest(s *E2ETestSuite, strategyName string, wasmPath string) 
 }
 
 // ReadStats reads the stats from the tmp folder
-func ReadStats(s *E2ETestSuite, tmpFolder string) (stats types.TradeStats, err error) {
+func ReadStats(s *E2ETestSuite, tmpFolder string) ([]types.TradeStats, error) {
 	var statsPaths []string
 
-	err = filepath.Walk(tmpFolder, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(tmpFolder, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -120,20 +122,23 @@ func ReadStats(s *E2ETestSuite, tmpFolder string) (stats types.TradeStats, err e
 	require.Greater(s.T(), len(statsPaths), 0)
 
 	// read the first stats file
-	statsPath := statsPaths[0]
-	content, err := os.ReadFile(statsPath)
-	require.NoError(s.T(), err)
-
-	// Unmarshal into a slice of TradeStats first (since that's how it's written)
 	var statsSlice []types.TradeStats
-	err = yaml.Unmarshal(content, &statsSlice)
-	require.NoError(s.T(), err)
 
-	// Make sure we have at least one stats item
-	require.Greater(s.T(), len(statsSlice), 0, "No trade stats found in the file")
+	for _, statsPath := range statsPaths {
+		content, err := os.ReadFile(statsPath)
+		require.NoError(s.T(), err)
 
-	// Return the first item
-	return statsSlice[0], nil
+		var stats []types.TradeStats
+		err = yaml.Unmarshal(content, &stats)
+		require.NoError(s.T(), err)
+
+		if len(stats) > 0 {
+			statsSlice = append(statsSlice, stats[0])
+		}
+	}
+
+	// Return the entire stats slice
+	return statsSlice, nil
 }
 
 // ReadTrades reads the trades from the tmp folder
