@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rxtech-lab/argo-trading/e2e/backtest/wasm/testhelper"
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -38,5 +39,12 @@ func (s *PlaceOrderTestSuite) TestPlaceOrderStrategy() {
 		s.Require().Equal(len(trades), 1)
 		s.Require().Greater(trades[0].ExecutedPrice, 0.0)
 		s.Require().Equal(trades[0].ExecutedQty, 1.0)
+
+		// check marker
+		marker, err := testhelper.ReadMarker(&s.E2ETestSuite, tmpFolder)
+		s.Require().NoError(err)
+		s.Require().Greater(len(marker), 0)
+		s.Require().Equal(marker[0].Signal.Type, types.SignalTypeBuyLong)
+		s.Require().Equal(marker[0].Reason, "PlaceOrderStrategy")
 	})
 }
