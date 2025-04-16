@@ -7,23 +7,23 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// E2ETestSuite extends the base test suite
-type E2ETestSuite struct {
+// PlaceOrderTestSuite extends the base test suite
+type PlaceOrderTestSuite struct {
 	testhelper.E2ETestSuite
 }
 
-func TestE2ETestSuite(t *testing.T) {
-	suite.Run(t, new(E2ETestSuite))
+func TestPlaceOrderTestSuite(t *testing.T) {
+	suite.Run(t, new(PlaceOrderTestSuite))
 }
 
 // SetupTest initializes the test with config
-func (s *E2ETestSuite) SetupTest() {
+func (s *PlaceOrderTestSuite) SetupTest() {
 	s.E2ETestSuite.SetupTest(`
 initial_capital: 10000
 `)
 }
 
-func (s *E2ETestSuite) TestPlaceOrderStrategy() {
+func (s *PlaceOrderTestSuite) TestPlaceOrderStrategy() {
 	s.Run("TestPlaceOrderStrategy", func() {
 		tmpFolder := testhelper.RunWasmStrategyTest(&s.E2ETestSuite, "PlaceOrderStrategy", "./place_order_plugin.wasm", "")
 		// read stats

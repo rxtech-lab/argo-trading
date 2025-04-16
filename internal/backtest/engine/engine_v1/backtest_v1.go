@@ -18,7 +18,6 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
-	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -333,23 +332,16 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 
 				// Cleanup the cache
 				b.cache.Reset()
+
+				// clean up the trading system
+				if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
+					backtestTrading.Reset(b.config.InitialCapital)
+				}
 			}
 		}
 	}
 
 	return nil
-}
-
-func (b *BacktestEngineV1) GetStrategyApi() (strategy.StrategyApi, error) {
-	strategyApi := wasm.NewWasmStrategyApi(&runtime.RuntimeContext{
-		DataSource:        b.datasource,
-		IndicatorRegistry: b.indicatorRegistry,
-		Marker:            b.marker,
-		TradingSystem:     b.tradingSystem,
-		Cache:             b.cache,
-	})
-
-	return strategyApi, nil
 }
 
 func (b *BacktestEngineV1) preRunCheck() error {
