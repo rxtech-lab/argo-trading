@@ -48,3 +48,13 @@ npx create-trading-strategy
 ```
 
 This will automatically create a sample strategy on your local machine.
+
+## Use in Swift
+
+The ArgoTrading.xcframework is available in our GitHub Releases. Download and add it directly to your Xcode project.
+
+**Dependencies:**
+
+- libduckdb.dylib is required
+- Download libduckdb-osx-universal.zip from the [DuckDB releases page](https://github.com/duckdb/duckdb/releases)
+- Drag libduckdb.dylib into your Xcode project and ensure it's included in your target's "Frameworks, Libraries, and Embedded Content" section

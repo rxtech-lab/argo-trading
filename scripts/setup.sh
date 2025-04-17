@@ -49,6 +49,9 @@ protoc --version
 echo "Installing mockgen..."
 go install go.uber.org/mock/mockgen@latest
 
+# Install gomobile
+go install golang.org/x/mobile/cmd/gomobile@latest
+
 # Clean up
 echo "Cleaning up..."
 rm -f "$DOWNLOAD_DIR/$PACKAGE_NAME"

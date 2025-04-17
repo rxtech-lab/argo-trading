@@ -49,6 +49,11 @@ jobs:
         env:
           SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
+      - name: Build and Sign the framework
+        run: make build-swift-argo && ./scripts/sign-framework.sh
+        env:
+          SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
+
       - name: Import code installer certificates
         uses: apple-actions/import-codesign-certs@v3
         with:
@@ -58,17 +63,31 @@ jobs:
 
       - name: Notarize the binary
         run: ./scripts/package-notarize.sh
+        if: github.event_name == 'release'
         env:
           INSTALLER_SIGNING_CERTIFICATE_NAME: ${{ secrets.INSTALLER_SIGNING_CERTIFICATE_NAME }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PWD: ${{ secrets.APPLE_ID_PWD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Prepare assets
+      - name: Prepare assets for release
+        if: github.event_name == 'release'
         run: |
           mkdir -p assets
           cp output/trading-backtest assets/
           cp ArgoTrading_macOS_arm64.pkg assets/ArgoTrading_macOS_arm64.pkg
+          cp -r pkg/swift-argo/ArgoTrading.xcframework assets/ArgoTrading.xcframework
+          # zip ArgoTrading.xcframework
+          zip -r assets/ArgoTrading.xcframework.zip assets/ArgoTrading.xcframework
+
+      - name: Prepare assets for push
+        if: github.event_name != 'release'
+        run: |
+          mkdir -p assets
+          cp output/trading-backtest assets/
+          cp -r pkg/swift-argo/ArgoTrading.xcframework assets/ArgoTrading.xcframework
+          # zip ArgoTrading.xcframework
+          zip -r assets/ArgoTrading.xcframework.zip assets/ArgoTrading.xcframework
 
       # Upload to release if this is a release event
       - name: Upload binaries to release
@@ -77,6 +96,7 @@ jobs:
         with:
           files: |
             assets/ArgoTrading_macOS_arm64.pkg
+            assets/ArgoTrading.xcframework.zip
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # Upload as artifacts if this is a push event
@@ -86,7 +106,7 @@ jobs:
         with:
           name: argo-trading-macos-${{ github.sha }}
           path: |
-            assets/ArgoTrading_macOS_arm64.pkg
+            assets/ArgoTrading.xcframework.zip
           retention-days: 1
 
   build-linux:
@@ -133,7 +153,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            assets/trading-backtest
             assets/ArgoTrading_Linux_amd64.zip
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -144,6 +163,5 @@ jobs:
         with:
           name: argo-trading-linux-${{ github.sha }}
           path: |
-            assets/trading-backtest
             assets/ArgoTrading_Linux_amd64.zip
           retention-days: 7
