@@ -10,3 +10,4 @@ mocks/mock_*
 internal/indicator/test_data/src/indicator_calculator/__pycache__
 *.parquet
 !test_data.parquet
+*.xcframework
