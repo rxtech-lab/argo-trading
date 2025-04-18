@@ -32,6 +32,11 @@ func (g *GoRuntime) InitializeApi(api strategy.StrategyApi) error {
 	panic("unimplemented")
 }
 
+// GetConfigSchema implements StrategyRuntime.
+func (g *GoRuntime) GetConfigSchema() (string, error) {
+	panic("unimplemented")
+}
+
 func NewGoRuntime(strategy runtime.StrategyRuntime) runtime.StrategyRuntime {
 	return &GoRuntime{
 		strategy: strategy,

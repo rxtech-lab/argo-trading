@@ -112,6 +112,55 @@ func (b *BacktestEngineV1) LoadStrategy(strategy runtime.StrategyRuntime) error 
 	return nil
 }
 
+func (b *BacktestEngineV1) LoadStrategyFromFile(strategyPath string) error {
+	// get extension
+	extension := filepath.Ext(strategyPath)
+
+	var strategy runtime.StrategyRuntime
+
+	var err error
+
+	switch extension {
+	case ".wasm":
+		strategy, err = wasm.NewStrategyWasmRuntime(strategyPath)
+		if err != nil {
+			return fmt.Errorf("failed to create strategy runtime: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported strategy type: %s", extension)
+	}
+
+	b.strategies = append(b.strategies, strategy)
+	b.log.Debug("Strategy loaded",
+		zap.Int("total_strategies", len(b.strategies)),
+	)
+
+	return nil
+}
+
+func (b *BacktestEngineV1) LoadStrategyFromBytes(strategyBytes []byte, strategyType engine.StrategyType) error {
+	var strategy runtime.StrategyRuntime
+
+	var err error
+
+	switch strategyType {
+	case engine.StrategyTypeWASM:
+		strategy, err = wasm.NewStrategyWasmRuntimeFromBytes(strategyBytes)
+		if err != nil {
+			return fmt.Errorf("failed to create strategy runtime: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported strategy type: %s", strategyType)
+	}
+
+	b.strategies = append(b.strategies, strategy)
+	b.log.Debug("Strategy loaded",
+		zap.Int("total_strategies", len(b.strategies)),
+	)
+
+	return nil
+}
+
 // SetConfigPath implements engine.Engine.
 func (b *BacktestEngineV1) SetConfigPath(path string) error {
 	// use glob to get all the files that match the path
@@ -320,6 +369,17 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 	}
 
 	return nil
+}
+
+func (b *BacktestEngineV1) GetConfigSchema() (string, error) {
+	config := b.config
+
+	schema, err := config.GenerateSchemaJSON()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate schema: %w", err)
+	}
+
+	return schema, nil
 }
 
 func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, resultFolderPath string) error {

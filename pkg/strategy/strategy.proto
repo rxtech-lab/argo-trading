@@ -27,7 +27,16 @@ service TradingStrategy {
   rpc ProcessData(ProcessDataRequest) returns (google.protobuf.Empty) {}
   // Name returns the name of the strategy
   rpc Name(NameRequest) returns (NameResponse) {}
+  // GetConfigSchema returns the schema of the strategy configuration
+  rpc GetConfigSchema(GetConfigSchemaRequest) returns (GetConfigSchemaResponse) {}
 }
+
+message GetConfigSchemaRequest {}
+
+message GetConfigSchemaResponse {
+  string schema = 1;
+}
+
 
 message InitializeRequest {
   string config = 1;

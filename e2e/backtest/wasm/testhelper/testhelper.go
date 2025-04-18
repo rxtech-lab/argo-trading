@@ -81,6 +81,10 @@ func RunWasmStrategyTest(s *E2ETestSuite, strategyName string, wasmPath string, 
 	runtime, err := wasm.NewStrategyWasmRuntime(wasmPath)
 	require.NoError(s.T(), err)
 
+	// generate schema
+	_, err = runtime.GetConfigSchema()
+	require.NoError(s.T(), err)
+
 	if dataPath == "" {
 		dataPath = "../../../../internal/indicator/test_data/test_data.parquet"
 	}

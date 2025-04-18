@@ -385,6 +385,35 @@ func (x *MarketData) GetTime() *timestamppb.Timestamp {
 	return nil
 }
 
+type GetConfigSchemaRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *GetConfigSchemaRequest) ProtoReflect() protoreflect.Message {
+	panic(`not implemented`)
+}
+
+type GetConfigSchemaResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Schema string `protobuf:"bytes,1,opt,name=schema,proto3" json:"schema,omitempty"`
+}
+
+func (x *GetConfigSchemaResponse) ProtoReflect() protoreflect.Message {
+	panic(`not implemented`)
+}
+
+func (x *GetConfigSchemaResponse) GetSchema() string {
+	if x != nil {
+		return x.Schema
+	}
+	return ""
+}
+
 type InitializeRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1404,6 +1433,8 @@ type TradingStrategy interface {
 	ProcessData(context.Context, *ProcessDataRequest) (*emptypb.Empty, error)
 	// Name returns the name of the strategy
 	Name(context.Context, *NameRequest) (*NameResponse, error)
+	// GetConfigSchema returns the schema of the strategy configuration
+	GetConfigSchema(context.Context, *GetConfigSchemaRequest) (*GetConfigSchemaResponse, error)
 }
 
 // StrategyApi defines all the functions that the host provides to the plugin

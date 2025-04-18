@@ -91,3 +91,8 @@ func (s *PlaceOrderStrategy) ProcessData(ctx context.Context, req *strategy.Proc
 	return &emptypb.Empty{}, nil
 
 }
+
+// GetConfigSchema implements strategy.TradingStrategy.
+func (s *PlaceOrderStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetConfigSchemaRequest) (*strategy.GetConfigSchemaResponse, error) {
+	return &strategy.GetConfigSchemaResponse{Schema: ""}, nil
+}

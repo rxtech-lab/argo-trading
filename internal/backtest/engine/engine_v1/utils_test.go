@@ -32,6 +32,10 @@ func (m *MockStrategy) InitializeApi(api strategy.StrategyApi) error {
 	return nil
 }
 
+func (m *MockStrategy) GetConfigSchema() (string, error) {
+	return "", nil
+}
+
 // UtilsTestSuite is a test suite for utils package
 type UtilsTestSuite struct {
 	suite.Suite
