@@ -131,3 +131,8 @@ func (s *ConsecutiveCandlesStrategy) ProcessData(ctx context.Context, req *strat
 
 	return &emptypb.Empty{}, nil
 }
+
+// GetConfigSchema implements strategy.TradingStrategy.
+func (s *ConsecutiveCandlesStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetConfigSchemaRequest) (*strategy.GetConfigSchemaResponse, error) {
+	return &strategy.GetConfigSchemaResponse{Schema: ""}, nil
+}
