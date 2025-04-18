@@ -8,6 +8,12 @@ import (
 
 type OnProcessDataCallback func(current int, total int) error
 
+type StrategyType string
+
+const (
+	StrategyTypeWASM StrategyType = "wasm"
+)
+
 type Engine interface {
 	// Initialize the engine with the given configuration file.
 	Initialize(config string) error
@@ -24,8 +30,14 @@ type Engine interface {
 	SetResultsFolder(folder string) error
 	// LoadStrategy loads the trading strategy from the given strategy. Could be called multiple times to load multiple strategies.
 	LoadStrategy(strategy runtime.StrategyRuntime) error
+	// LoadStrategyFromFile loads the trading strategy from the given strategy file.
+	LoadStrategyFromFile(strategyPath string) error
+	// LoadStrategyFromBytes loads the trading strategy from the given strategy bytes.
+	LoadStrategyFromBytes(strategyBytes []byte, strategyType StrategyType) error
 	// Run runs the engine and executes the trading strategy
 	Run(onProcessDataCallback optional.Option[OnProcessDataCallback]) error
 	// SetDataSource sets the data source for the engine.
 	SetDataSource(dataSource datasource.DataSource) error
+	// GetConfigSchema returns the schema of the engine configuration
+	GetConfigSchema() (string, error)
 }

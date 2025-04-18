@@ -9,6 +9,7 @@ import (
 
 	"github.com/knqyf263/go-plugin/types/known/emptypb"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
+	"github.com/rxtech-lab/argo-trading/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,9 +21,9 @@ type SimpleMAStrategy struct {
 
 // Config represents the configuration for the SimpleMAStrategy
 type Config struct {
-	FastPeriod int    `yaml:"fastPeriod"`
-	SlowPeriod int    `yaml:"slowPeriod"`
-	Symbol     string `yaml:"symbol"`
+	FastPeriod int    `yaml:"fastPeriod" jsonschema:"title=Fast Period,description=The period for the fast moving average,minimum=1,default=5"`
+	SlowPeriod int    `yaml:"slowPeriod" jsonschema:"title=Slow Period,description=The period for the slow moving average,minimum=1,default=20"`
+	Symbol     string `yaml:"symbol" jsonschema:"title=Symbol,description=The symbol to trade,default=AAPL"`
 }
 
 type maRawValue struct {
@@ -228,4 +229,14 @@ func (s *SimpleMAStrategy) ProcessData(ctx context.Context, req *strategy.Proces
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// GetConfigSchema implements strategy.TradingStrategy.
+func (s *SimpleMAStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetConfigSchemaRequest) (*strategy.GetConfigSchemaResponse, error) {
+	schema, err := utils.GetSchemaFromConfig(Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema: %w", err)
+	}
+
+	return &strategy.GetConfigSchemaResponse{Schema: schema}, nil
 }

@@ -11,9 +11,15 @@ import (
 )
 
 type StrategyRuntime interface {
+	// Initialize initializes the strategy with the given config
 	Initialize(config string) error
+	// InitializeApi initializes the strategy with the given api
 	InitializeApi(api strategy.StrategyApi) error
+	// ProcessData processes the market data
 	ProcessData(data types.MarketData) error
+	// GetConfigSchema returns the schema of the strategy config
+	GetConfigSchema() (string, error)
+	// Name returns the name of the strategy
 	Name() string
 }
 

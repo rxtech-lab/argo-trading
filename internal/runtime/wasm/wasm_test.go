@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"os"
 	"testing"
 
 	"github.com/rxtech-lab/argo-trading/internal/logger"
@@ -59,25 +60,61 @@ func (suite *StrategyTestSuite) TearDownTest() {
 	suite.ctrl.Finish()
 }
 
-func (suite *StrategyTestSuite) TestConsecutiveUpCandles() {
-	// Skip this test since it's challenging to properly mock WASM behavior
-	suite.T().Skip("Skipping WASM test - cannot properly mock WASM behavior")
-
-	// The original test attempted to verify that when two consecutive up candles
-	// are processed, the strategy places a buy order. However, since the WASM
-	// strategy runs in an isolated environment, we can't directly mock its behavior.
-}
-
-func (suite *StrategyTestSuite) TestConsecutiveDownCandles() {
-	// Skip this test since it's challenging to properly mock WASM behavior
-	suite.T().Skip("Skipping WASM test - cannot properly mock WASM behavior")
-
-	// The original test attempted to verify that when two consecutive down candles
-	// are processed and there's an existing position, the strategy places a sell order.
-	// However, since the WASM strategy runs in an isolated environment, we can't
-	// directly mock its behavior.
-}
-
 func TestStrategySuite(t *testing.T) {
 	suite.Run(t, new(StrategyTestSuite))
+}
+
+// TestInitializeApiWithPath tests the InitializeApi function with a file path
+func (suite *StrategyTestSuite) TestInitializeApiWithPath() {
+	// Create a new runtime with path
+	testRuntime, err := NewStrategyWasmRuntime("../../../examples/strategy/plugin.wasm")
+	suite.Require().NoError(err)
+
+	// Initialize the API with the proper context type
+	err = testRuntime.InitializeApi(NewWasmStrategyApi(&runtime.RuntimeContext{
+		Cache:             suite.mockCache,
+		TradingSystem:     suite.mockTradingSystem,
+		IndicatorRegistry: suite.mockIndicatorRegistry,
+	}))
+	suite.Require().NoError(err)
+
+	// Verify that name can be retrieved (which means initialization worked)
+	name := testRuntime.Name()
+	suite.Require().NotEmpty(name)
+}
+
+// TestInitializeApiWithBytes tests the InitializeApi function with bytes
+func (suite *StrategyTestSuite) TestInitializeApiWithBytes() {
+	// Read the wasm file into bytes
+	wasmBytes, err := os.ReadFile("../../../examples/strategy/plugin.wasm")
+	suite.Require().NoError(err)
+	suite.Require().NotEmpty(wasmBytes)
+
+	// Create a new runtime with bytes
+	testRuntime, err := NewStrategyWasmRuntimeFromBytes(wasmBytes)
+	suite.Require().NoError(err)
+
+	// Initialize the API with the proper context type
+	err = testRuntime.InitializeApi(NewWasmStrategyApi(&runtime.RuntimeContext{
+		Cache:             suite.mockCache,
+		TradingSystem:     suite.mockTradingSystem,
+		IndicatorRegistry: suite.mockIndicatorRegistry,
+	}))
+	suite.Require().NoError(err)
+
+	// Verify that name can be retrieved (which means initialization worked)
+	name := testRuntime.Name()
+	suite.Require().NotEmpty(name)
+}
+
+func (suite *StrategyTestSuite) TestBothNotSet() {
+	testRuntime, err := NewStrategyWasmRuntimeFromBytes([]byte{})
+	suite.Require().NoError(err)
+
+	err = testRuntime.InitializeApi(NewWasmStrategyApi(&runtime.RuntimeContext{
+		Cache:             suite.mockCache,
+		TradingSystem:     suite.mockTradingSystem,
+		IndicatorRegistry: suite.mockIndicatorRegistry,
+	}))
+	suite.Require().Error(err)
 }
