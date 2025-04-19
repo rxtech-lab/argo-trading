@@ -9,18 +9,20 @@ if [ -z "${SIGNING_CERTIFICATE_NAME}" ]; then
   exit 1
 fi
 
-# Set binary path
-TRADING_BACKTEST_BINARY_PATH="output/trading-backtest"
-TRADING_DOWNLOAD_BINARY_PATH="output/trading-download"
+# Import binary configuration
+source "$(dirname "$0")/binaries.sh"
 
-echo "Signing binary: ${TRADING_BACKTEST_BINARY_PATH}"
-echo "Signing binary: ${TRADING_DOWNLOAD_BINARY_PATH}"
-# Sign the binary with hardened runtime
-codesign --force --options runtime --timestamp --sign "${SIGNING_CERTIFICATE_NAME}" "${TRADING_BACKTEST_BINARY_PATH}"
-codesign --force --options runtime --timestamp --sign "${SIGNING_CERTIFICATE_NAME}" "${TRADING_DOWNLOAD_BINARY_PATH}"
+# Sign and verify each binary
+for binary in "${BINARIES[@]}"; do
+  BINARY_PATH="output/${binary}"
+  
+  echo "Signing binary: ${BINARY_PATH}"
+  
+  # Sign the binary with hardened runtime
+  codesign --force --options runtime --timestamp --sign "${SIGNING_CERTIFICATE_NAME}" "${BINARY_PATH}"
+  
+  # Verify signature
+  codesign --verify --verbose "${BINARY_PATH}"
+done
 
-# Verify signature
-codesign --verify --verbose "${TRADING_BACKTEST_BINARY_PATH}"
-codesign --verify --verbose "${TRADING_DOWNLOAD_BINARY_PATH}"
-
-echo "Binary signed successfully"
+echo "Binaries signed successfully"
