@@ -44,7 +44,14 @@ func (s *PlaceOrderTestSuite) TestPlaceOrderStrategy() {
 		marker, err := testhelper.ReadMarker(&s.E2ETestSuite, tmpFolder)
 		s.Require().NoError(err)
 		s.Require().Greater(len(marker), 0)
-		s.Require().Equal(marker[0].Signal.Type, types.SignalTypeBuyLong)
-		s.Require().Equal(marker[0].Reason, "PlaceOrderStrategy")
+		
+		// Check that a signal exists and verify its type
+		s.Require().True(marker[0].Signal.IsSome(), "Signal should be present")
+		signal, err := marker[0].Signal.Take()
+		s.Require().NoError(err, "Taking signal value should not error")
+		s.Require().Equal(types.SignalTypeBuyLong, signal.Type)
+		
+		// Check message instead of reason
+		s.Require().Equal("PlaceOrderStrategy", marker[0].Message)
 	})
 }

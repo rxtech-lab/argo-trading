@@ -8,13 +8,14 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"go.uber.org/zap"
 )
 
 // BacktestMarker implements the Marker interface for backtesting purposes.
-// It records market data, signals, and reasons in a DuckDB database.
+// It records marks with signal information in a DuckDB database.
 type BacktestMarker struct {
 	db     *sql.DB
 	logger *logger.Logger
@@ -55,8 +56,8 @@ func NewBacktestMarker(logger *logger.Logger) (*BacktestMarker, error) {
 	return marker, nil
 }
 
-// Mark implements the Marker interface. It records a point in time with market data, signal, and reason.
-func (m *BacktestMarker) Mark(marketData types.MarketData, signal types.Signal, reason string) error {
+// Mark implements the Marker interface. It records a mark with the given parameters.
+func (m *BacktestMarker) Mark(marketData types.MarketData, mark types.Mark) error {
 	// Check for nil fields
 	if m == nil || m.db == nil {
 		return fmt.Errorf("backtest marker or database is nil")
@@ -70,15 +71,31 @@ func (m *BacktestMarker) Mark(marketData types.MarketData, signal types.Signal, 
 		return fmt.Errorf("failed to get next ID from sequence: %w", err)
 	}
 
+	// Get signal values if present
+	var signalType, signalName, signalSymbol sql.NullString
+
+	var signalTime sql.NullTime
+
+	if mark.Signal.IsSome() {
+		signal, err := mark.Signal.Take()
+		if err == nil {
+			signalType = sql.NullString{String: string(signal.Type), Valid: true}
+			signalName = sql.NullString{String: signal.Name, Valid: true}
+			signalSymbol = sql.NullString{String: signal.Symbol, Valid: true}
+			signalTime = sql.NullTime{Time: signal.Time, Valid: true}
+		}
+	}
+
 	// Insert the mark using Squirrel
 	insertQuery := m.sq.
 		Insert("marks").
 		Columns(
-			"id", "symbol", "time", "open", "high", "low", "close", "volume", "signal_type", "signal_name", "reason",
+			"id", "market_data_id", "signal_type", "signal_name", "signal_time", "signal_symbol",
+			"color", "shape", "title", "message", "category",
 		).
 		Values(
-			nextID, marketData.Symbol, marketData.Time, marketData.Open, marketData.High,
-			marketData.Low, marketData.Close, marketData.Volume, string(signal.Type), signal.Name, reason,
+			nextID, mark.MarketDataId, signalType, signalName, signalTime, signalSymbol,
+			mark.Color, string(mark.Shape), mark.Title, mark.Message, mark.Category,
 		).
 		RunWith(m.db)
 
@@ -100,11 +117,11 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 	// Query all marks using Squirrel
 	selectQuery := m.sq.
 		Select(
-			"id", "symbol", "time", "open", "high", "low", "close",
-			"volume", "signal_type", "signal_name", "reason",
+			"id", "market_data_id", "signal_type", "signal_name", "signal_time", "signal_symbol",
+			"color", "shape", "title", "message", "category",
 		).
 		From("marks").
-		OrderBy("time ASC").
+		OrderBy("id ASC").
 		RunWith(m.db)
 
 	rows, err := selectQuery.Query()
@@ -118,36 +135,66 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 	for rows.Next() {
 		var id int
 
-		var marketData types.MarketData
+		var marketDataId string
 
-		var signal types.Signal
+		var signalTypeStr sql.NullString
 
-		var signalTypeStr string
+		var signalName sql.NullString
 
-		var mark types.Mark
+		var signalTime sql.NullTime
+
+		var signalSymbol sql.NullString
+
+		var color string
+
+		var shapeStr string
+
+		var title string
+
+		var message string
+
+		var category string
 
 		err := rows.Scan(
 			&id,
-			&marketData.Symbol,
-			&marketData.Time,
-			&marketData.Open,
-			&marketData.High,
-			&marketData.Low,
-			&marketData.Close,
-			&marketData.Volume,
+			&marketDataId,
 			&signalTypeStr,
-			&signal.Name,
-			&mark.Reason,
+			&signalName,
+			&signalTime,
+			&signalSymbol,
+			&color,
+			&shapeStr,
+			&title,
+			&message,
+			&category,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan mark: %w", err)
 		}
 
-		signal.Type = types.SignalType(signalTypeStr)
-		signal.Time = marketData.Time
-		signal.Symbol = marketData.Symbol
+		// Create mark
+		mark := types.Mark{
+			MarketDataId: marketDataId,
+			Color:        color,
+			Shape:        types.MarkShape(shapeStr),
+			Title:        title,
+			Message:      message,
+			Category:     category,
+		}
 
-		mark.Signal = signal
+		// Add signal if it exists
+		if signalTime.Valid && signalSymbol.Valid && signalTypeStr.Valid && signalName.Valid {
+			signal := types.Signal{
+				Type:   types.SignalType(signalTypeStr.String),
+				Name:   signalName.String,
+				Time:   signalTime.Time,
+				Symbol: signalSymbol.String,
+			}
+			mark.Signal = optional.Some(signal)
+		} else {
+			mark.Signal = optional.None[types.Signal]()
+		}
+
 		marks = append(marks, mark)
 	}
 
@@ -227,20 +274,20 @@ func (m *BacktestMarker) initialize() error {
 		return fmt.Errorf("failed to create sequence: %w", err)
 	}
 
-	// Create marks table
+	// Create marks table with new schema
 	_, err = m.db.Exec(`
 		CREATE TABLE IF NOT EXISTS marks (
 			id INTEGER PRIMARY KEY,
-			symbol TEXT,
-			time TIMESTAMP,
-			open DOUBLE,
-			high DOUBLE,
-			low DOUBLE,
-			close DOUBLE,
-			volume DOUBLE,
+			market_data_id TEXT,
 			signal_type TEXT,
 			signal_name TEXT,
-			reason TEXT
+			signal_time TIMESTAMP,
+			signal_symbol TEXT,
+			color TEXT,
+			shape TEXT,
+			title TEXT,
+			message TEXT,
+			category TEXT
 		)
 	`)
 	if err != nil {

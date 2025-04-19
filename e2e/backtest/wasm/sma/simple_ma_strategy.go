@@ -182,8 +182,14 @@ func (s *SimpleMAStrategy) ProcessData(ctx context.Context, req *strategy.Proces
 		// Mark this signal point
 		_, err = api.Mark(ctx, &strategy.MarkRequest{
 			MarketData: data,
-			Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
-			Reason:     "Fast MA crossed above Slow MA",
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+				Color:      "red",
+				Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+				Title:      "SimpleMAStrategy",
+				Message:    "Fast MA crossed above Slow MA",
+				Category:   "SimpleMAStrategy",
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to mark buy signal: %w", err)
@@ -211,8 +217,14 @@ func (s *SimpleMAStrategy) ProcessData(ctx context.Context, req *strategy.Proces
 		// Mark this signal point
 		_, err = api.Mark(ctx, &strategy.MarkRequest{
 			MarketData: data,
-			Signal:     strategy.SignalType_SIGNAL_TYPE_SELL_LONG,
-			Reason:     "Fast MA crossed below Slow MA",
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_SELL_LONG,
+				Color:      "blue",
+				Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+				Title:      "SimpleMAStrategy",
+				Message:    "Fast MA crossed below Slow MA",
+				Category:   "SimpleMAStrategy",
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to mark sell signal: %w", err)

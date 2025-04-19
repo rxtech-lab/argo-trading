@@ -70,6 +70,19 @@ func StrategySignalTypeToSignalType(signalType strategy.SignalType) types.Signal
 	}
 }
 
+func StrategyMarkShapeToMarkShape(markShape strategy.MarkShape) types.MarkShape {
+	switch markShape {
+	case strategy.MarkShape_MARK_SHAPE_CIRCLE:
+		return types.MarkShapeCircle
+	case strategy.MarkShape_MARK_SHAPE_SQUARE:
+		return types.MarkShapeSquare
+	case strategy.MarkShape_MARK_SHAPE_TRIANGLE:
+		return types.MarkShapeTriangle
+	default:
+		return types.MarkShapeCircle
+	}
+}
+
 func StrategyIndicatorTypeToIndicatorType(indicatorType strategy.IndicatorType) types.IndicatorType {
 	switch indicatorType {
 	case strategy.IndicatorType_INDICATOR_RSI:
@@ -163,5 +176,18 @@ func OrderTypeToStrategyOrderType(orderType types.OrderType) strategy.OrderType 
 		return strategy.OrderType_ORDER_TYPE_LIMIT
 	default:
 		return strategy.OrderType_ORDER_TYPE_MARKET
+	}
+}
+
+func MarkShapeToStrategyMarkShape(markShape types.MarkShape) strategy.MarkShape {
+	switch markShape {
+	case types.MarkShapeCircle:
+		return strategy.MarkShape_MARK_SHAPE_CIRCLE
+	case types.MarkShapeSquare:
+		return strategy.MarkShape_MARK_SHAPE_SQUARE
+	case types.MarkShapeTriangle:
+		return strategy.MarkShape_MARK_SHAPE_TRIANGLE
+	default:
+		return strategy.MarkShape_MARK_SHAPE_CIRCLE
 	}
 }
