@@ -317,6 +317,34 @@ func (x OrderReason) Enum() *OrderReason {
 	return p
 }
 
+type MarkShape int32
+
+const (
+	MarkShape_MARK_SHAPE_CIRCLE   MarkShape = 0
+	MarkShape_MARK_SHAPE_SQUARE   MarkShape = 1
+	MarkShape_MARK_SHAPE_TRIANGLE MarkShape = 2
+)
+
+// Enum value maps for MarkShape.
+var (
+	MarkShape_name = map[int32]string{
+		0: "MARK_SHAPE_CIRCLE",
+		1: "MARK_SHAPE_SQUARE",
+		2: "MARK_SHAPE_TRIANGLE",
+	}
+	MarkShape_value = map[string]int32{
+		"MARK_SHAPE_CIRCLE":   0,
+		"MARK_SHAPE_SQUARE":   1,
+		"MARK_SHAPE_TRIANGLE": 2,
+	}
+)
+
+func (x MarkShape) Enum() *MarkShape {
+	p := new(MarkShape)
+	*p = x
+	return p
+}
+
 // MarketData represents the market data for a single point in time
 type MarketData struct {
 	state         protoimpl.MessageState
@@ -1333,8 +1361,7 @@ type MarkRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	MarketData *MarketData `protobuf:"bytes,1,opt,name=market_data,json=marketData,proto3" json:"market_data,omitempty"`
-	Signal     SignalType  `protobuf:"varint,2,opt,name=signal,proto3,enum=strategy.SignalType" json:"signal,omitempty"`
-	Reason     string      `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	Mark       *Mark       `protobuf:"bytes,2,opt,name=mark,proto3" json:"mark,omitempty"`
 }
 
 func (x *MarkRequest) ProtoReflect() protoreflect.Message {
@@ -1348,18 +1375,11 @@ func (x *MarkRequest) GetMarketData() *MarketData {
 	return nil
 }
 
-func (x *MarkRequest) GetSignal() SignalType {
+func (x *MarkRequest) GetMark() *Mark {
 	if x != nil {
-		return x.Signal
+		return x.Mark
 	}
-	return SignalType_SIGNAL_TYPE_BUY_LONG
-}
-
-func (x *MarkRequest) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
+	return nil
 }
 
 type GetMarkersResponse struct {
@@ -1386,42 +1406,58 @@ type Mark struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	MarketData *MarketData            `protobuf:"bytes,1,opt,name=market_data,json=marketData,proto3" json:"market_data,omitempty"`
-	Signal     SignalType             `protobuf:"varint,2,opt,name=signal,proto3,enum=strategy.SignalType" json:"signal,omitempty"`
-	Reason     string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	Timestamp  *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Color      string     `protobuf:"bytes,1,opt,name=color,proto3" json:"color,omitempty"`
+	Shape      MarkShape  `protobuf:"varint,2,opt,name=shape,proto3,enum=strategy.MarkShape" json:"shape,omitempty"`
+	Title      string     `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Message    string     `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	Category   string     `protobuf:"bytes,5,opt,name=category,proto3" json:"category,omitempty"`
+	SignalType SignalType `protobuf:"varint,6,opt,name=signal_type,json=signalType,proto3,enum=strategy.SignalType" json:"signal_type,omitempty"`
 }
 
 func (x *Mark) ProtoReflect() protoreflect.Message {
 	panic(`not implemented`)
 }
 
-func (x *Mark) GetMarketData() *MarketData {
+func (x *Mark) GetColor() string {
 	if x != nil {
-		return x.MarketData
-	}
-	return nil
-}
-
-func (x *Mark) GetSignal() SignalType {
-	if x != nil {
-		return x.Signal
-	}
-	return SignalType_SIGNAL_TYPE_BUY_LONG
-}
-
-func (x *Mark) GetReason() string {
-	if x != nil {
-		return x.Reason
+		return x.Color
 	}
 	return ""
 }
 
-func (x *Mark) GetTimestamp() *timestamppb.Timestamp {
+func (x *Mark) GetShape() MarkShape {
 	if x != nil {
-		return x.Timestamp
+		return x.Shape
 	}
-	return nil
+	return MarkShape_MARK_SHAPE_CIRCLE
+}
+
+func (x *Mark) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *Mark) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *Mark) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *Mark) GetSignalType() SignalType {
+	if x != nil {
+		return x.SignalType
+	}
+	return SignalType_SIGNAL_TYPE_BUY_LONG
 }
 
 // TradingStrategy defines the interface for trading strategies

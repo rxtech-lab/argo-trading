@@ -1,9 +1,21 @@
 package types
 
-// Mark a point in time with a signal and a reason.
+import "github.com/moznion/go-optional"
+
+type MarkShape string
+
+const (
+	MarkShapeCircle   MarkShape = "circle"
+	MarkShapeSquare   MarkShape = "square"
+	MarkShapeTriangle MarkShape = "triangle"
+)
+
 type Mark struct {
-	// Signal is the signal that was generated
-	Signal Signal
-	// Reason is the reason for the signal
-	Reason string
+	MarketDataId string
+	Color        string
+	Shape        MarkShape
+	Title        string
+	Message      string
+	Category     string
+	Signal       optional.Option[Signal]
 }

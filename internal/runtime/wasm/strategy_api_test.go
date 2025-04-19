@@ -309,14 +309,21 @@ func (suite *StrategyApiTestSuite) TestGetCache() {
 // TestGetMarkers tests the GetMarkers method
 func (suite *StrategyApiTestSuite) TestGetMarkers() {
 	now := time.Now()
+	// Create the signal inside the Option
+	signal := types.Signal{
+		Symbol: "BTCUSDT",
+		Type:   types.SignalTypeBuyLong,
+		Time:   now,
+	}
+
 	markers := []types.Mark{
 		{
-			Signal: types.Signal{
-				Symbol: "BTCUSDT",
-				Type:   types.SignalTypeBuyLong,
-				Time:   now,
-			},
-			Reason: "test reason",
+			Signal:   optional.Some(signal),
+			Color:    "red",
+			Shape:    types.MarkShapeCircle,
+			Title:    "test title",
+			Message:  "test message",
+			Category: "test category",
 		},
 	}
 
@@ -330,8 +337,11 @@ func (suite *StrategyApiTestSuite) TestGetMarkers() {
 
 	suite.NoError(err)
 	suite.Len(response.Markers, 1)
-	suite.Equal(markers[0].Signal.Symbol, response.Markers[0].MarketData.Symbol)
-	suite.Equal(strategy.SignalType_SIGNAL_TYPE_BUY_LONG, response.Markers[0].Signal)
+
+	// Access the Signal value from the Option
+	suite.True(markers[0].Signal.IsSome())
+	suite.Equal(strategy.SignalType_SIGNAL_TYPE_BUY_LONG, response.Markers[0].SignalType)
+	suite.Equal("BTCUSDT", signal.Symbol) // Compare with the original signal we created
 }
 
 func (suite *StrategyApiTestSuite) TestCount() {
@@ -525,7 +535,7 @@ func (suite *StrategyApiTestSuite) TestMark() {
 	// Create test data
 	now := time.Now()
 	protoTime := timestamppb.New(now)
-	
+
 	marketData := &strategy.MarketData{
 		Symbol: "BTCUSDT",
 		Time:   protoTime,
@@ -535,9 +545,16 @@ func (suite *StrategyApiTestSuite) TestMark() {
 		Close:  50500.0,
 		Volume: 1000.0,
 	}
-	
-	reason := "Test mark reason"
-	
+
+	mark := &strategy.Mark{
+		Color:      "red",
+		Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+		Title:      "Test mark title",
+		Message:    "Test mark message",
+		Category:   "Test category",
+		SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+	}
+
 	// Expected internal types
 	expectedMarketData := types.MarketData{
 		Symbol: "BTCUSDT",
@@ -548,19 +565,11 @@ func (suite *StrategyApiTestSuite) TestMark() {
 		Close:  50500.0,
 		Volume: 1000.0,
 	}
-	
-	expectedSignal := types.Signal{
-		Time:   now,
-		Type:   types.SignalTypeBuyLong,
-		Symbol: "BTCUSDT",
-		Name:   string(types.SignalTypeBuyLong),
-		Reason: reason,
-	}
-	
-	// Setup expectations
+
+	// Setup expectations - verify Mark is called with correct parameters
 	suite.mockMarker.EXPECT().
-		Mark(gomock.Any(), gomock.Any(), gomock.Eq(reason)).
-		DoAndReturn(func(md types.MarketData, signal types.Signal, r string) error {
+		Mark(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(md types.MarketData, mark types.Mark) error {
 			// Verify the market data
 			suite.Equal(expectedMarketData.Symbol, md.Symbol)
 			suite.Equal(expectedMarketData.Time.Unix(), md.Time.Unix())
@@ -569,22 +578,29 @@ func (suite *StrategyApiTestSuite) TestMark() {
 			suite.Equal(expectedMarketData.Low, md.Low)
 			suite.Equal(expectedMarketData.Close, md.Close)
 			suite.Equal(expectedMarketData.Volume, md.Volume)
-			
-			// Verify the signal
-			suite.Equal(expectedSignal.Type, signal.Type)
-			suite.Equal(expectedSignal.Symbol, signal.Symbol)
-			suite.Equal(expectedSignal.Reason, signal.Reason)
-			
+
+			// Verify the mark
+			suite.Equal("red", mark.Color)
+			suite.Equal(types.MarkShapeCircle, mark.Shape)
+			suite.Equal("Test mark title", mark.Title)
+			suite.Equal("Test mark message", mark.Message)
+			suite.Equal("Test category", mark.Category)
+
+			// Verify the signal in the mark
+			suite.True(mark.Signal.IsSome())
+			signal := mark.Signal.Unwrap()
+			suite.Equal(types.SignalTypeBuyLong, signal.Type)
+			suite.Equal("BTCUSDT", signal.Symbol)
+
 			return nil
 		})
-	
+
 	// Execute test
 	_, err := suite.api.Mark(context.Background(), &strategy.MarkRequest{
 		MarketData: marketData,
-		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
-		Reason:     reason,
+		Mark:       mark,
 	})
-	
+
 	suite.NoError(err)
 }
 
@@ -592,14 +608,14 @@ func (suite *StrategyApiTestSuite) TestMark() {
 func (suite *StrategyApiTestSuite) TestMarkWithNilMarker() {
 	// Save the original marker
 	originalMarker := suite.runtimeContext.Marker
-	
+
 	// Set the marker to nil
 	suite.runtimeContext.Marker = nil
-	
+
 	// Create test data
 	now := time.Now()
 	protoTime := timestamppb.New(now)
-	
+
 	marketData := &strategy.MarketData{
 		Symbol: "BTCUSDT",
 		Time:   protoTime,
@@ -609,31 +625,47 @@ func (suite *StrategyApiTestSuite) TestMarkWithNilMarker() {
 		Close:  50500.0,
 		Volume: 1000.0,
 	}
-	
+
+	mark := &strategy.Mark{
+		Color:      "red",
+		Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+		Title:      "Test mark title",
+		Message:    "Test mark message",
+		Category:   "Test category",
+		SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+	}
+
 	// Execute test
 	_, err := suite.api.Mark(context.Background(), &strategy.MarkRequest{
 		MarketData: marketData,
-		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
-		Reason:     "Test mark reason",
+		Mark:       mark,
 	})
-	
+
 	// Verify error
 	suite.Error(err)
 	suite.Contains(err.Error(), "marker is not available")
-	
+
 	// Restore the original marker
 	suite.runtimeContext.Marker = originalMarker
 }
 
 // TestMarkWithNilMarketData tests the Mark method when market data is nil
 func (suite *StrategyApiTestSuite) TestMarkWithNilMarketData() {
+	mark := &strategy.Mark{
+		Color:      "red",
+		Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+		Title:      "Test mark title",
+		Message:    "Test mark message",
+		Category:   "Test category",
+		SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+	}
+
 	// Execute test
 	_, err := suite.api.Mark(context.Background(), &strategy.MarkRequest{
 		MarketData: nil,
-		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
-		Reason:     "Test mark reason",
+		Mark:       mark,
 	})
-	
+
 	// Verify error
 	suite.Error(err)
 	suite.Contains(err.Error(), "market data is required")

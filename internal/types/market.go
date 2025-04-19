@@ -3,6 +3,7 @@ package types
 import "time"
 
 type MarketData struct {
+	Id     string    `csv:"id"`
 	Symbol string    `csv:"symbol"`
 	Time   time.Time `csv:"time"`
 	Open   float64   `csv:"open"`

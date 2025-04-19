@@ -370,14 +370,14 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 	// Initialize Squirrel with dollar placeholder format
 	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 
-	// Construct query using Squirrel
+	// Construct query using Squirrel with the new schema
 	query, args, err := sq.
 		Select(
-			"id", "symbol", "time", "open", "high", "low", "close",
-			"volume", "signal_type", "signal_name", "reason",
+			"id", "market_data_id", "signal_type", "signal_name", "signal_time", "signal_symbol",
+			"color", "shape", "title", "message", "category",
 		).
 		From("marks_view").
-		OrderBy("time ASC").
+		OrderBy("id ASC").
 		ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build SQL query: %w", err)
@@ -394,37 +394,59 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 	marks := []types.Mark{}
 	for rows.Next() {
 		var (
-			id         int
-			marketData types.MarketData
-			signal     types.Signal
-			signalType string
-			mark       types.Mark
+			id           int
+			marketDataId string
+			signalType   sql.NullString
+			signalName   sql.NullString
+			signalTime   sql.NullTime
+			signalSymbol sql.NullString
+			color        string
+			shapeStr     string
+			title        string
+			message      string
+			category     string
 		)
 
 		err := rows.Scan(
 			&id,
-			&marketData.Symbol,
-			&marketData.Time,
-			&marketData.Open,
-			&marketData.High,
-			&marketData.Low,
-			&marketData.Close,
-			&marketData.Volume,
+			&marketDataId,
 			&signalType,
-			&signal.Name,
-			&mark.Reason,
+			&signalName,
+			&signalTime,
+			&signalSymbol,
+			&color,
+			&shapeStr,
+			&title,
+			&message,
+			&category,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan mark row: %w", err)
 		}
 
-		// Set the Signal data
-		signal.Type = types.SignalType(signalType)
-		signal.Time = marketData.Time
-		signal.Symbol = marketData.Symbol
+		// Create mark with the new fields
+		mark := types.Mark{
+			MarketDataId: marketDataId,
+			Color:        color,
+			Shape:        types.MarkShape(shapeStr),
+			Title:        title,
+			Message:      message,
+			Category:     category,
+		}
 
-		// Set market data and signal
-		mark.Signal = signal
+		// Add signal if present
+		if signalTime.Valid && signalSymbol.Valid && signalType.Valid && signalName.Valid {
+			signal := types.Signal{
+				Type:   types.SignalType(signalType.String),
+				Name:   signalName.String,
+				Time:   signalTime.Time,
+				Symbol: signalSymbol.String,
+			}
+			mark.Signal = optional.Some(signal)
+		} else {
+			mark.Signal = optional.None[types.Signal]()
+		}
+
 		marks = append(marks, mark)
 	}
 

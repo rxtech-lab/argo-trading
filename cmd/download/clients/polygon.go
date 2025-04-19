@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/marcboeker/go-duckdb"
 	polygon "github.com/polygon-io/client-go/rest"
 	"github.com/polygon-io/client-go/rest/models"
@@ -45,6 +46,7 @@ func (c *PolygonClient) getParquetFileName(ticker string, startDate time.Time, e
 func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan) (path string, err error) {
 	// check if toPath folder exists
 	dir := filepath.Dir(toPath)
+	id := uuid.New().String()
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		// create the folder
 		err = os.MkdirAll(dir, 0755)
@@ -76,6 +78,7 @@ func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Ti
 	// Create table if it doesn't exist
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS market_data (
+			id TEXT PRIMARY KEY,
 			time TIMESTAMP,
 			symbol TEXT,
 			open DOUBLE,
@@ -103,8 +106,8 @@ func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Ti
 
 	// Prepare insert statement
 	stmt, err := tx.Prepare(`
-		INSERT INTO market_data (time, symbol, open, high, low, close, volume)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO market_data (id, time, symbol, open, high, low, close, volume)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -133,6 +136,7 @@ func (c *PolygonClient) Download(ticker string, toPath string, startDate time.Ti
 			agg := iter.Item()
 			// Insert directly into DuckDB
 			_, err := stmt.Exec(
+				id,
 				time.Time(agg.Timestamp),
 				ticker,
 				agg.Open,

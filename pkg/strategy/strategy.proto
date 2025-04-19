@@ -306,18 +306,25 @@ message Position {
 
 message MarkRequest {
   MarketData market_data = 1;
-  SignalType signal = 2;
-  string reason = 3;
+  Mark mark = 2;
 }
 
 message GetMarkersResponse {
   repeated Mark markers = 1;
 }
 
+enum MarkShape {
+  MARK_SHAPE_CIRCLE = 0;
+  MARK_SHAPE_SQUARE = 1;
+  MARK_SHAPE_TRIANGLE = 2;
+}
+
 message Mark {
-  MarketData market_data = 1;
-  SignalType signal = 2;
-  string reason = 3;
-  google.protobuf.Timestamp timestamp = 4;
+  string color = 1;
+  MarkShape shape = 2;
+  string title = 3;
+  string message = 4;
+  string category = 5;
+  SignalType signal_type = 6;
 }
 
