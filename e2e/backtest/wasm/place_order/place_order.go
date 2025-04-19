@@ -71,9 +71,15 @@ func (s *PlaceOrderStrategy) ProcessData(ctx context.Context, req *strategy.Proc
 	}
 
 	_, err = api.Mark(ctx, &strategy.MarkRequest{
-		Signal:     strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+		Mark: &strategy.Mark{
+			SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+			Color:      "red",
+			Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+			Title:      "PlaceOrderStrategy",
+			Message:    "PlaceOrderStrategy",
+			Category:   "PlaceOrderStrategy",
+		},
 		MarketData: data,
-		Reason:     "PlaceOrderStrategy",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to mark: %w", err)

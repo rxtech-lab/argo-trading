@@ -143,34 +143,29 @@ func (s StrategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*
 	if s.runtimeContext.Marker == nil {
 		return nil, fmt.Errorf("marker is not available")
 	}
-	
-	markers, err := (s.runtimeContext.Marker).GetMarks()
+
+	marks, err := (s.runtimeContext.Marker).GetMarks()
 	if err != nil {
 		return nil, err
 	}
 
 	response := &strategy.GetMarkersResponse{
-		Markers: make([]*strategy.Mark, len(markers)),
+		Markers: make([]*strategy.Mark, len(marks)),
 	}
 
-	for i, marker := range markers {
-		marketData := &strategy.MarketData{
-			Symbol: marker.Signal.Symbol,
-			High:   0, // These fields are not available in the Signal type
-			Low:    0,
-			Open:   0,
-			Close:  0,
-			Volume: 0,
-			Time:   timestamppb.New(marker.Signal.Time),
+	for i, mark := range marks {
+		var signalType strategy.SignalType
+		if mark.Signal.IsSome() {
+			signalType = runtime.SignalTypeToStrategySignalType(mark.Signal.Unwrap().Type)
 		}
 
-		signalType := runtime.SignalTypeToStrategySignalType(marker.Signal.Type)
-
 		response.Markers[i] = &strategy.Mark{
-			MarketData: marketData,
-			Signal:     signalType,
-			Reason:     marker.Reason,
-			Timestamp:  timestamppb.New(marker.Signal.Time),
+			Color:      mark.Color,
+			Shape:      runtime.MarkShapeToStrategyMarkShape(mark.Shape),
+			Title:      mark.Title,
+			Message:    mark.Message,
+			Category:   mark.Category,
+			SignalType: signalType,
 		}
 	}
 
@@ -354,7 +349,7 @@ func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest)
 	}
 
 	// Convert protobuf SignalType to internal SignalType
-	signalType := runtime.StrategySignalTypeToSignalType(req.Signal)
+	signalType := runtime.StrategySignalTypeToSignalType(req.Mark.SignalType)
 
 	// Create the signal
 	signal := types.Signal{
@@ -362,11 +357,19 @@ func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest)
 		Type:   signalType,
 		Symbol: marketData.Symbol,
 		Name:   string(signalType), // Use signal type as name if not provided
-		Reason: req.Reason,
+	}
+
+	mark := types.Mark{
+		Color:    req.Mark.Color,
+		Shape:    runtime.StrategyMarkShapeToMarkShape(req.Mark.Shape),
+		Title:    req.Mark.Title,
+		Message:  req.Mark.Message,
+		Category: req.Mark.Category,
+		Signal:   optional.Some(signal),
 	}
 
 	// Mark the signal
-	err := s.runtimeContext.Marker.Mark(marketData, signal, req.Reason)
+	err := s.runtimeContext.Marker.Mark(marketData, mark)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mark signal: %w", err)
 	}
