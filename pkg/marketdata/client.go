@@ -46,13 +46,14 @@ type DownloadParams struct {
 
 // and storing it using writers.
 type Client struct {
-	provider provider.Provider
-	config   ClientConfig
-	validate *validator.Validate
+	provider   provider.Provider
+	config     ClientConfig
+	validate   *validator.Validate
+	onProgress provider.OnDownloadProgress
 }
 
 // NewClient creates a new market data client with the given configuration.
-func NewClient(config ClientConfig) (*Client, error) {
+func NewClient(config ClientConfig, onProgress provider.OnDownloadProgress) (*Client, error) {
 	validate := validator.New()
 	if err := validate.Struct(config); err != nil {
 		return nil, fmt.Errorf("invalid client configuration: %w", err)
@@ -78,9 +79,10 @@ func NewClient(config ClientConfig) (*Client, error) {
 	}
 
 	return &Client{
-		provider: marketProvider,
-		config:   config,
-		validate: validate,
+		provider:   marketProvider,
+		config:     config,
+		validate:   validate,
+		onProgress: onProgress,
 	}, nil
 }
 
@@ -116,6 +118,7 @@ func (c *Client) Download(params DownloadParams) error {
 		params.EndDate,
 		params.Multiplier,
 		params.Timespan,
+		c.onProgress,
 	)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)

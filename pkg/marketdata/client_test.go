@@ -80,6 +80,7 @@ func (suite *ClientTestSuite) TestClientDownload() {
 						time.Date(2023, 1, 31, 0, 0, 0, 0, time.UTC),
 						1,
 						models.Minute,
+						gomock.Any(),
 					).
 					Return("path/to/data", nil).
 					Times(1)
@@ -109,6 +110,7 @@ func (suite *ClientTestSuite) TestClientDownload() {
 						time.Date(2023, 1, 31, 0, 0, 0, 0, time.UTC),
 						1,
 						models.Minute,
+						gomock.Any(),
 					).
 					Return("", os.ErrNotExist).
 					Times(1)
