@@ -9,7 +9,21 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${workspaceFolder}/cmd/download/main.go"
+      "program": "${workspaceFolder}/cmd/market/main.go",
+      "args": [
+        "--provider",
+        "binance",
+        "--writer",
+        "duckdb",
+        "--data",
+        "${workspaceFolder}/data",
+        "--ticker",
+        "BTCUSDT",
+        "--start",
+        "2025-01-01",
+        "--end",
+        "2025-01-04"
+      ]
     },
     {
       "name": "Backtest",

@@ -31,7 +31,7 @@ func (c *BinanceClient) ConfigWriter(w writer.MarketDataWriter) {
 
 // Download downloads the historical klines data for the given ticker and date range from Binance.
 // It converts the binance kline format to our internal MarketData format and writes it using the configured writer.
-func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan) (path string, err error) {
+func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
 	interval, err := convertTimespanToBinanceInterval(timespan, multiplier)
 	if err != nil {
 		return "", fmt.Errorf("failed to convert timespan to Binance interval: %w", err)
@@ -50,19 +50,78 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 	startTimeMillis := startDate.UnixMilli()
 	endTimeMillis := endDate.UnixMilli()
 
-	// Binance Kline service limits requests to 1000 data points.
-	// We might need to make multiple requests if the date range is too large.
-	// Let's start with a simple implementation assuming the range fits within the limit.
-	klines, err := c.client.NewKlinesService().
-		Symbol(ticker).
-		Interval(interval).
-		StartTime(startTimeMillis).
-		EndTime(endTimeMillis).
-		Do(context.Background())
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch klines from Binance: %w", err)
+	// Use pagination to handle Binance API limits (max 500 data points per request)
+	// Keep track of the last data point time to use as start time for next request
+	currentStartTime := startTimeMillis
+
+	for {
+		klines, err := c.client.NewKlinesService().
+			Symbol(ticker).
+			Interval(interval).
+			StartTime(currentStartTime).
+			EndTime(endTimeMillis).
+			Do(context.Background())
+		if err != nil {
+			// Attempt to finalize/close even if fetch fails
+			_, finalizeErr := c.writer.Finalize()
+			if finalizeErr != nil {
+				return "", fmt.Errorf("failed to fetch klines from Binance: %w; also failed to finalize writer: %v", err, finalizeErr)
+			}
+
+			return "", fmt.Errorf("failed to fetch klines from Binance: %w", err)
+		}
+
+		go onProgress(float64(currentStartTime), float64(endTimeMillis), fmt.Sprintf("Downloading %s klines from Binance", ticker))
+
+		// Break conditions: no data or less than 500 records (last page)
+		if len(klines) == 0 || len(klines) < 500 {
+			// Process the remaining klines if any
+			if err := processKlines(c.writer, ticker, klines); err != nil {
+				// Attempt to finalize/close even if processing fails
+				_, finalizeErr := c.writer.Finalize()
+				if finalizeErr != nil {
+					return "", fmt.Errorf("failed to process klines: %w; also failed to finalize writer: %v", err, finalizeErr)
+				}
+
+				return "", fmt.Errorf("failed to process klines: %w", err)
+			}
+
+			break
+		}
+
+		// Process current page of klines
+		if err := processKlines(c.writer, ticker, klines); err != nil {
+			// Attempt to finalize/close even if processing fails
+			_, finalizeErr := c.writer.Finalize()
+			if finalizeErr != nil {
+				return "", fmt.Errorf("failed to process klines: %w; also failed to finalize writer: %v", err, finalizeErr)
+			}
+
+			return "", fmt.Errorf("failed to process klines: %w", err)
+		}
+
+		// Update start time for next request
+		// Use the close time of the last kline + 1ms to avoid duplicates
+		lastKline := klines[len(klines)-1]
+		currentStartTime = lastKline.CloseTime + 1
+
+		// Break if we've reached or exceeded the end time
+		if currentStartTime >= endTimeMillis {
+			break
+		}
 	}
 
+	// Finalize the writing process (e.g., save file, commit transaction)
+	outputPath, err := c.writer.Finalize()
+	if err != nil {
+		return "", fmt.Errorf("failed to finalize writer: %w", err)
+	}
+
+	return outputPath, nil
+}
+
+// processKlines converts Binance kline data to our internal MarketData format and writes it.
+func processKlines(writer writer.MarketDataWriter, ticker string, klines []*binance.Kline) error {
 	for _, k := range klines {
 		open, _ := strconv.ParseFloat(k.Open, 64)
 		high, _ := strconv.ParseFloat(k.High, 64)
@@ -81,24 +140,12 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 			// VWAP and N (trade count) might not be directly available in standard klines
 		}
 
-		if err := c.writer.Write(marketData); err != nil {
-			// Attempt to finalize/close even if write fails
-			_, finalizeErr := c.writer.Finalize()
-			if finalizeErr != nil {
-				return "", fmt.Errorf("failed to write market data: %w; also failed to finalize writer: %v", err, finalizeErr)
-			}
-
-			return "", fmt.Errorf("failed to write market data: %w", err)
+		if err := writer.Write(marketData); err != nil {
+			return fmt.Errorf("failed to write market data: %w", err)
 		}
 	}
 
-	// Finalize the writing process (e.g., save file, commit transaction)
-	outputPath, err := c.writer.Finalize()
-	if err != nil {
-		return "", fmt.Errorf("failed to finalize writer: %w", err)
-	}
-
-	return outputPath, nil
+	return nil
 }
 
 // convertTimespanToBinanceInterval converts the polygon timespan and multiplier to a Binance interval string.
