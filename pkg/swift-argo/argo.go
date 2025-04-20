@@ -3,7 +3,6 @@ package swiftargo
 import (
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
-	v1 "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
 )
 
 type Argo struct {
@@ -11,9 +10,7 @@ type Argo struct {
 }
 
 func NewArgo() *Argo {
-	return &Argo{
-		engine: v1.NewBacktestEngineV1(),
-	}
+	return &Argo{}
 }
 
 func (a *Argo) SetConfigPath(path string) {

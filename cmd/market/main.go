@@ -9,6 +9,7 @@ import (
 
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata"
+	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v3"
 )
 
@@ -31,8 +32,16 @@ func downloadAction(ctx context.Context, cmd *cli.Command) error {
 		PolygonApiKey: os.Getenv("POLYGON_API_KEY"),
 	}
 
+	progressBar := progressbar.New(100)
+
 	// Create market data client
-	client, err := marketdata.NewClient(clientConfig)
+	client, err := marketdata.NewClient(clientConfig, func(current float64, total float64, message string) {
+		if total != 0 {
+			progressBar.Set(int(total))
+		}
+
+		progressBar.Add(1)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create market data client: %w", err)
 	}

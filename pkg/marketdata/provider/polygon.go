@@ -36,7 +36,7 @@ func (c *PolygonClient) ConfigWriter(w writer.MarketDataWriter) {
 	c.writer = w
 }
 
-func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan) (path string, err error) {
+func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
 	if c.writer == nil {
 		return "", fmt.Errorf("no writer configured for PolygonClient. Call ConfigWriter first")
 	}
@@ -73,6 +73,8 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 	processedCount := 0
 
 	for iter.Next() {
+		go onProgress(float64(processedCount), float64(totalIterations), fmt.Sprintf("Downloading %s", ticker))
+
 		agg := iter.Item()
 		marketData := types.MarketData{
 			Time:   time.Time(agg.Timestamp),
