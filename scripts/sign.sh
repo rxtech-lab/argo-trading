@@ -17,9 +17,9 @@ for binary in "${BINARIES[@]}"; do
   BINARY_PATH="output/${binary}"
   
   echo "Signing binary: ${BINARY_PATH}"
-  
-  # Sign the binary with hardened runtime
-  codesign --force --options runtime --timestamp --sign "${SIGNING_CERTIFICATE_NAME}" "${BINARY_PATH}"
+
+  # Sign the binary with hardened runtime and entitlements
+  codesign --force --options runtime --timestamp --entitlements "$(dirname "$0")/app.entitlements" --sign "${SIGNING_CERTIFICATE_NAME}" "${BINARY_PATH}"
   
   # Verify signature
   codesign --verify --verbose "${BINARY_PATH}"
