@@ -28,7 +28,7 @@ func (m *MACD) Name() types.IndicatorType {
 	return types.IndicatorTypeMACD
 }
 
-// Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int).
+// Config configures the MACD indicator. Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int).
 func (m *MACD) Config(params ...any) error {
 	if len(params) != 3 {
 		return fmt.Errorf("Config expects 3 parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int)")

@@ -625,7 +625,7 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats
 // GetOrderById returns an order by its id.
 func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Order], error) {
 	query := b.sq.
-		Select("*").
+		Select("order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed", "reason", "message", "strategy_name", "position_type").
 		From("orders").
 		Where(squirrel.Eq{"order_id": orderID}).
 		RunWith(b.db)
@@ -769,7 +769,7 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 
 func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	query := b.sq.
-		Select("*").
+		Select("order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed", "reason", "message", "strategy_name", "position_type").
 		From("orders").
 		OrderBy("timestamp ASC").
 		RunWith(b.db)

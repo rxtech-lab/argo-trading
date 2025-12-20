@@ -169,7 +169,7 @@ func (w *DuckDBWriter) Close() error {
 			errMsg += fmt.Sprintf("\n- %v", e)
 		}
 
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("%s", errMsg)
 	}
 
 	return nil

@@ -12,3 +12,10 @@ build-swift-argo:
 # Clean generated files
 clean:
 	cd pkg/strategy && rm -f *.pb.go 
+
+# run golangci-lint
+lint:
+	golangci-lint run ./...
+
+test:
+	go test ./...

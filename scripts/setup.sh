@@ -51,6 +51,7 @@ go install go.uber.org/mock/mockgen@latest
 
 # Install gomobile
 go install golang.org/x/mobile/cmd/gomobile@latest
+go get golang.org/x/mobile@latest
 
 # Clean up
 echo "Cleaning up..."

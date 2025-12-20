@@ -27,7 +27,7 @@ func (a *ATR) Name() types.IndicatorType {
 	return types.IndicatorTypeATR
 }
 
-// Expected parameters: period (int).
+// Config configures the ATR indicator. Expected parameters: period (int).
 func (a *ATR) Config(params ...any) error {
 	if len(params) != 1 {
 		return fmt.Errorf("Config expects 1 parameter: period (int)")
