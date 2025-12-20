@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "make lint",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "make lint"
+          }
+        ]
+      },
+      {
+        "matcher": "make test",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "make test"
+          }
+        ]
+      }
+    ]
+  }
+}
