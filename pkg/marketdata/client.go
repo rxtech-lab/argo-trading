@@ -44,7 +44,7 @@ type DownloadParams struct {
 	Timespan   models.Timespan `validate:"required"`
 }
 
-// and storing it using writers.
+// Client is the market data client responsible for downloading data from providers and storing it using writers.
 type Client struct {
 	provider   provider.Provider
 	config     ClientConfig

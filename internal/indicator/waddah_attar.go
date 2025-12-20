@@ -36,7 +36,7 @@ func (wa *WaddahAttar) Name() types.IndicatorType {
 	return types.IndicatorTypeWaddahAttar
 }
 
-// Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64).
+// Config configures the Waddah Attar indicator. Expected parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64).
 func (wa *WaddahAttar) Config(params ...any) error {
 	if len(params) != 5 {
 		return fmt.Errorf("Config expects 5 parameters: fastPeriod (int), slowPeriod (int), signalPeriod (int), atrPeriod (int), multiplier (float64)")

@@ -507,7 +507,7 @@ func NewWasmStrategyApi(ctx *runtime.RuntimeContext) strategy.StrategyApi {
 	}
 }
 
-// GetStrategyApi returns the strategy api that provides host functions
+// GetStrategyApiForWasm returns the strategy api that provides host functions
 // for wasm runtime strategies to interact with the trading system.
 func GetStrategyApiForWasm(r *runtime.RuntimeContext) strategy.StrategyApi {
 	return NewWasmStrategyApi(r)

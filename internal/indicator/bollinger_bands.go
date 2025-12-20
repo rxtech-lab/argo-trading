@@ -39,7 +39,7 @@ func (bb *BollingerBands) Name() types.IndicatorType {
 	return types.IndicatorTypeBollingerBands
 }
 
-// Expected parameters: period (int), stdDev (float64), lookback (time.Duration).
+// Config configures the Bollinger Bands indicator. Expected parameters: period (int), stdDev (float64), lookback (time.Duration).
 func (bb *BollingerBands) Config(params ...any) error {
 	if len(params) != 3 {
 		return fmt.Errorf("Config expects 3 parameters: period (int), stdDev (float64), lookback (time.Duration)")

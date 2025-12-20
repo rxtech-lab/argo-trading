@@ -25,7 +25,7 @@ func (m *MA) Name() types.IndicatorType {
 	return types.IndicatorTypeMA
 }
 
-// Expected parameters: period (int).
+// Config configures the MA indicator. Expected parameters: period (int).
 func (m *MA) Config(params ...any) error {
 	if len(params) != 1 {
 		return fmt.Errorf("Config expects 1 parameter: period (int)")

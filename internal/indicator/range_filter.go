@@ -10,7 +10,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
 
-// --- RangeFilter Indicator ---
+// RangeFilter represents the Range Filter indicator.
 // The indicator struct itself holds configuration parameters and state.
 type RangeFilter struct {
 	period     int
@@ -30,7 +30,7 @@ func (rf *RangeFilter) Name() types.IndicatorType {
 	return types.IndicatorTypeRangeFilter
 }
 
-// Expected parameters: period (int), multiplier (float64).
+// Config configures the Range Filter indicator. Expected parameters: period (int), multiplier (float64).
 func (rf *RangeFilter) Config(params ...any) error {
 	if len(params) != 2 {
 		return fmt.Errorf("Config expects 2 parameters: period (int), multiplier (float64)")
@@ -112,7 +112,7 @@ type RangeFilterData struct {
 	initialized bool
 }
 
-// - optional period (int) - if provided, overrides the default Period.
+// RawValue calculates the Range Filter value. Accepts optional period (int) to override the default Period.
 func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 	// Validate and extract parameters
 	if len(params) < 3 {

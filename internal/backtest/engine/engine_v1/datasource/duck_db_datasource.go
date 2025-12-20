@@ -58,8 +58,9 @@ func (d *DuckDBDataSource) Initialize(path string) error {
 	}
 
 	// Create a view from the parquet file - using raw SQL as Squirrel doesn't support CREATE VIEW
+	// Use SELECT * to include all columns from the parquet file (including indicator columns for testing)
 	query := fmt.Sprintf(`
-		CREATE VIEW market_data AS 
+		CREATE VIEW market_data AS
 		SELECT * FROM read_parquet('%s');
 	`, path)
 

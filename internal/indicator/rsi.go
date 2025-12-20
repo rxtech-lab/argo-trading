@@ -28,7 +28,7 @@ func (r *RSI) Name() types.IndicatorType {
 	return types.IndicatorTypeRSI
 }
 
-// Expected parameters: period (int).
+// Config configures the RSI indicator. Expected parameters: period (int).
 func (r *RSI) Config(params ...any) error {
 	if len(params) < 1 {
 		return fmt.Errorf("Config expects at least 1 parameter: period (int)")
