@@ -474,6 +474,557 @@ func matchMarketData(expected types.MarketData) gomock.Matcher {
 	)
 }
 
+// TestBacktestEngineV1_Initialize tests the Initialize function
+func TestBacktestEngineV1_Initialize(t *testing.T) {
+	t.Run("Invalid YAML config", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		// Invalid YAML should cause an error
+		err := backtestEngine.Initialize("invalid: yaml: [")
+		require.Error(t, err, "Initialize with invalid YAML should return an error")
+	})
+
+	t.Run("Valid config with different brokers", func(t *testing.T) {
+		// Test with interactive broker
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+		config := `
+initialCapital: 10000
+broker: interactive_broker
+`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		// Test with zero commission broker
+		engine2 := NewBacktestEngineV1()
+		backtestEngine2 := engine2.(*BacktestEngineV1)
+		config2 := `
+initialCapital: 10000
+broker: zero
+`
+		err = backtestEngine2.Initialize(config2)
+		require.NoError(t, err)
+
+		// Test with default broker (empty)
+		engine3 := NewBacktestEngineV1()
+		backtestEngine3 := engine3.(*BacktestEngineV1)
+		config3 := `
+initialCapital: 10000
+`
+		err = backtestEngine3.Initialize(config3)
+		require.NoError(t, err)
+	})
+}
+
+// TestBacktestEngineV1_LoadStrategyFromFile tests LoadStrategyFromFile function
+func TestBacktestEngineV1_LoadStrategyFromFile(t *testing.T) {
+	t.Run("Unsupported strategy type", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		// Try to load a .txt file which is not supported
+		err = backtestEngine.LoadStrategyFromFile("/path/to/strategy.txt")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported strategy type")
+	})
+
+	t.Run("Non-existent WASM file", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		// Try to load a non-existent .wasm file
+		err = backtestEngine.LoadStrategyFromFile("/path/to/nonexistent.wasm")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create strategy runtime")
+	})
+}
+
+// TestBacktestEngineV1_LoadStrategyFromBytes tests LoadStrategyFromBytes function
+func TestBacktestEngineV1_LoadStrategyFromBytes(t *testing.T) {
+	t.Run("Unsupported strategy type", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		// Try to load with an unsupported strategy type
+		err = backtestEngine.LoadStrategyFromBytes([]byte("test"), engine_types.StrategyType("unsupported"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported strategy type")
+	})
+
+	t.Run("Invalid WASM bytes", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		// Try to load invalid WASM bytes
+		err = backtestEngine.LoadStrategyFromBytes([]byte("not valid wasm"), engine_types.StrategyTypeWASM)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create strategy runtime")
+	})
+}
+
+// TestBacktestEngineV1_GetConfigSchema tests GetConfigSchema function
+func TestBacktestEngineV1_GetConfigSchema(t *testing.T) {
+	t.Run("Get config schema", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		schema, err := backtestEngine.GetConfigSchema()
+		require.NoError(t, err)
+		assert.NotEmpty(t, schema)
+		assert.Contains(t, schema, "initial_capital")
+	})
+}
+
+// TestBacktestEngineV1_PreRunCheck tests the preRunCheck function
+func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
+	t.Run("No strategies loaded", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no strategies loaded")
+	})
+
+	t.Run("No strategy config paths", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no strategy config paths loaded")
+	})
+
+	t.Run("No data paths", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+
+		tempDir := t.TempDir()
+		configPath := filepath.Join(tempDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no data paths loaded")
+	})
+
+	t.Run("No results folder", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+
+		tempDir := t.TempDir()
+		configPath := filepath.Join(tempDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no results folder set")
+	})
+
+	t.Run("No datasource set", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+
+		tempDir := t.TempDir()
+		configPath := filepath.Join(tempDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no datasource set")
+	})
+}
+
+// TestBacktestEngineV1_RunErrors tests various error paths in Run function
+func TestBacktestEngineV1_RunErrors(t *testing.T) {
+	t.Run("Config read error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+
+		tempDir := t.TempDir()
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		// Set a non-existent config path
+		backtestEngine.strategyConfigPaths = []string{"/nonexistent/config.yaml"}
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+	})
+
+	t.Run("InitializeApi error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(errors.New("api initialization failed")).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to initialize strategy api")
+	})
+
+	t.Run("Strategy Initialize error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(errors.New("strategy init failed")).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to initialize strategy")
+	})
+
+	t.Run("Datasource Initialize error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(errors.New("datasource init failed")).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to initialize data source")
+	})
+
+	t.Run("Datasource Count error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(0, errors.New("count failed")).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get data count")
+	})
+
+	t.Run("Data read error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+
+		// Return a function that yields an error
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			yield(types.MarketData{}, errors.New("read error"))
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to read data")
+	})
+
+	t.Run("ProcessData error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(errors.New("process data failed")).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+
+		marketData := types.MarketData{Symbol: "TEST", Close: 100.0}
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			yield(marketData, nil)
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to process data")
+	})
+
+	t.Run("With callback", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
+
+		marketData1 := types.MarketData{Symbol: "TEST", Close: 100.0}
+		marketData2 := types.MarketData{Symbol: "TEST", Close: 101.0}
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			yield(marketData1, nil)
+			yield(marketData2, nil)
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		callbackCalled := 0
+		callback := func(current int, total int) error {
+			callbackCalled++
+			return nil
+		}
+
+		err = backtestEngine.Run(optional.Some[engine_types.OnProcessDataCallback](callback))
+		require.NoError(t, err)
+		assert.Equal(t, 2, callbackCalled, "Callback should be called for each data point")
+	})
+}
+
 // TestBacktestTrading_MismatchedSymbol tests that orders with mismatched symbols
 // are added to pending orders instead of being executed or returning an error
 func TestBacktestTrading_MismatchedSymbol(t *testing.T) {
