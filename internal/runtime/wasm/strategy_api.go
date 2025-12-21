@@ -12,7 +12,24 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
+	"go.uber.org/zap"
 )
+
+// buildZapFields converts a map of string fields to zap.Field slice.
+func buildZapFields(fields map[string]string) []zap.Field {
+	if len(fields) == 0 {
+		return nil
+	}
+
+	zapFields := make([]zap.Field, 0, len(fields)+1)
+	zapFields = append(zapFields, zap.String("source", "strategy"))
+
+	for k, v := range fields {
+		zapFields = append(zapFields, zap.String(k, v))
+	}
+
+	return zapFields
+}
 
 type StrategyApiForWasm struct {
 	runtimeContext *runtime.RuntimeContext
@@ -496,6 +513,133 @@ func (s StrategyApiForWasm) SetCache(ctx context.Context, req *strategy.SetReque
 	err := (cache).Set(req.Key, req.Value)
 	if err != nil {
 		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+// GetAccountInfo implements strategy.StrategyApi.
+func (s StrategyApiForWasm) GetAccountInfo(ctx context.Context, _ *emptypb.Empty) (*strategy.AccountInfo, error) {
+	info, err := s.runtimeContext.TradingSystem.GetAccountInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	return &strategy.AccountInfo{
+		Balance:       info.Balance,
+		Equity:        info.Equity,
+		BuyingPower:   info.BuyingPower,
+		RealizedPnl:   info.RealizedPnL,
+		UnrealizedPnl: info.UnrealizedPnL,
+		TotalFees:     info.TotalFees,
+		MarginUsed:    info.MarginUsed,
+	}, nil
+}
+
+// GetOpenOrders implements strategy.StrategyApi.
+func (s StrategyApiForWasm) GetOpenOrders(ctx context.Context, _ *emptypb.Empty) (*strategy.GetOpenOrdersResponse, error) {
+	orders, err := s.runtimeContext.TradingSystem.GetOpenOrders()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &strategy.GetOpenOrdersResponse{
+		Orders: make([]*strategy.OpenOrder, len(orders)),
+	}
+
+	for i, order := range orders {
+		var reason *strategy.Reason
+		if order.Reason.Reason != "" || order.Reason.Message != "" {
+			reason = &strategy.Reason{
+				Reason:  order.Reason.Reason,
+				Message: order.Reason.Message,
+			}
+		}
+
+		response.Orders[i] = &strategy.OpenOrder{
+			Id:           order.ID,
+			Symbol:       order.Symbol,
+			Side:         runtime.PurchaseTypeToStrategyPurchaseType(order.Side),
+			OrderType:    runtime.OrderTypeToStrategyOrderType(order.OrderType),
+			Quantity:     order.Quantity,
+			Price:        order.Price,
+			StrategyName: order.StrategyName,
+			PositionType: runtime.PositionTypeToStrategyPositionType(order.PositionType),
+			Reason:       reason,
+		}
+	}
+
+	return response, nil
+}
+
+// GetTrades implements strategy.StrategyApi.
+func (s StrategyApiForWasm) GetTrades(ctx context.Context, req *strategy.GetTradesRequest) (*strategy.GetTradesResponse, error) {
+	filter := types.TradeFilter{
+		Symbol: req.Symbol,
+		Limit:  int(req.Limit),
+	}
+
+	if req.StartTime != nil {
+		filter.StartTime = req.StartTime.AsTime()
+	}
+
+	if req.EndTime != nil {
+		filter.EndTime = req.EndTime.AsTime()
+	}
+
+	trades, err := s.runtimeContext.TradingSystem.GetTrades(filter)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &strategy.GetTradesResponse{
+		Trades: make([]*strategy.TradeRecord, len(trades)),
+	}
+
+	for i, trade := range trades {
+		response.Trades[i] = &strategy.TradeRecord{
+			OrderId:      trade.Order.OrderID,
+			Symbol:       trade.Order.Symbol,
+			Side:         runtime.PurchaseTypeToStrategyPurchaseType(trade.Order.Side),
+			Quantity:     trade.ExecutedQty,
+			Price:        trade.ExecutedPrice,
+			ExecutedAt:   timestamppb.New(trade.ExecutedAt),
+			Fee:          trade.Fee,
+			Pnl:          trade.PnL,
+			PositionType: runtime.PositionTypeToStrategyPositionType(trade.Order.PositionType),
+			StrategyName: trade.Order.StrategyName,
+			Reason: &strategy.Reason{
+				Reason:  trade.Order.Reason.Reason,
+				Message: trade.Order.Reason.Message,
+			},
+		}
+	}
+
+	return response, nil
+}
+
+// Log implements strategy.StrategyApi.
+func (s StrategyApiForWasm) Log(ctx context.Context, req *strategy.LogRequest) (*emptypb.Empty, error) {
+	if s.runtimeContext.Logger == nil {
+		// Silent no-op if logger not configured
+		return &emptypb.Empty{}, nil
+	}
+
+	// Build the log message with optional fields
+	msg := req.Message
+	fields := req.Fields
+
+	switch req.Level {
+	case strategy.LogLevel_LOG_LEVEL_DEBUG:
+		s.runtimeContext.Logger.Debug(msg, buildZapFields(fields)...)
+	case strategy.LogLevel_LOG_LEVEL_INFO:
+		s.runtimeContext.Logger.Info(msg, buildZapFields(fields)...)
+	case strategy.LogLevel_LOG_LEVEL_WARN:
+		s.runtimeContext.Logger.Warn(msg, buildZapFields(fields)...)
+	case strategy.LogLevel_LOG_LEVEL_ERROR:
+		s.runtimeContext.Logger.Error(msg, buildZapFields(fields)...)
+	default:
+		s.runtimeContext.Logger.Info(msg, buildZapFields(fields)...)
 	}
 
 	return &emptypb.Empty{}, nil

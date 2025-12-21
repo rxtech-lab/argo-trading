@@ -80,10 +80,16 @@ service StrategyApi {
   rpc CancelOrder(CancelOrderRequest) returns (google.protobuf.Empty) {}
   rpc CancelAllOrders(google.protobuf.Empty) returns (google.protobuf.Empty) {}
   rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse) {}
+  rpc GetAccountInfo(google.protobuf.Empty) returns (AccountInfo) {}
+  rpc GetOpenOrders(google.protobuf.Empty) returns (GetOpenOrdersResponse) {}
+  rpc GetTrades(GetTradesRequest) returns (GetTradesResponse) {}
 
   // Marker methods
   rpc Mark(MarkRequest) returns (google.protobuf.Empty) {}
   rpc GetMarkers(google.protobuf.Empty) returns (GetMarkersResponse) {}
+
+  // Logging methods
+  rpc Log(LogRequest) returns (google.protobuf.Empty) {}
 }
 
 enum Interval {
@@ -326,5 +332,77 @@ message Mark {
   string message = 4;
   string category = 5;
   SignalType signal_type = 6;
+}
+
+// AccountInfo represents the current account state
+message AccountInfo {
+  double balance = 1;           // Cash balance
+  double equity = 2;            // Total equity (balance + unrealized P&L)
+  double buying_power = 3;      // Available for new purchases
+  double realized_pnl = 4;      // Closed position profits/losses
+  double unrealized_pnl = 5;    // Open position profits/losses
+  double total_fees = 6;        // Total fees paid
+  double margin_used = 7;       // Margin in use (for margin trading)
+}
+
+// GetOpenOrdersResponse contains all pending orders
+message GetOpenOrdersResponse {
+  repeated OpenOrder orders = 1;
+}
+
+// OpenOrder represents a pending order that has not been executed
+message OpenOrder {
+  string id = 1;
+  string symbol = 2;
+  PurchaseType side = 3;
+  OrderType order_type = 4;
+  double quantity = 5;
+  double price = 6;
+  string strategy_name = 7;
+  PositionType position_type = 8;
+  Reason reason = 9;
+}
+
+// GetTradesRequest contains filters for querying trade history
+message GetTradesRequest {
+  string symbol = 1;                          // Optional: filter by symbol
+  google.protobuf.Timestamp start_time = 2;  // Optional: filter by time range
+  google.protobuf.Timestamp end_time = 3;    // Optional: filter by time range
+  int32 limit = 4;                           // Optional: limit results
+}
+
+// GetTradesResponse contains the list of executed trades
+message GetTradesResponse {
+  repeated TradeRecord trades = 1;
+}
+
+// TradeRecord represents an executed trade
+message TradeRecord {
+  string order_id = 1;
+  string symbol = 2;
+  PurchaseType side = 3;
+  double quantity = 4;
+  double price = 5;
+  google.protobuf.Timestamp executed_at = 6;
+  double fee = 7;
+  double pnl = 8;
+  PositionType position_type = 9;
+  string strategy_name = 10;
+  Reason reason = 11;
+}
+
+// LogLevel represents the severity of a log message
+enum LogLevel {
+  LOG_LEVEL_DEBUG = 0;
+  LOG_LEVEL_INFO = 1;
+  LOG_LEVEL_WARN = 2;
+  LOG_LEVEL_ERROR = 3;
+}
+
+// LogRequest contains a log message from the strategy
+message LogRequest {
+  LogLevel level = 1;
+  string message = 2;
+  map<string, string> fields = 3;  // Optional structured fields
 }
 

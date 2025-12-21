@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -669,4 +670,348 @@ func (suite *StrategyApiTestSuite) TestMarkWithNilMarketData() {
 	// Verify error
 	suite.Error(err)
 	suite.Contains(err.Error(), "market data is required")
+}
+
+// TestGetAccountInfo tests the GetAccountInfo method
+func (suite *StrategyApiTestSuite) TestGetAccountInfo() {
+	accountInfo := types.AccountInfo{
+		Balance:       10000.0,
+		Equity:        10500.0,
+		BuyingPower:   8000.0,
+		RealizedPnL:   500.0,
+		UnrealizedPnL: 200.0,
+		TotalFees:     25.0,
+		MarginUsed:    2000.0,
+	}
+
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetAccountInfo().
+		Return(accountInfo, nil)
+
+	// Execute test
+	response, err := suite.api.GetAccountInfo(context.Background(), &emptypb.Empty{})
+
+	suite.NoError(err)
+	suite.Equal(accountInfo.Balance, response.Balance)
+	suite.Equal(accountInfo.Equity, response.Equity)
+	suite.Equal(accountInfo.BuyingPower, response.BuyingPower)
+	suite.Equal(accountInfo.RealizedPnL, response.RealizedPnl)
+	suite.Equal(accountInfo.UnrealizedPnL, response.UnrealizedPnl)
+	suite.Equal(accountInfo.TotalFees, response.TotalFees)
+	suite.Equal(accountInfo.MarginUsed, response.MarginUsed)
+}
+
+// TestGetAccountInfoError tests the GetAccountInfo method when an error occurs
+func (suite *StrategyApiTestSuite) TestGetAccountInfoError() {
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetAccountInfo().
+		Return(types.AccountInfo{}, fmt.Errorf("trading system error"))
+
+	// Execute test
+	_, err := suite.api.GetAccountInfo(context.Background(), &emptypb.Empty{})
+
+	suite.Error(err)
+	suite.Contains(err.Error(), "trading system error")
+}
+
+// TestGetOpenOrders tests the GetOpenOrders method
+func (suite *StrategyApiTestSuite) TestGetOpenOrders() {
+	orders := []types.ExecuteOrder{
+		{
+			ID:           "order-1",
+			Symbol:       "BTCUSDT",
+			Side:         types.PurchaseTypeBuy,
+			OrderType:    types.OrderTypeLimit,
+			Quantity:     1.0,
+			Price:        50000.0,
+			StrategyName: "test-strategy",
+			PositionType: types.PositionTypeLong,
+			Reason: types.Reason{
+				Reason:  "test reason",
+				Message: "test message",
+			},
+		},
+		{
+			ID:           "order-2",
+			Symbol:       "ETHUSDT",
+			Side:         types.PurchaseTypeSell,
+			OrderType:    types.OrderTypeMarket,
+			Quantity:     2.0,
+			Price:        3000.0,
+			StrategyName: "test-strategy",
+			PositionType: types.PositionTypeShort,
+		},
+	}
+
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetOpenOrders().
+		Return(orders, nil)
+
+	// Execute test
+	response, err := suite.api.GetOpenOrders(context.Background(), &emptypb.Empty{})
+
+	suite.NoError(err)
+	suite.Len(response.Orders, 2)
+
+	// Verify first order
+	suite.Equal("order-1", response.Orders[0].Id)
+	suite.Equal("BTCUSDT", response.Orders[0].Symbol)
+	suite.Equal(strategy.PurchaseType_PURCHASE_TYPE_BUY, response.Orders[0].Side)
+	suite.Equal(strategy.OrderType_ORDER_TYPE_LIMIT, response.Orders[0].OrderType)
+	suite.Equal(1.0, response.Orders[0].Quantity)
+	suite.Equal(50000.0, response.Orders[0].Price)
+	suite.Equal("test-strategy", response.Orders[0].StrategyName)
+	suite.Equal(strategy.PositionType_POSITION_TYPE_LONG, response.Orders[0].PositionType)
+	suite.NotNil(response.Orders[0].Reason)
+	suite.Equal("test reason", response.Orders[0].Reason.Reason)
+	suite.Equal("test message", response.Orders[0].Reason.Message)
+
+	// Verify second order
+	suite.Equal("order-2", response.Orders[1].Id)
+	suite.Equal("ETHUSDT", response.Orders[1].Symbol)
+	suite.Equal(strategy.PurchaseType_PURCHASE_TYPE_SELL, response.Orders[1].Side)
+	suite.Equal(strategy.OrderType_ORDER_TYPE_MARKET, response.Orders[1].OrderType)
+	suite.Equal(strategy.PositionType_POSITION_TYPE_SHORT, response.Orders[1].PositionType)
+	suite.Nil(response.Orders[1].Reason) // No reason set
+}
+
+// TestGetOpenOrdersError tests the GetOpenOrders method when an error occurs
+func (suite *StrategyApiTestSuite) TestGetOpenOrdersError() {
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetOpenOrders().
+		Return(nil, fmt.Errorf("failed to get open orders"))
+
+	// Execute test
+	_, err := suite.api.GetOpenOrders(context.Background(), &emptypb.Empty{})
+
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to get open orders")
+}
+
+// TestGetOpenOrdersEmpty tests the GetOpenOrders method with no open orders
+func (suite *StrategyApiTestSuite) TestGetOpenOrdersEmpty() {
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetOpenOrders().
+		Return([]types.ExecuteOrder{}, nil)
+
+	// Execute test
+	response, err := suite.api.GetOpenOrders(context.Background(), &emptypb.Empty{})
+
+	suite.NoError(err)
+	suite.Len(response.Orders, 0)
+}
+
+// TestGetTrades tests the GetTrades method
+func (suite *StrategyApiTestSuite) TestGetTrades() {
+	now := time.Now()
+	trades := []types.Trade{
+		{
+			Order: types.Order{
+				OrderID:      "trade-order-1",
+				Symbol:       "BTCUSDT",
+				Side:         types.PurchaseTypeBuy,
+				PositionType: types.PositionTypeLong,
+				StrategyName: "test-strategy",
+				Reason: types.Reason{
+					Reason:  "entry signal",
+					Message: "RSI oversold",
+				},
+			},
+			ExecutedQty:   1.0,
+			ExecutedPrice: 50000.0,
+			ExecutedAt:    now,
+			Fee:           5.0,
+			PnL:           0.0,
+		},
+		{
+			Order: types.Order{
+				OrderID:      "trade-order-2",
+				Symbol:       "BTCUSDT",
+				Side:         types.PurchaseTypeSell,
+				PositionType: types.PositionTypeLong,
+				StrategyName: "test-strategy",
+				Reason: types.Reason{
+					Reason:  "exit signal",
+					Message: "Take profit",
+				},
+			},
+			ExecutedQty:   1.0,
+			ExecutedPrice: 52000.0,
+			ExecutedAt:    now.Add(time.Hour),
+			Fee:           5.2,
+			PnL:           1990.0,
+		},
+	}
+
+	filter := types.TradeFilter{
+		Symbol: "BTCUSDT",
+		Limit:  10,
+	}
+
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetTrades(filter).
+		Return(trades, nil)
+
+	// Execute test
+	response, err := suite.api.GetTrades(context.Background(), &strategy.GetTradesRequest{
+		Symbol: "BTCUSDT",
+		Limit:  10,
+	})
+
+	suite.NoError(err)
+	suite.Len(response.Trades, 2)
+
+	// Verify first trade
+	suite.Equal("trade-order-1", response.Trades[0].OrderId)
+	suite.Equal("BTCUSDT", response.Trades[0].Symbol)
+	suite.Equal(strategy.PurchaseType_PURCHASE_TYPE_BUY, response.Trades[0].Side)
+	suite.Equal(strategy.PositionType_POSITION_TYPE_LONG, response.Trades[0].PositionType)
+	suite.Equal(1.0, response.Trades[0].Quantity)
+	suite.Equal(50000.0, response.Trades[0].Price)
+	suite.Equal(5.0, response.Trades[0].Fee)
+	suite.Equal(0.0, response.Trades[0].Pnl)
+	suite.Equal("test-strategy", response.Trades[0].StrategyName)
+	suite.NotNil(response.Trades[0].Reason)
+	suite.Equal("entry signal", response.Trades[0].Reason.Reason)
+
+	// Verify second trade
+	suite.Equal("trade-order-2", response.Trades[1].OrderId)
+	suite.Equal(1990.0, response.Trades[1].Pnl)
+}
+
+// TestGetTradesWithTimeFilter tests the GetTrades method with time filters
+func (suite *StrategyApiTestSuite) TestGetTradesWithTimeFilter() {
+	now := time.Now().UTC()
+	startTime := now.Add(-24 * time.Hour)
+	endTime := now
+
+	filter := types.TradeFilter{
+		Symbol:    "BTCUSDT",
+		StartTime: startTime,
+		EndTime:   endTime,
+		Limit:     5,
+	}
+
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetTrades(filter).
+		Return([]types.Trade{}, nil)
+
+	// Execute test
+	response, err := suite.api.GetTrades(context.Background(), &strategy.GetTradesRequest{
+		Symbol:    "BTCUSDT",
+		StartTime: timestamppb.New(startTime),
+		EndTime:   timestamppb.New(endTime),
+		Limit:     5,
+	})
+
+	suite.NoError(err)
+	suite.Len(response.Trades, 0)
+}
+
+// TestGetTradesError tests the GetTrades method when an error occurs
+func (suite *StrategyApiTestSuite) TestGetTradesError() {
+	// Setup expectations
+	suite.mockTrading.EXPECT().
+		GetTrades(gomock.Any()).
+		Return(nil, fmt.Errorf("failed to get trades"))
+
+	// Execute test
+	_, err := suite.api.GetTrades(context.Background(), &strategy.GetTradesRequest{})
+
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to get trades")
+}
+
+// TestLogWithNilLogger tests the Log method when logger is nil
+func (suite *StrategyApiTestSuite) TestLogWithNilLogger() {
+	// Ensure logger is nil
+	suite.runtimeContext.Logger = nil
+
+	// Execute test - should not error even without logger
+	_, err := suite.api.Log(context.Background(), &strategy.LogRequest{
+		Message: "test message",
+		Level:   strategy.LogLevel_LOG_LEVEL_INFO,
+	})
+
+	suite.NoError(err)
+}
+
+// TestBuildZapFields tests the buildZapFields helper function
+func TestBuildZapFields(t *testing.T) {
+	tests := []struct {
+		name           string
+		fields         map[string]string
+		expectedLen    int
+		expectNil      bool
+		expectContains []string
+	}{
+		{
+			name:        "nil fields",
+			fields:      nil,
+			expectedLen: 0,
+			expectNil:   true,
+		},
+		{
+			name:        "empty fields",
+			fields:      map[string]string{},
+			expectedLen: 0,
+			expectNil:   true,
+		},
+		{
+			name: "single field",
+			fields: map[string]string{
+				"key1": "value1",
+			},
+			expectedLen:    2, // source + 1 field
+			expectNil:      false,
+			expectContains: []string{"source", "key1"},
+		},
+		{
+			name: "multiple fields",
+			fields: map[string]string{
+				"key1": "value1",
+				"key2": "value2",
+				"key3": "value3",
+			},
+			expectedLen:    4, // source + 3 fields
+			expectNil:      false,
+			expectContains: []string{"source", "key1", "key2", "key3"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := buildZapFields(tc.fields)
+
+			if tc.expectNil {
+				if result != nil {
+					t.Errorf("expected nil, got %v", result)
+				}
+				return
+			}
+
+			if len(result) != tc.expectedLen {
+				t.Errorf("expected %d fields, got %d", tc.expectedLen, len(result))
+			}
+
+			// Check that expected keys are present
+			keys := make(map[string]bool)
+			for _, field := range result {
+				keys[field.Key] = true
+			}
+
+			for _, expectedKey := range tc.expectContains {
+				if !keys[expectedKey] {
+					t.Errorf("expected key %s not found in result", expectedKey)
+				}
+			}
+		})
+	}
 }
