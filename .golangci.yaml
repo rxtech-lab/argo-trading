@@ -25,3 +25,5 @@ linters:
       - e2e
       # This is auto generated file and should not be linted
       - pkg/strategy
+      # Ignore mocks
+      - mocks

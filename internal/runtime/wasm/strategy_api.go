@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/knqyf263/go-plugin/types/known/emptypb"
 	"github.com/knqyf263/go-plugin/types/known/timestamppb"
@@ -585,8 +586,10 @@ func (s StrategyApiForWasm) GetOpenOrders(ctx context.Context, _ *emptypb.Empty)
 // GetTrades implements strategy.StrategyApi.
 func (s StrategyApiForWasm) GetTrades(ctx context.Context, req *strategy.GetTradesRequest) (*strategy.GetTradesResponse, error) {
 	filter := types.TradeFilter{
-		Symbol: req.Symbol,
-		Limit:  int(req.Limit),
+		Symbol:    req.Symbol,
+		StartTime: time.Time{},
+		EndTime:   time.Time{},
+		Limit:     int(req.Limit),
 	}
 
 	if req.StartTime != nil {

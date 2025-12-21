@@ -303,6 +303,7 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					Marker:            b.marker,
 					TradingSystem:     b.tradingSystem,
 					Cache:             b.cache,
+					Logger:            b.log,
 				}
 
 				// need to initialize the strategy api first since there is no wasm plugin available before this line
