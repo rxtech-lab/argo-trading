@@ -139,9 +139,13 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 		// if the error is insufficient data, return a no action signal
 		if _, ok := err.(*InsufficientDataError); ok {
 			return types.Signal{
-				Time: marketData.Time,
-				Type: types.SignalTypeNoAction,
-				Name: "Bollinger Bands",
+				Time:      marketData.Time,
+				Type:      types.SignalTypeNoAction,
+				Name:      "Bollinger Bands",
+				Reason:    "",
+				RawValue:  nil,
+				Symbol:    "",
+				Indicator: bb.Name(),
 			}, nil
 		}
 
@@ -154,32 +158,38 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 	// Buy signal when price crosses below lower band
 	if currentPrice < lower {
 		return types.Signal{
-			Time:     marketData.Time,
-			Type:     types.SignalTypeBuyLong,
-			Name:     "Bollinger Bands",
-			Reason:   "Price below lower band",
-			RawValue: map[string]float64{"upper": upper, "middle": middle, "lower": lower},
+			Time:      marketData.Time,
+			Type:      types.SignalTypeBuyLong,
+			Name:      "Bollinger Bands",
+			Reason:    "Price below lower band",
+			RawValue:  map[string]float64{"upper": upper, "middle": middle, "lower": lower},
+			Symbol:    marketData.Symbol,
+			Indicator: bb.Name(),
 		}, nil
 	}
 
 	// Sell signal when price crosses above upper band
 	if currentPrice > upper {
 		return types.Signal{
-			Time:     marketData.Time,
-			Type:     types.SignalTypeSellLong,
-			Name:     "Bollinger Bands",
-			Reason:   "Price above upper band",
-			RawValue: map[string]float64{"upper": upper, "middle": middle, "lower": lower},
+			Time:      marketData.Time,
+			Type:      types.SignalTypeSellLong,
+			Name:      "Bollinger Bands",
+			Reason:    "Price above upper band",
+			RawValue:  map[string]float64{"upper": upper, "middle": middle, "lower": lower},
+			Symbol:    marketData.Symbol,
+			Indicator: bb.Name(),
 		}, nil
 	}
 
 	// No action signal
 	return types.Signal{
-		Time:     marketData.Time,
-		Type:     types.SignalTypeNoAction,
-		Name:     "Bollinger Bands",
-		Reason:   "Price within bands",
-		RawValue: map[string]float64{"upper": upper, "middle": middle, "lower": lower},
+		Time:      marketData.Time,
+		Type:      types.SignalTypeNoAction,
+		Name:      "Bollinger Bands",
+		Reason:    "Price within bands",
+		RawValue:  map[string]float64{"upper": upper, "middle": middle, "lower": lower},
+		Symbol:    marketData.Symbol,
+		Indicator: bb.Name(),
 	}, nil
 }
 

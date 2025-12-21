@@ -25,3 +25,9 @@ linters:
       - e2e
       # This is auto generated file and should not be linted
       - pkg/strategy
+linters-settings:
+  exhaustruct:
+    exclude:
+      # Exclude third-party library types that have many fields
+      - 'jsonschema\.Reflector'
+      - 'jsonschema\.Schema'

@@ -66,7 +66,8 @@ func (e *EMA) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 		RawValue: map[string]float64{
 			"ema": emaValue,
 		},
-		Symbol: marketData.Symbol,
+		Symbol:    marketData.Symbol,
+		Indicator: e.Name(),
 	}
 
 	return signal, nil

@@ -23,6 +23,9 @@ type DuckDBWriter struct {
 func NewDuckDBWriter(outputPath string) MarketDataWriter {
 	return &DuckDBWriter{
 		outputPath: outputPath,
+		db:         nil,
+		tx:         nil,
+		stmt:       nil,
 	}
 }
 

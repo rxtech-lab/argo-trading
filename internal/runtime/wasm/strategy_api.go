@@ -118,7 +118,9 @@ func (s StrategyApiForWasm) GetCache(ctx context.Context, req *strategy.GetReque
 
 	value, ok := cache.Get(req.Key)
 	if !ok {
-		return &strategy.GetResponse{}, nil
+		return &strategy.GetResponse{
+			Value: "",
+		}, nil
 	}
 	// check if value is a string
 	if strVal, ok := value.(string); ok {
@@ -289,6 +291,7 @@ func (s StrategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSign
 	}
 
 	marketData := types.MarketData{
+		Id:     "",
 		Symbol: req.MarketData.Symbol,
 		High:   req.MarketData.High,
 		Low:    req.MarketData.Low,

@@ -180,19 +180,21 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 			Title:        title,
 			Message:      message,
 			Category:     category,
+			Signal:       optional.None[types.Signal](),
 		}
 
 		// Add signal if it exists
 		if signalTime.Valid && signalSymbol.Valid && signalTypeStr.Valid && signalName.Valid {
 			signal := types.Signal{
-				Type:   types.SignalType(signalTypeStr.String),
-				Name:   signalName.String,
-				Time:   signalTime.Time,
-				Symbol: signalSymbol.String,
+				Type:      types.SignalType(signalTypeStr.String),
+				Name:      signalName.String,
+				Time:      signalTime.Time,
+				Symbol:    signalSymbol.String,
+				Reason:    "",
+				RawValue:  nil,
+				Indicator: "",
 			}
 			mark.Signal = optional.Some(signal)
-		} else {
-			mark.Signal = optional.None[types.Signal]()
 		}
 
 		marks = append(marks, mark)

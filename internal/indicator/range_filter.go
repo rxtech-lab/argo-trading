@@ -188,15 +188,25 @@ func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 // This shared function is used by both GetSignal and RawValue.
 func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx IndicatorContext) (RangeFilterData, error) {
 	src := marketData.Close
-	result := RangeFilterData{}
+	result := RangeFilterData{
+		filt:        0,
+		smrng:       0,
+		prevFilt:    0,
+		upward:      0,
+		downward:    0,
+		initialized: false,
+	}
 
 	// Initialize state if needed
 	cacheV1 := ctx.Cache.(*cache.CacheV1)
 	if cacheV1.RangeFilterState.IsNone() {
 		cacheV1.RangeFilterState = optional.Some(cache.RangeFilterState{
-			PrevFilt:   math.NaN(),
-			PrevSource: math.NaN(),
-			Symbol:     marketData.Symbol,
+			Initialized: false,
+			PrevFilt:    math.NaN(),
+			PrevSource:  math.NaN(),
+			Upward:      0,
+			Downward:    0,
+			Symbol:      marketData.Symbol,
 		})
 	}
 
@@ -207,9 +217,12 @@ func (rf *RangeFilter) calculateFilter(marketData types.MarketData, ctx Indicato
 
 	if value.Symbol != marketData.Symbol {
 		cacheV1.RangeFilterState = optional.Some(cache.RangeFilterState{
-			PrevFilt:   math.NaN(),
-			PrevSource: math.NaN(),
-			Symbol:     marketData.Symbol,
+			Initialized: false,
+			PrevFilt:    math.NaN(),
+			PrevSource:  math.NaN(),
+			Upward:      0,
+			Downward:    0,
+			Symbol:      marketData.Symbol,
 		})
 		value, _ = cacheV1.RangeFilterState.Take()
 	}

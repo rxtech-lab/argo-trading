@@ -10,7 +10,9 @@ type Argo struct {
 }
 
 func NewArgo() *Argo {
-	return &Argo{}
+	return &Argo{
+		engine: nil,
+	}
 }
 
 func (a *Argo) SetConfigPath(path string) {

@@ -19,7 +19,13 @@ type MarketDownloaderHelper interface {
 }
 
 func NewMarketDownloader(helper MarketDownloaderHelper, provider string, writer string, dataFolder string, polygonApiKey string) *MarketDownloader {
-	return &MarketDownloader{helper: helper, provider: provider, writer: writer, dataFolder: dataFolder}
+	return &MarketDownloader{
+		helper:        helper,
+		provider:      provider,
+		writer:        writer,
+		dataFolder:    dataFolder,
+		polygonApiKey: polygonApiKey,
+	}
 }
 
 func (m *MarketDownloader) Download(ticker string, from, to string, interval string) error {

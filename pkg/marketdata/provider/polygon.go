@@ -29,6 +29,7 @@ func NewPolygonClient(apiKey string) (Provider, error) {
 
 	return &PolygonClient{
 		client: client,
+		writer: nil,
 	}, nil
 }
 
@@ -66,6 +67,9 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 		Timespan:   timespan,
 		From:       models.Millis(startDate),
 		To:         models.Millis(endDate),
+		Adjusted:   nil,
+		Order:      nil,
+		Limit:      nil,
 	}.WithLimit(50000)
 
 	iter := c.client.ListAggs(context.Background(), params)
@@ -77,6 +81,8 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 
 		agg := iter.Item()
 		marketData := types.MarketData{
+			Id:     "",
+			Symbol: ticker,
 			Time:   time.Time(agg.Timestamp),
 			Open:   agg.Open,
 			High:   agg.High,
