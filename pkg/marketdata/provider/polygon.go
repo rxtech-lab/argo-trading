@@ -29,6 +29,7 @@ func NewPolygonClient(apiKey string) (Provider, error) {
 
 	return &PolygonClient{
 		client: client,
+		writer: nil,
 	}, nil
 }
 
@@ -60,6 +61,7 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 
 	bar := progressbar.NewOptions(totalIterations, progressbar.OptionSetDescription(fmt.Sprintf("Downloading %s", ticker)), progressbar.OptionShowCount())
 
+	//nolint:exhaustruct // third-party struct with many optional fields
 	params := models.ListAggsParams{
 		Ticker:     ticker,
 		Multiplier: multiplier,
@@ -77,6 +79,8 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 
 		agg := iter.Item()
 		marketData := types.MarketData{
+			Id:     "",
+			Symbol: ticker,
 			Time:   time.Time(agg.Timestamp),
 			Open:   agg.Open,
 			High:   agg.High,

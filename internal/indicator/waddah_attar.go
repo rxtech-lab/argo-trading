@@ -145,7 +145,8 @@ func (wa *WaddahAttar) GetSignal(marketData types.MarketData, ctx IndicatorConte
 			"trend":     waData.trend,
 			"explosion": waData.explosion,
 		},
-		Symbol: marketData.Symbol,
+		Symbol:    marketData.Symbol,
+		Indicator: wa.Name(),
 	}
 
 	return signal, nil
@@ -211,17 +212,26 @@ func (wa *WaddahAttar) RawValue(params ...any) (float64, error) {
 
 // calculateWaddahAttar performs the actual Waddah Attar calculation.
 func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx IndicatorContext) (WaddahAttarData, error) {
-	result := WaddahAttarData{}
+	result := WaddahAttarData{
+		macd:        0,
+		signal:      0,
+		hist:        0,
+		atr:         0,
+		trend:       0,
+		explosion:   0,
+		initialized: false,
+	}
 
 	// Initialize state if needed
 	cacheV1 := ctx.Cache.(*cache.CacheV1)
 	if cacheV1.WaddahAttarState.IsNone() {
 		cacheV1.WaddahAttarState = optional.Some(cache.WaddahAttarState{
-			PrevMACD:   math.NaN(),
-			PrevSignal: math.NaN(),
-			PrevHist:   math.NaN(),
-			PrevATR:    math.NaN(),
-			Symbol:     marketData.Symbol,
+			Initialized: false,
+			PrevMACD:    math.NaN(),
+			PrevSignal:  math.NaN(),
+			PrevHist:    math.NaN(),
+			PrevATR:     math.NaN(),
+			Symbol:      marketData.Symbol,
 		})
 	}
 
@@ -232,11 +242,12 @@ func (wa *WaddahAttar) calculateWaddahAttar(marketData types.MarketData, ctx Ind
 
 	if value.Symbol != marketData.Symbol {
 		cacheV1.WaddahAttarState = optional.Some(cache.WaddahAttarState{
-			PrevMACD:   math.NaN(),
-			PrevSignal: math.NaN(),
-			PrevHist:   math.NaN(),
-			PrevATR:    math.NaN(),
-			Symbol:     marketData.Symbol,
+			Initialized: false,
+			PrevMACD:    math.NaN(),
+			PrevSignal:  math.NaN(),
+			PrevHist:    math.NaN(),
+			PrevATR:     math.NaN(),
+			Symbol:      marketData.Symbol,
 		})
 		value, _ = cacheV1.WaddahAttarState.Take()
 	}

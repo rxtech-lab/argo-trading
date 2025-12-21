@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
@@ -252,6 +253,8 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 			StrategyName: order.StrategyName,
 			Quantity:     order.Quantity,
 			PositionType: order.PositionType,
+			TakeProfit:   optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
+			StopLoss:     optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
 		}
 
 		// Add to pending orders
@@ -272,6 +275,8 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 			StrategyName: order.StrategyName,
 			Quantity:     order.Quantity,
 			PositionType: order.PositionType,
+			TakeProfit:   optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
+			StopLoss:     optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
 		}
 
 		// Add to pending orders
@@ -284,7 +289,16 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 func (b *BacktestTrading) Reset(initialBalance float64) {
 	b.pendingOrders = []types.ExecuteOrder{}
 	b.balance = initialBalance
-	b.marketData = types.MarketData{}
+	b.marketData = types.MarketData{
+		Id:     "",
+		Symbol: "",
+		Time:   time.Time{},
+		Open:   0,
+		High:   0,
+		Low:    0,
+		Close:  0,
+		Volume: 0,
+	}
 }
 
 // GetAccountInfo implements trading.TradingSystem.
@@ -390,9 +404,18 @@ func (b *BacktestTrading) GetTrades(filter types.TradeFilter) ([]types.Trade, er
 
 func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) trading.TradingSystem {
 	return &BacktestTrading{
-		state:            state,
-		balance:          initialBalance,
-		marketData:       types.MarketData{},
+		state:   state,
+		balance: initialBalance,
+		marketData: types.MarketData{
+			Id:     "",
+			Symbol: "",
+			Time:   time.Time{},
+			Open:   0,
+			High:   0,
+			Low:    0,
+			Close:  0,
+			Volume: 0,
+		},
 		pendingOrders:    []types.ExecuteOrder{},
 		commission:       commission,
 		decimalPrecision: decimalPrecision,

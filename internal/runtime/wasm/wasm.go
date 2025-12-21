@@ -27,13 +27,17 @@ func NewStrategyWasmRuntime(wasmFilePath string) (runtime.StrategyRuntime, error
 	}
 
 	return &StrategyWasmRuntime{
+		strategy:     nil,
 		wasmFilePath: wasmFilePath,
+		wasmBytes:    nil,
 	}, nil
 }
 
 func NewStrategyWasmRuntimeFromBytes(wasmBytes []byte) (runtime.StrategyRuntime, error) {
 	return &StrategyWasmRuntime{
-		wasmBytes: wasmBytes,
+		strategy:     nil,
+		wasmFilePath: "",
+		wasmBytes:    wasmBytes,
 	}, nil
 }
 

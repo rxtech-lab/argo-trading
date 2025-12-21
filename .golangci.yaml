@@ -2,6 +2,9 @@
 version: "2"
 linters:
   default: fast
+  enable:
+    # Checks that all struct fields are filled when initializing structs
+    - exhaustruct
   disable:
     - cyclop
     - depguard
@@ -22,3 +25,5 @@ linters:
       - e2e
       # This is auto generated file and should not be linted
       - pkg/strategy
+      # Ignore mocks
+      - mocks

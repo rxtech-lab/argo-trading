@@ -22,6 +22,7 @@ func NewBinanceClient() (Provider, error) {
 
 	return &BinanceClient{
 		client: client,
+		writer: nil,
 	}, nil
 }
 
@@ -130,6 +131,7 @@ func processKlines(writer writer.MarketDataWriter, ticker string, klines []*bina
 		volume, _ := strconv.ParseFloat(k.Volume, 64)
 
 		marketData := types.MarketData{
+			Id:     "",
 			Symbol: ticker,
 			Time:   time.UnixMilli(k.OpenTime), // Using OpenTime as the timestamp for the bar
 			Open:   open,

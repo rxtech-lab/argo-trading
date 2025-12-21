@@ -40,7 +40,19 @@ type BacktestEngineV1 struct {
 
 func NewBacktestEngineV1() engine.Engine {
 	return &BacktestEngineV1{
-		cache: cache.NewCacheV1(),
+		config:              EmptyConfig(),
+		strategies:          nil,
+		strategyConfigPaths: nil,
+		dataPaths:           nil,
+		resultsFolder:       "",
+		log:                 nil,
+		indicatorRegistry:   nil,
+		marker:              nil,
+		tradingSystem:       nil,
+		state:               nil,
+		datasource:          nil,
+		balance:             0,
+		cache:               cache.NewCacheV1(),
 	}
 }
 
@@ -291,6 +303,7 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					Marker:            b.marker,
 					TradingSystem:     b.tradingSystem,
 					Cache:             b.cache,
+					Logger:            b.log,
 				}
 
 				// need to initialize the strategy api first since there is no wasm plugin available before this line

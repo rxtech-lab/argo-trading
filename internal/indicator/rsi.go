@@ -93,7 +93,8 @@ func (r *RSI) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 		RawValue: map[string]float64{
 			"rsi": rsiValue,
 		},
-		Symbol: marketData.Symbol,
+		Symbol:    marketData.Symbol,
+		Indicator: r.Name(),
 	}, nil
 }
 

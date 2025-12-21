@@ -94,7 +94,8 @@ func (m *MACD) GetSignal(marketData types.MarketData, ctx IndicatorContext) (typ
 		RawValue: map[string]float64{
 			"macd": macdValue,
 		},
-		Symbol: marketData.Symbol,
+		Symbol:    marketData.Symbol,
+		Indicator: m.Name(),
 	}, nil
 }
 

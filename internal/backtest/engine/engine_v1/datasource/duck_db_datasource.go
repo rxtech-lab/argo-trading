@@ -165,7 +165,7 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 		// Use a prepared statement for better performance
 		stmt, err := d.db.Prepare(query)
 		if err != nil {
-			yield(types.MarketData{}, err)
+			yield(types.MarketData{Id: "", Symbol: "", Time: time.Time{}, Open: 0, High: 0, Low: 0, Close: 0, Volume: 0}, err)
 
 			return
 		}
@@ -179,7 +179,7 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 		}
 
 		if err != nil {
-			yield(types.MarketData{}, err)
+			yield(types.MarketData{Id: "", Symbol: "", Time: time.Time{}, Open: 0, High: 0, Low: 0, Close: 0, Volume: 0}, err)
 
 			return
 		}
@@ -198,12 +198,13 @@ func (d *DuckDBDataSource) ReadAll(start optional.Option[time.Time], end optiona
 
 			err := rows.Scan(&timestamp, &symbol, &open, &high, &low, &close, &volume)
 			if err != nil {
-				yield(types.MarketData{}, err)
+				yield(types.MarketData{Id: "", Symbol: "", Time: time.Time{}, Open: 0, High: 0, Low: 0, Close: 0, Volume: 0}, err)
 
 				return
 			}
 
 			marketData := types.MarketData{
+				Id:     "",
 				Symbol: symbol,
 				Time:   timestamp,
 				Open:   open,
@@ -285,6 +286,7 @@ func (d *DuckDBDataSource) GetRange(start time.Time, end time.Time, interval opt
 		}
 
 		marketData := types.MarketData{
+			Id:     "",
 			Symbol: symbol,
 			Time:   timestamp,
 			Open:   open,
@@ -369,6 +371,7 @@ func (d *DuckDBDataSource) ReadRecordsFromStart(start time.Time, number int, int
 		}
 
 		marketData := types.MarketData{
+			Id:     "",
 			Symbol: symbol,
 			Time:   timestamp,
 			Open:   open,
@@ -453,6 +456,7 @@ func (d *DuckDBDataSource) ReadRecordsFromEnd(end time.Time, number int, interva
 		}
 
 		marketData := types.MarketData{
+			Id:     "",
 			Symbol: symbol,
 			Time:   timestamp,
 			Open:   open,
@@ -570,6 +574,7 @@ func (d *DuckDBDataSource) ReadLastData(symbol string) (types.MarketData, error)
 	}
 
 	return types.MarketData{
+		Id:     "",
 		Symbol: symbolResult,
 		Time:   timestamp,
 		Open:   open,
@@ -623,6 +628,7 @@ func (d *DuckDBDataSource) GetMarketData(symbol string, timestamp time.Time) (ty
 	}
 
 	return types.MarketData{
+		Id:     "",
 		Symbol: symbolResult,
 		Time:   timeResult,
 		Open:   open,
@@ -685,6 +691,7 @@ func (d *DuckDBDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 		}
 
 		marketData := types.MarketData{
+			Id:     "",
 			Symbol: symbolResult,
 			Time:   timestamp,
 			Open:   open,
