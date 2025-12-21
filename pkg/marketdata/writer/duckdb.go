@@ -22,6 +22,9 @@ type DuckDBWriter struct {
 // outputPath specifies the directory where the final Parquet file will be saved.
 func NewDuckDBWriter(outputPath string) MarketDataWriter {
 	return &DuckDBWriter{
+		db:         nil,
+		tx:         nil,
+		stmt:       nil,
 		outputPath: outputPath,
 	}
 }

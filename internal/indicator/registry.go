@@ -25,6 +25,7 @@ type IndicatorRegistryV1 struct {
 func NewIndicatorRegistry() IndicatorRegistry {
 	return &IndicatorRegistryV1{
 		indicators: make(map[types.IndicatorType]Indicator),
+		mu:         sync.RWMutex{},
 	}
 }
 
