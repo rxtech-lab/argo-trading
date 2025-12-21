@@ -191,3 +191,25 @@ func MarkShapeToStrategyMarkShape(markShape types.MarkShape) strategy.MarkShape 
 		return strategy.MarkShape_MARK_SHAPE_CIRCLE
 	}
 }
+
+func PurchaseTypeToStrategyPurchaseType(pt types.PurchaseType) strategy.PurchaseType {
+	switch pt {
+	case types.PurchaseTypeBuy:
+		return strategy.PurchaseType_PURCHASE_TYPE_BUY
+	case types.PurchaseTypeSell:
+		return strategy.PurchaseType_PURCHASE_TYPE_SELL
+	default:
+		return strategy.PurchaseType_PURCHASE_TYPE_BUY
+	}
+}
+
+func PositionTypeToStrategyPositionType(pt types.PositionType) strategy.PositionType {
+	switch pt {
+	case types.PositionTypeLong:
+		return strategy.PositionType_POSITION_TYPE_LONG
+	case types.PositionTypeShort:
+		return strategy.PositionType_POSITION_TYPE_SHORT
+	default:
+		return strategy.PositionType_POSITION_TYPE_LONG
+	}
+}

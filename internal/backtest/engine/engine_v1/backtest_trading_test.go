@@ -1299,3 +1299,302 @@ func (suite *BacktestTradingTestSuite) TestNewBacktestTrading() {
 	suite.Assert().Equal(decimalPrecision, backtest.decimalPrecision)
 	suite.Assert().Empty(backtest.pendingOrders)
 }
+
+func (suite *BacktestTradingTestSuite) TestGetAccountInfo() {
+	// Test empty account (no positions)
+	suite.Run("Empty account", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		suite.trading.UpdateBalance(10000.0)
+		suite.trading.UpdateCurrentMarketData(types.MarketData{
+			Symbol: "AAPL",
+			High:   100.0,
+			Low:    90.0,
+			Close:  95.0,
+		})
+
+		info, err := suite.trading.GetAccountInfo()
+		suite.Require().NoError(err)
+		suite.Assert().Equal(10000.0, info.Balance)
+		suite.Assert().Equal(10000.0, info.Equity)
+		suite.Assert().Equal(0.0, info.RealizedPnL)
+		suite.Assert().Equal(0.0, info.UnrealizedPnL)
+		suite.Assert().Equal(0.0, info.TotalFees)
+	})
+
+	// Test account with open position
+	suite.Run("Account with open position", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		// Create an initial buy order to establish a position
+		initialOrder := types.Order{
+			Symbol:       "AAPL",
+			Side:         types.PurchaseTypeBuy,
+			Quantity:     100,
+			Price:        90.0,
+			Timestamp:    time.Now(),
+			IsCompleted:  true,
+			StrategyName: "test_strategy",
+			PositionType: types.PositionTypeLong,
+			Fee:          1.0,
+			Reason: types.Reason{
+				Reason:  "test",
+				Message: "test",
+			},
+		}
+		_, err = suite.state.Update([]types.Order{initialOrder})
+		suite.Require().NoError(err)
+
+		// Update balance to reflect the purchase
+		suite.trading.UpdateBalance(1000.0)
+		suite.trading.UpdateCurrentMarketData(types.MarketData{
+			Symbol: "AAPL",
+			High:   100.0,
+			Low:    90.0,
+			Close:  95.0, // Price increased from entry price of 90
+		})
+
+		info, err := suite.trading.GetAccountInfo()
+		suite.Require().NoError(err)
+		suite.Assert().Equal(1000.0, info.Balance)
+		suite.Assert().Greater(info.Equity, info.Balance) // Should have unrealized profit
+		suite.Assert().Greater(info.UnrealizedPnL, 0.0)   // Price went up
+		suite.Assert().Equal(1.0, info.TotalFees)
+	})
+}
+
+func (suite *BacktestTradingTestSuite) TestGetOpenOrders() {
+	// Test with no pending orders
+	suite.Run("No pending orders", func() {
+		suite.trading.pendingOrders = []types.ExecuteOrder{}
+
+		orders, err := suite.trading.GetOpenOrders()
+		suite.Require().NoError(err)
+		suite.Assert().Empty(orders)
+	})
+
+	// Test with pending orders
+	suite.Run("With pending orders", func() {
+		suite.trading.pendingOrders = []types.ExecuteOrder{
+			{
+				ID:           "order1",
+				Symbol:       "AAPL",
+				Side:         types.PurchaseTypeBuy,
+				OrderType:    types.OrderTypeLimit,
+				Quantity:     10,
+				Price:        85.0,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+			},
+			{
+				ID:           "order2",
+				Symbol:       "GOOGL",
+				Side:         types.PurchaseTypeBuy,
+				OrderType:    types.OrderTypeLimit,
+				Quantity:     5,
+				Price:        2000.0,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+			},
+		}
+
+		orders, err := suite.trading.GetOpenOrders()
+		suite.Require().NoError(err)
+		suite.Assert().Len(orders, 2)
+		suite.Assert().Equal("order1", orders[0].ID)
+		suite.Assert().Equal("order2", orders[1].ID)
+	})
+
+	// Test that returned orders are a copy (modification doesn't affect original)
+	suite.Run("Returns copy of orders", func() {
+		suite.trading.pendingOrders = []types.ExecuteOrder{
+			{
+				ID:     "order1",
+				Symbol: "AAPL",
+			},
+		}
+
+		orders, err := suite.trading.GetOpenOrders()
+		suite.Require().NoError(err)
+
+		// Modify the returned slice
+		orders[0].ID = "modified"
+
+		// Original should not be affected
+		suite.Assert().Equal("order1", suite.trading.pendingOrders[0].ID)
+	})
+}
+
+func (suite *BacktestTradingTestSuite) TestGetTrades() {
+	// Setup: Create some trades
+	suite.Run("Get all trades without filter", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		// Create multiple trades
+		orders := []types.Order{
+			{
+				Symbol:       "AAPL",
+				Side:         types.PurchaseTypeBuy,
+				Quantity:     100,
+				Price:        90.0,
+				Timestamp:    time.Now().Add(-2 * time.Hour),
+				IsCompleted:  true,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+				Reason:       types.Reason{Reason: "test", Message: "test"},
+			},
+			{
+				Symbol:       "GOOGL",
+				Side:         types.PurchaseTypeBuy,
+				Quantity:     50,
+				Price:        2000.0,
+				Timestamp:    time.Now().Add(-1 * time.Hour),
+				IsCompleted:  true,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+				Reason:       types.Reason{Reason: "test", Message: "test"},
+			},
+		}
+
+		for _, order := range orders {
+			_, err := suite.state.Update([]types.Order{order})
+			suite.Require().NoError(err)
+		}
+
+		// Get all trades
+		trades, err := suite.trading.GetTrades(types.TradeFilter{})
+		suite.Require().NoError(err)
+		suite.Assert().Len(trades, 2)
+	})
+
+	// Test filter by symbol
+	suite.Run("Filter by symbol", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		orders := []types.Order{
+			{
+				Symbol:       "AAPL",
+				Side:         types.PurchaseTypeBuy,
+				Quantity:     100,
+				Price:        90.0,
+				Timestamp:    time.Now(),
+				IsCompleted:  true,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+				Reason:       types.Reason{Reason: "test", Message: "test"},
+			},
+			{
+				Symbol:       "GOOGL",
+				Side:         types.PurchaseTypeBuy,
+				Quantity:     50,
+				Price:        2000.0,
+				Timestamp:    time.Now(),
+				IsCompleted:  true,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+				Reason:       types.Reason{Reason: "test", Message: "test"},
+			},
+		}
+
+		for _, order := range orders {
+			_, err := suite.state.Update([]types.Order{order})
+			suite.Require().NoError(err)
+		}
+
+		// Filter by AAPL
+		trades, err := suite.trading.GetTrades(types.TradeFilter{Symbol: "AAPL"})
+		suite.Require().NoError(err)
+		suite.Assert().Len(trades, 1)
+		suite.Assert().Equal("AAPL", trades[0].Order.Symbol)
+	})
+
+	// Test limit
+	suite.Run("Filter with limit", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		// Create 5 trades
+		for i := 0; i < 5; i++ {
+			order := types.Order{
+				Symbol:       "AAPL",
+				Side:         types.PurchaseTypeBuy,
+				Quantity:     float64(10 + i),
+				Price:        90.0,
+				Timestamp:    time.Now().Add(time.Duration(i) * time.Minute),
+				IsCompleted:  true,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+				Reason:       types.Reason{Reason: "test", Message: "test"},
+			}
+			_, err := suite.state.Update([]types.Order{order})
+			suite.Require().NoError(err)
+		}
+
+		// Get only 3 trades
+		trades, err := suite.trading.GetTrades(types.TradeFilter{Limit: 3})
+		suite.Require().NoError(err)
+		suite.Assert().Len(trades, 3)
+	})
+
+	// Test time range filter
+	suite.Run("Filter by time range", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		baseTime := time.Now()
+
+		orders := []types.Order{
+			{
+				Symbol:       "AAPL",
+				Side:         types.PurchaseTypeBuy,
+				Quantity:     100,
+				Price:        90.0,
+				Timestamp:    baseTime.Add(-3 * time.Hour),
+				IsCompleted:  true,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+				Reason:       types.Reason{Reason: "test", Message: "test"},
+			},
+			{
+				Symbol:       "AAPL",
+				Side:         types.PurchaseTypeBuy,
+				Quantity:     50,
+				Price:        91.0,
+				Timestamp:    baseTime.Add(-1 * time.Hour),
+				IsCompleted:  true,
+				StrategyName: "test_strategy",
+				PositionType: types.PositionTypeLong,
+				Reason:       types.Reason{Reason: "test", Message: "test"},
+			},
+		}
+
+		for _, order := range orders {
+			_, err := suite.state.Update([]types.Order{order})
+			suite.Require().NoError(err)
+		}
+
+		// Filter to get only recent trades (last 2 hours)
+		trades, err := suite.trading.GetTrades(types.TradeFilter{
+			StartTime: baseTime.Add(-2 * time.Hour),
+		})
+		suite.Require().NoError(err)
+		suite.Assert().Len(trades, 1)
+		suite.Assert().Equal(50.0, trades[0].Order.Quantity)
+	})
+}

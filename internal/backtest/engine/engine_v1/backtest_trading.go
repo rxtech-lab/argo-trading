@@ -287,6 +287,105 @@ func (b *BacktestTrading) Reset(initialBalance float64) {
 	b.marketData = types.MarketData{}
 }
 
+// GetAccountInfo implements trading.TradingSystem.
+// Returns the current account state including balance, equity, and P&L information.
+func (b *BacktestTrading) GetAccountInfo() (types.AccountInfo, error) {
+	positions, err := b.state.GetAllPositions()
+	if err != nil {
+		return types.AccountInfo{}, err
+	}
+
+	var realizedPnL, unrealizedPnL, totalFees float64
+
+	for _, pos := range positions {
+		// Add realized PnL from this position
+		realizedPnL += pos.GetTotalPnL()
+
+		// Calculate unrealized PnL for open long positions
+		if pos.TotalLongPositionQuantity > 0 {
+			currentPrice := b.marketData.Close
+			if currentPrice == 0 {
+				currentPrice = (b.marketData.High + b.marketData.Low) / 2
+			}
+			avgEntry := pos.GetAverageLongPositionEntryPrice()
+			unrealizedPnL += (currentPrice - avgEntry) * pos.TotalLongPositionQuantity
+		}
+
+		// Calculate unrealized PnL for open short positions
+		if pos.TotalShortPositionQuantity > 0 {
+			currentPrice := b.marketData.Close
+			if currentPrice == 0 {
+				currentPrice = (b.marketData.High + b.marketData.Low) / 2
+			}
+			avgEntry := pos.GetAverageShortPositionEntryPrice()
+			unrealizedPnL += (avgEntry - currentPrice) * pos.TotalShortPositionQuantity
+		}
+
+		// Accumulate total fees
+		totalFees += pos.TotalLongInFee + pos.TotalLongOutFee + pos.TotalShortInFee + pos.TotalShortOutFee
+	}
+
+	equity := b.balance + unrealizedPnL
+	buyingPower := b.getBuyingPower()
+
+	return types.AccountInfo{
+		Balance:       b.balance,
+		Equity:        equity,
+		BuyingPower:   buyingPower,
+		RealizedPnL:   realizedPnL,
+		UnrealizedPnL: unrealizedPnL,
+		TotalFees:     totalFees,
+		MarginUsed:    0, // Not implemented for backtesting
+	}, nil
+}
+
+// GetOpenOrders implements trading.TradingSystem.
+// Returns all pending/open orders that have not been executed yet.
+func (b *BacktestTrading) GetOpenOrders() ([]types.ExecuteOrder, error) {
+	// Return a copy to prevent external modification
+	orders := make([]types.ExecuteOrder, len(b.pendingOrders))
+	copy(orders, b.pendingOrders)
+
+	return orders, nil
+}
+
+// GetTrades implements trading.TradingSystem.
+// Returns executed trades with optional filtering by symbol, time range, and limit.
+func (b *BacktestTrading) GetTrades(filter types.TradeFilter) ([]types.Trade, error) {
+	allTrades, err := b.state.GetAllTrades()
+	if err != nil {
+		return nil, err
+	}
+
+	var filteredTrades []types.Trade
+
+	for _, trade := range allTrades {
+		// Apply symbol filter
+		if filter.Symbol != "" && trade.Order.Symbol != filter.Symbol {
+			continue
+		}
+
+		// Apply start time filter
+		if !filter.StartTime.IsZero() && trade.ExecutedAt.Before(filter.StartTime) {
+			continue
+		}
+
+		// Apply end time filter
+		if !filter.EndTime.IsZero() && trade.ExecutedAt.After(filter.EndTime) {
+			continue
+		}
+
+		filteredTrades = append(filteredTrades, trade)
+	}
+
+	// Apply limit
+	if filter.Limit > 0 && len(filteredTrades) > filter.Limit {
+		filteredTrades = filteredTrades[:filter.Limit]
+	}
+
+	return filteredTrades, nil
+}
+
 func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) trading.TradingSystem {
 	return &BacktestTrading{
 		state:            state,
