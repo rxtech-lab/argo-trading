@@ -4,6 +4,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/indicator"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/marker"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
@@ -34,4 +35,6 @@ type RuntimeContext struct {
 	TradingSystem trading.TradingSystem
 	// Marker is used to mark a point in time with a signal and a reason
 	Marker marker.Marker
+	// Logger is used for strategy logging output
+	Logger *logger.Logger
 }

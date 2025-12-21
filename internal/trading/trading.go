@@ -17,4 +17,10 @@ type TradingSystem interface {
 	CancelAllOrders() error
 	// GetOrderStatus returns the status of an order
 	GetOrderStatus(orderID string) (types.OrderStatus, error)
+	// GetAccountInfo returns the current account state including balance, equity, and P&L
+	GetAccountInfo() (types.AccountInfo, error)
+	// GetOpenOrders returns all pending/open orders that have not been executed yet
+	GetOpenOrders() ([]types.ExecuteOrder, error)
+	// GetTrades returns executed trades with optional filtering
+	GetTrades(filter types.TradeFilter) ([]types.Trade, error)
 }
