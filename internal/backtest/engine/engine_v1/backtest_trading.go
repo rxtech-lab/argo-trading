@@ -307,6 +307,7 @@ func (b *BacktestTrading) GetAccountInfo() (types.AccountInfo, error) {
 			if currentPrice == 0 {
 				currentPrice = (b.marketData.High + b.marketData.Low) / 2
 			}
+
 			avgEntry := pos.GetAverageLongPositionEntryPrice()
 			unrealizedPnL += (currentPrice - avgEntry) * pos.TotalLongPositionQuantity
 		}
@@ -317,6 +318,7 @@ func (b *BacktestTrading) GetAccountInfo() (types.AccountInfo, error) {
 			if currentPrice == 0 {
 				currentPrice = (b.marketData.High + b.marketData.Low) / 2
 			}
+
 			avgEntry := pos.GetAverageShortPositionEntryPrice()
 			unrealizedPnL += (avgEntry - currentPrice) * pos.TotalShortPositionQuantity
 		}
@@ -357,7 +359,7 @@ func (b *BacktestTrading) GetTrades(filter types.TradeFilter) ([]types.Trade, er
 		return nil, err
 	}
 
-	var filteredTrades []types.Trade
+	filteredTrades := make([]types.Trade, 0, len(allTrades))
 
 	for _, trade := range allTrades {
 		// Apply symbol filter

@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// buildZapFields converts a map of string fields to zap.Field slice
+// buildZapFields converts a map of string fields to zap.Field slice.
 func buildZapFields(fields map[string]string) []zap.Field {
 	if len(fields) == 0 {
 		return nil
