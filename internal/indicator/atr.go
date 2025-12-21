@@ -62,7 +62,8 @@ func (a *ATR) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 		RawValue: map[string]float64{
 			"atr": atrValue,
 		},
-		Symbol: marketData.Symbol,
+		Symbol:    marketData.Symbol,
+		Indicator: a.Name(),
 	}, nil
 }
 

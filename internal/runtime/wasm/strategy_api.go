@@ -135,7 +135,7 @@ func (s StrategyApiForWasm) GetCache(ctx context.Context, req *strategy.GetReque
 
 	value, ok := cache.Get(req.Key)
 	if !ok {
-		return &strategy.GetResponse{}, nil
+		return &strategy.GetResponse{Value: ""}, nil
 	}
 	// check if value is a string
 	if strVal, ok := value.(string); ok {
@@ -306,6 +306,7 @@ func (s StrategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSign
 	}
 
 	marketData := types.MarketData{
+		Id:     "",
 		Symbol: req.MarketData.Symbol,
 		High:   req.MarketData.High,
 		Low:    req.MarketData.Low,
@@ -356,6 +357,7 @@ func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest)
 	}
 
 	marketData := types.MarketData{
+		Id:     "",
 		Symbol: req.MarketData.Symbol,
 		Time:   req.MarketData.Time.AsTime(),
 		Open:   req.MarketData.Open,
@@ -370,19 +372,23 @@ func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest)
 
 	// Create the signal
 	signal := types.Signal{
-		Time:   marketData.Time,
-		Type:   signalType,
-		Symbol: marketData.Symbol,
-		Name:   string(signalType), // Use signal type as name if not provided
+		Time:      marketData.Time,
+		Type:      signalType,
+		Symbol:    marketData.Symbol,
+		Name:      string(signalType), // Use signal type as name if not provided
+		Reason:    "",
+		RawValue:  nil,
+		Indicator: "",
 	}
 
 	mark := types.Mark{
-		Color:    req.Mark.Color,
-		Shape:    runtime.StrategyMarkShapeToMarkShape(req.Mark.Shape),
-		Title:    req.Mark.Title,
-		Message:  req.Mark.Message,
-		Category: req.Mark.Category,
-		Signal:   optional.Some(signal),
+		MarketDataId: "",
+		Color:        req.Mark.Color,
+		Shape:        runtime.StrategyMarkShapeToMarkShape(req.Mark.Shape),
+		Title:        req.Mark.Title,
+		Message:      req.Mark.Message,
+		Category:     req.Mark.Category,
+		Signal:       optional.Some(signal),
 	}
 
 	// Mark the signal
@@ -411,6 +417,8 @@ func (s StrategyApiForWasm) PlaceMultipleOrders(ctx context.Context, req *strate
 				Reason:  order.Reason.Reason,
 				Message: order.Reason.Message,
 			},
+			TakeProfit: optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
+			StopLoss:   optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
 		}
 
 		if order.TakeProfit != nil {
@@ -462,6 +470,8 @@ func (s StrategyApiForWasm) PlaceOrder(ctx context.Context, req *strategy.Execut
 			Reason:  reasonName,
 			Message: reasonMessage,
 		},
+		TakeProfit: optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
+		StopLoss:   optional.None[types.ExecuteOrderTakeProfitOrStopLoss](),
 	}
 
 	if req.TakeProfit != nil {

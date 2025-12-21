@@ -52,6 +52,7 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 
 // GenerateSchema generates a JSON schema for the BacktestEngineV1Config.
 func (c *BacktestEngineV1Config) GenerateSchema() (*jsonschema.Schema, error) {
+	//nolint:exhaustruct // third-party struct with many optional fields
 	reflector := jsonschema.Reflector{
 		RequiredFromJSONSchemaTags: true,
 		ExpandedStruct:             true,
@@ -59,12 +60,14 @@ func (c *BacktestEngineV1Config) GenerateSchema() (*jsonschema.Schema, error) {
 		Mapper: func(t reflect.Type) *jsonschema.Schema {
 			fmt.Println("t", t.String())
 			if t.String() == "optional.Option[time.Time]" {
+				//nolint:exhaustruct // third-party struct with many optional fields
 				return &jsonschema.Schema{
 					Type:   "string",
 					Format: "date-time",
 				}
 			}
 			if strings.Contains(t.String(), "commission_fee.Broker") {
+				//nolint:exhaustruct // third-party struct with many optional fields
 				return &jsonschema.Schema{
 					Type: "string",
 					Enum: commission_fee.AllBrokers,

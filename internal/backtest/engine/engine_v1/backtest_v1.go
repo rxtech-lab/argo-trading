@@ -40,7 +40,19 @@ type BacktestEngineV1 struct {
 
 func NewBacktestEngineV1() engine.Engine {
 	return &BacktestEngineV1{
-		cache: cache.NewCacheV1(),
+		config:              EmptyConfig(),
+		strategies:          nil,
+		strategyConfigPaths: nil,
+		dataPaths:           nil,
+		resultsFolder:       "",
+		log:                 nil,
+		indicatorRegistry:   nil,
+		marker:              nil,
+		tradingSystem:       nil,
+		state:               nil,
+		datasource:          nil,
+		balance:             0,
+		cache:               cache.NewCacheV1(),
 	}
 }
 

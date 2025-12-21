@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -372,7 +373,23 @@ func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return types.Position{
-			Symbol: symbol,
+			Symbol:                        symbol,
+			TotalLongPositionQuantity:     0,
+			TotalShortPositionQuantity:    0,
+			TotalLongInPositionQuantity:   0,
+			TotalLongOutPositionQuantity:  0,
+			TotalLongInPositionAmount:     0,
+			TotalLongOutPositionAmount:    0,
+			TotalShortInPositionQuantity:  0,
+			TotalShortOutPositionQuantity: 0,
+			TotalShortInPositionAmount:    0,
+			TotalShortOutPositionAmount:   0,
+			TotalLongInFee:                0,
+			TotalLongOutFee:               0,
+			TotalShortInFee:               0,
+			TotalShortOutFee:              0,
+			OpenTimestamp:                 time.Time{},
+			StrategyName:                  "",
 		}, nil
 	}
 
@@ -548,7 +565,13 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext) ([]types.TradeStats
 			return nil, fmt.Errorf("failed to get last market data for %s: %w", symbol, err)
 		}
 
-		tradePnl := types.TradePnl{}
+		tradePnl := types.TradePnl{
+			RealizedPnL:   0,
+			UnrealizedPnL: 0,
+			TotalPnL:      0,
+			MaximumLoss:   0,
+			MaximumProfit: 0,
+		}
 
 		// Calculate unrealized PnL if there's an open position
 		if position.TotalLongPositionQuantity > 0 {
