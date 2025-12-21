@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
@@ -41,7 +42,13 @@ type BacktestEngineV1 struct {
 func NewBacktestEngineV1() engine.Engine {
 	return &BacktestEngineV1{
 		cache:               cache.NewCacheV1(),
-		config:              BacktestEngineV1Config{},
+		config:              BacktestEngineV1Config{
+			InitialCapital:   0,
+			Broker:           "",
+			StartTime:        optional.None[time.Time](),
+			EndTime:          optional.None[time.Time](),
+			DecimalPrecision: 0,
+		},
 		strategies:          nil,
 		strategyConfigPaths: nil,
 		dataPaths:           nil,

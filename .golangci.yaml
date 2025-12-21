@@ -29,5 +29,5 @@ linters-settings:
   exhaustruct:
     exclude:
       # Exclude third-party library types that have many fields
-      - 'jsonschema\.Reflector'
-      - 'jsonschema\.Schema'
+      - '.*jsonschema\.Reflector$'
+      - '.*jsonschema\.Schema$'
