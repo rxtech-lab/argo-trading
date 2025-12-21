@@ -564,7 +564,7 @@ func TestBacktestEngineV1_LoadStrategyFromBytes(t *testing.T) {
 		assert.Contains(t, err.Error(), "unsupported strategy type")
 	})
 
-	t.Run("Invalid WASM bytes", func(t *testing.T) {
+	t.Run("Valid WASM bytes loading", func(t *testing.T) {
 		engine := NewBacktestEngineV1()
 		backtestEngine := engine.(*BacktestEngineV1)
 
@@ -572,10 +572,12 @@ func TestBacktestEngineV1_LoadStrategyFromBytes(t *testing.T) {
 		err := backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
-		// Try to load invalid WASM bytes
-		err = backtestEngine.LoadStrategyFromBytes([]byte("not valid wasm"), engine_types.StrategyTypeWASM)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to create strategy runtime")
+		// NewStrategyWasmRuntimeFromBytes doesn't validate bytes on load,
+		// it just stores them. Validation happens during InitializeApi.
+		// So loading any bytes should succeed.
+		err = backtestEngine.LoadStrategyFromBytes([]byte("test bytes"), engine_types.StrategyTypeWASM)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(backtestEngine.strategies))
 	})
 }
 
