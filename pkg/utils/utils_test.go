@@ -43,7 +43,9 @@ func (suite *UtilsTestSuite) TestGetSchemaFromConfigSimple() {
 
 	// Check basic schema properties exist
 	suite.Contains(result, "$schema")
-	suite.Contains(result, "properties")
+	// Schema uses $ref to reference definitions in $defs
+	suite.Contains(result, "$ref")
+	suite.Contains(result, "$defs")
 }
 
 func (suite *UtilsTestSuite) TestGetSchemaFromConfigNested() {
