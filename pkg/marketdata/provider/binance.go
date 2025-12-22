@@ -12,18 +12,82 @@ import (
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/writer"
 )
 
-type BinanceClient struct {
+// BinanceKlinesService defines the interface for fetching klines from Binance.
+type BinanceKlinesService interface {
+	Symbol(symbol string) BinanceKlinesService
+	Interval(interval string) BinanceKlinesService
+	StartTime(startTime int64) BinanceKlinesService
+	EndTime(endTime int64) BinanceKlinesService
+	Do(ctx context.Context) ([]*binance.Kline, error)
+}
+
+// BinanceAPIClient defines the interface for the Binance API client.
+type BinanceAPIClient interface {
+	NewKlinesService() BinanceKlinesService
+}
+
+// binanceClientWrapper wraps the real binance.Client to implement BinanceAPIClient.
+type binanceClientWrapper struct {
 	client *binance.Client
-	writer writer.MarketDataWriter
+}
+
+func (w *binanceClientWrapper) NewKlinesService() BinanceKlinesService {
+	return &binanceKlinesServiceWrapper{service: w.client.NewKlinesService()}
+}
+
+// binanceKlinesServiceWrapper wraps the real binance.KlinesService.
+type binanceKlinesServiceWrapper struct {
+	service *binance.KlinesService
+}
+
+func (w *binanceKlinesServiceWrapper) Symbol(symbol string) BinanceKlinesService {
+	w.service = w.service.Symbol(symbol)
+
+	return w
+}
+
+func (w *binanceKlinesServiceWrapper) Interval(interval string) BinanceKlinesService {
+	w.service = w.service.Interval(interval)
+
+	return w
+}
+
+func (w *binanceKlinesServiceWrapper) StartTime(startTime int64) BinanceKlinesService {
+	w.service = w.service.StartTime(startTime)
+
+	return w
+}
+
+func (w *binanceKlinesServiceWrapper) EndTime(endTime int64) BinanceKlinesService {
+	w.service = w.service.EndTime(endTime)
+
+	return w
+}
+
+func (w *binanceKlinesServiceWrapper) Do(ctx context.Context) ([]*binance.Kline, error) {
+	return w.service.Do(ctx)
+}
+
+type BinanceClient struct {
+	apiClient BinanceAPIClient
+	writer    writer.MarketDataWriter
 }
 
 func NewBinanceClient() (Provider, error) {
 	client := binance.NewClient("", "")
 
 	return &BinanceClient{
-		client: client,
-		writer: nil,
+		apiClient: &binanceClientWrapper{client: client},
+		writer:    nil,
 	}, nil
+}
+
+// NewBinanceClientWithAPI creates a BinanceClient with a custom API client (for testing).
+func NewBinanceClientWithAPI(apiClient BinanceAPIClient) *BinanceClient {
+	return &BinanceClient{
+		apiClient: apiClient,
+		writer:    nil,
+	}
 }
 
 func (c *BinanceClient) ConfigWriter(w writer.MarketDataWriter) {
@@ -56,7 +120,7 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 	currentStartTime := startTimeMillis
 
 	for {
-		klines, err := c.client.NewKlinesService().
+		klines, err := c.apiClient.NewKlinesService().
 			Symbol(ticker).
 			Interval(interval).
 			StartTime(currentStartTime).

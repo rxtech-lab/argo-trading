@@ -254,3 +254,251 @@ func (suite *DuckDBWriterTestSuite) TestFullWorkflow() {
 	err = writer.Close()
 	suite.NoError(err)
 }
+
+func (suite *DuckDBWriterTestSuite) TestWriteAfterFinalize() {
+	outputPath := suite.tempDir + "/test_write_after_finalize.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// Initialize
+	err := writer.Initialize()
+	suite.Require().NoError(err)
+
+	// Write initial data
+	data := types.MarketData{
+		Symbol: "AAPL",
+		Time:   time.Date(2023, 6, 15, 9, 30, 0, 0, time.UTC),
+		Open:   150.0,
+		High:   155.0,
+		Low:    148.0,
+		Close:  152.0,
+		Volume: 1000000.0,
+	}
+
+	err = writer.Write(data)
+	suite.Require().NoError(err)
+
+	// Finalize
+	_, err = writer.Finalize()
+	suite.Require().NoError(err)
+
+	// Close - this will set stmt to nil
+	err = writer.Close()
+	suite.Require().NoError(err)
+
+	// Try to write after close - should error because stmt is nil
+	err = writer.Write(data)
+	suite.Error(err)
+	suite.Contains(err.Error(), "not initialized")
+}
+
+func (suite *DuckDBWriterTestSuite) TestDoubleFinalize() {
+	outputPath := suite.tempDir + "/test_double_finalize.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// Initialize
+	err := writer.Initialize()
+	suite.Require().NoError(err)
+
+	// Write data
+	data := types.MarketData{
+		Symbol: "AAPL",
+		Time:   time.Date(2023, 6, 15, 9, 30, 0, 0, time.UTC),
+		Open:   150.0,
+		High:   155.0,
+		Low:    148.0,
+		Close:  152.0,
+		Volume: 1000000.0,
+	}
+
+	err = writer.Write(data)
+	suite.Require().NoError(err)
+
+	// First finalize
+	_, err = writer.Finalize()
+	suite.NoError(err)
+
+	// Second finalize - should error because tx is nil
+	_, err = writer.Finalize()
+	suite.Error(err)
+	suite.Contains(err.Error(), "not initialized")
+
+	// Cleanup
+	writer.Close()
+}
+
+func (suite *DuckDBWriterTestSuite) TestCloseAfterFinalize() {
+	outputPath := suite.tempDir + "/test_close_after_finalize.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// Initialize
+	err := writer.Initialize()
+	suite.Require().NoError(err)
+
+	// Write data
+	data := types.MarketData{
+		Symbol: "AAPL",
+		Time:   time.Date(2023, 6, 15, 9, 30, 0, 0, time.UTC),
+		Open:   150.0,
+		High:   155.0,
+		Low:    148.0,
+		Close:  152.0,
+		Volume: 1000000.0,
+	}
+
+	err = writer.Write(data)
+	suite.Require().NoError(err)
+
+	// Finalize
+	_, err = writer.Finalize()
+	suite.Require().NoError(err)
+
+	// Close after finalize should work
+	err = writer.Close()
+	suite.NoError(err)
+
+	// Verify internal state is cleared
+	duckWriter := writer.(*DuckDBWriter)
+	suite.Nil(duckWriter.db)
+	suite.Nil(duckWriter.tx)
+	suite.Nil(duckWriter.stmt)
+}
+
+func (suite *DuckDBWriterTestSuite) TestFinalizeExportError() {
+	// Use an invalid path that cannot be written to
+	outputPath := "/nonexistent/directory/test.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// Initialize
+	err := writer.Initialize()
+	suite.Require().NoError(err)
+
+	// Write data
+	data := types.MarketData{
+		Symbol: "AAPL",
+		Time:   time.Date(2023, 6, 15, 9, 30, 0, 0, time.UTC),
+		Open:   150.0,
+		High:   155.0,
+		Low:    148.0,
+		Close:  152.0,
+		Volume: 1000000.0,
+	}
+
+	err = writer.Write(data)
+	suite.Require().NoError(err)
+
+	// Finalize should fail because the output path doesn't exist
+	_, err = writer.Finalize()
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to export to Parquet")
+
+	// Cleanup
+	writer.Close()
+}
+
+func (suite *DuckDBWriterTestSuite) TestMultipleWritesWithDifferentSymbols() {
+	outputPath := suite.tempDir + "/test_multi_symbols.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// Initialize
+	err := writer.Initialize()
+	suite.Require().NoError(err)
+
+	// Write data for different symbols
+	symbols := []string{"AAPL", "GOOGL", "MSFT", "AMZN", "META"}
+	baseTime := time.Date(2023, 6, 15, 9, 30, 0, 0, time.UTC)
+
+	for i, symbol := range symbols {
+		data := types.MarketData{
+			Symbol: symbol,
+			Time:   baseTime.Add(time.Duration(i) * time.Minute),
+			Open:   100.0 + float64(i)*10,
+			High:   110.0 + float64(i)*10,
+			Low:    90.0 + float64(i)*10,
+			Close:  105.0 + float64(i)*10,
+			Volume: float64(1000000 * (i + 1)),
+		}
+
+		err = writer.Write(data)
+		suite.NoError(err)
+	}
+
+	// Finalize
+	path, err := writer.Finalize()
+	suite.NoError(err)
+	suite.Equal(outputPath, path)
+
+	// Cleanup
+	writer.Close()
+}
+
+func (suite *DuckDBWriterTestSuite) TestCloseWithActiveTransaction() {
+	outputPath := suite.tempDir + "/test_close_active_tx.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// Initialize
+	err := writer.Initialize()
+	suite.Require().NoError(err)
+
+	// Write data but don't finalize - transaction is still active
+	data := types.MarketData{
+		Symbol: "AAPL",
+		Time:   time.Date(2023, 6, 15, 9, 30, 0, 0, time.UTC),
+		Open:   150.0,
+		High:   155.0,
+		Low:    148.0,
+		Close:  152.0,
+		Volume: 1000000.0,
+	}
+
+	err = writer.Write(data)
+	suite.Require().NoError(err)
+
+	// Close without finalizing - should rollback the transaction
+	err = writer.Close()
+	suite.NoError(err)
+
+	// Verify internal state is cleared
+	duckWriter := writer.(*DuckDBWriter)
+	suite.Nil(duckWriter.db)
+	suite.Nil(duckWriter.tx)
+	suite.Nil(duckWriter.stmt)
+}
+
+func (suite *DuckDBWriterTestSuite) TestWriteLargeDataset() {
+	outputPath := suite.tempDir + "/test_large_dataset.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// Initialize
+	err := writer.Initialize()
+	suite.Require().NoError(err)
+
+	// Write 1000 records
+	baseTime := time.Date(2023, 6, 15, 9, 30, 0, 0, time.UTC)
+	for i := 0; i < 1000; i++ {
+		data := types.MarketData{
+			Symbol: "SPY",
+			Time:   baseTime.Add(time.Duration(i) * time.Minute),
+			Open:   400.0 + float64(i%100)*0.1,
+			High:   400.5 + float64(i%100)*0.1,
+			Low:    399.5 + float64(i%100)*0.1,
+			Close:  400.2 + float64(i%100)*0.1,
+			Volume: float64(1000000 + i*100),
+		}
+
+		err = writer.Write(data)
+		suite.NoError(err)
+	}
+
+	// Finalize
+	path, err := writer.Finalize()
+	suite.NoError(err)
+	suite.Equal(outputPath, path)
+
+	// Verify file exists and has content
+	fileInfo, err := os.Stat(path)
+	suite.NoError(err)
+	suite.Greater(fileInfo.Size(), int64(0))
+
+	// Cleanup
+	writer.Close()
+}
