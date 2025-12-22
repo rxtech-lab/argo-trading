@@ -72,7 +72,12 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 			return "", fmt.Errorf("failed to fetch klines from Binance: %w", err)
 		}
 
-		go onProgress(float64(currentStartTime), float64(endTimeMillis), fmt.Sprintf("Downloading %s klines from Binance", ticker))
+		// Calculate relative progress (time elapsed vs total time range)
+		go onProgress(
+			float64(currentStartTime-startTimeMillis),
+			float64(endTimeMillis-startTimeMillis),
+			fmt.Sprintf("Downloading %s klines from Binance", ticker),
+		)
 
 		// Break conditions: no data or less than 500 records (last page)
 		if len(klines) == 0 || len(klines) < 500 {
