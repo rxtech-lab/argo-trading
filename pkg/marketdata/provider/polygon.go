@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/marcboeker/go-duckdb"
 	polygon "github.com/polygon-io/client-go/rest"
+	"github.com/polygon-io/client-go/rest/iter"
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/schollz/progressbar/v3"
 
@@ -15,9 +16,30 @@ import (
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/writer"
 )
 
-type PolygonClient struct {
+// PolygonAggsIterator defines the interface for iterating over aggregates.
+type PolygonAggsIterator interface {
+	Next() bool
+	Item() models.Agg
+	Err() error
+}
+
+// PolygonAPIClient defines the interface for the Polygon API client.
+type PolygonAPIClient interface {
+	ListAggs(ctx context.Context, params *models.ListAggsParams, options ...models.RequestOption) PolygonAggsIterator
+}
+
+// polygonClientWrapper wraps the real polygon.Client to implement PolygonAPIClient.
+type polygonClientWrapper struct {
 	client *polygon.Client
-	writer writer.MarketDataWriter
+}
+
+func (w *polygonClientWrapper) ListAggs(ctx context.Context, params *models.ListAggsParams, options ...models.RequestOption) PolygonAggsIterator {
+	return w.client.ListAggs(ctx, params, options...)
+}
+
+type PolygonClient struct {
+	apiClient PolygonAPIClient
+	writer    writer.MarketDataWriter
 }
 
 func NewPolygonClient(apiKey string) (Provider, error) {
@@ -28,10 +50,21 @@ func NewPolygonClient(apiKey string) (Provider, error) {
 	client := polygon.New(apiKey)
 
 	return &PolygonClient{
-		client: client,
-		writer: nil,
+		apiClient: &polygonClientWrapper{client: client},
+		writer:    nil,
 	}, nil
 }
+
+// NewPolygonClientWithAPI creates a PolygonClient with a custom API client (for testing).
+func NewPolygonClientWithAPI(apiClient PolygonAPIClient) *PolygonClient {
+	return &PolygonClient{
+		apiClient: apiClient,
+		writer:    nil,
+	}
+}
+
+// Ensure iter.Iter[models.Agg] implements PolygonAggsIterator.
+var _ PolygonAggsIterator = (*iter.Iter[models.Agg])(nil)
 
 func (c *PolygonClient) ConfigWriter(w writer.MarketDataWriter) {
 	c.writer = w
@@ -70,14 +103,14 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 		To:         models.Millis(endDate),
 	}.WithLimit(50000)
 
-	iter := c.client.ListAggs(context.Background(), params)
+	aggsIter := c.apiClient.ListAggs(context.Background(), params)
 
 	processedCount := 0
 
-	for iter.Next() {
-		go onProgress(float64(processedCount), float64(totalIterations), fmt.Sprintf("Downloading %s", ticker))
+	for aggsIter.Next() {
+		onProgress(float64(processedCount), float64(totalIterations), fmt.Sprintf("Downloading %s", ticker))
 
-		agg := iter.Item()
+		agg := aggsIter.Item()
 		marketData := types.MarketData{
 			Id:     "",
 			Symbol: ticker,
@@ -102,8 +135,8 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 		}
 	}
 
-	if iter.Err() != nil {
-		return "", fmt.Errorf("error iterating polygon aggregates: %w", iter.Err())
+	if aggsIter.Err() != nil {
+		return "", fmt.Errorf("error iterating polygon aggregates: %w", aggsIter.Err())
 	}
 
 	bar.Finish()

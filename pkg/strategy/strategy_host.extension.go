@@ -72,6 +72,10 @@ func (p *TradingStrategyPlugin) LoadFromBytes(ctx context.Context, bytes []byte,
 	if getconfigschema == nil {
 		return nil, errors.New("trading_strategy_get_config_schema is not exported")
 	}
+	getdescription := module.ExportedFunction("trading_strategy_get_description")
+	if getdescription == nil {
+		return nil, errors.New("trading_strategy_get_description is not exported")
+	}
 
 	malloc := module.ExportedFunction("malloc")
 	if malloc == nil {
@@ -91,5 +95,6 @@ func (p *TradingStrategyPlugin) LoadFromBytes(ctx context.Context, bytes []byte,
 		processdata:     processdata,
 		name:            name,
 		getconfigschema: getconfigschema,
+		getdescription:  getdescription,
 	}, nil
 }

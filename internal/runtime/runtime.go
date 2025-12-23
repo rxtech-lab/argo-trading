@@ -22,6 +22,8 @@ type StrategyRuntime interface {
 	GetConfigSchema() (string, error)
 	// Name returns the name of the strategy
 	Name() string
+	// GetDescription returns the description of the strategy
+	GetDescription() (string, error)
 }
 
 type RuntimeContext struct {

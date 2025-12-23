@@ -454,6 +454,113 @@ func (suite *ClientTestSuite) TestNewClient() {
 	}
 }
 
+// TestNewClientWithBinanceProvider tests creating a client with Binance provider
+func (suite *ClientTestSuite) TestNewClientWithBinanceProvider() {
+	config := ClientConfig{
+		ProviderType: ProviderBinance,
+		WriterType:   WriterDuckDB,
+		DataPath:     suite.tempDir,
+	}
+
+	client, err := NewClient(config, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.NotNil(client)
+}
+
+// TestNewClientWithPolygonProvider tests creating a client with Polygon provider
+func (suite *ClientTestSuite) TestNewClientWithPolygonProvider() {
+	config := ClientConfig{
+		ProviderType:  ProviderPolygon,
+		WriterType:    WriterDuckDB,
+		DataPath:      suite.tempDir,
+		PolygonApiKey: "test-api-key",
+	}
+
+	client, err := NewClient(config, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.NotNil(client)
+}
+
+// TestNewClientInvalidConfig tests that NewClient returns error for invalid config
+func (suite *ClientTestSuite) TestNewClientInvalidConfig() {
+	config := ClientConfig{
+		ProviderType: ProviderPolygon,
+		WriterType:   WriterDuckDB,
+		DataPath:     suite.tempDir,
+		// Missing PolygonApiKey
+	}
+
+	client, err := NewClient(config, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Nil(client)
+	suite.Contains(err.Error(), "invalid client configuration")
+}
+
+// TestDownloadInvalidParams tests that Download returns error for invalid params
+func (suite *ClientTestSuite) TestDownloadInvalidParams() {
+	// Setup mock expectations - should not be called
+	// No setup needed since validation should fail first
+
+	// Create client with mocked provider
+	client := &Client{
+		provider: suite.mockProvider,
+		config: ClientConfig{
+			ProviderType: ProviderPolygon,
+			WriterType:   WriterDuckDB,
+			DataPath:     suite.tempDir,
+		},
+		validate: validator.New(),
+	}
+
+	// Invalid params - missing ticker
+	params := DownloadParams{
+		StartDate:  time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:    time.Date(2023, 1, 31, 0, 0, 0, 0, time.UTC),
+		Multiplier: 1,
+		Timespan:   models.Minute,
+	}
+
+	err := client.Download(params)
+	suite.Error(err)
+	suite.Contains(err.Error(), "invalid download parameters")
+}
+
+// TestSetupWriterCreatesDataPath tests that setupWriter creates the data path if it doesn't exist
+func (suite *ClientTestSuite) TestSetupWriterCreatesDataPath() {
+	// Create a new temp directory path that doesn't exist yet
+	newDataPath := suite.tempDir + "/new_subdir"
+
+	client := &Client{
+		provider: suite.mockProvider,
+		config: ClientConfig{
+			ProviderType: ProviderPolygon,
+			WriterType:   WriterDuckDB,
+			DataPath:     newDataPath,
+		},
+		validate: validator.New(),
+	}
+
+	params := DownloadParams{
+		Ticker:     "SPY",
+		StartDate:  time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:    time.Date(2023, 1, 31, 0, 0, 0, 0, time.UTC),
+		Multiplier: 1,
+		Timespan:   models.Minute,
+	}
+
+	writer, err := client.setupWriter(params)
+	suite.NoError(err)
+	suite.NotNil(writer)
+
+	// Verify the directory was created
+	_, statErr := os.Stat(newDataPath)
+	suite.NoError(statErr)
+
+	// Cleanup
+	writer.Close()
+	os.RemoveAll(newDataPath)
+}
+
 // TestClientSuite runs the test suite
 func TestClientSuite(t *testing.T) {
 	suite.Run(t, new(ClientTestSuite))

@@ -13,11 +13,16 @@ import (
 
 // MockStrategy implements TradingStrategy interface for testing
 type MockStrategy struct {
-	name string
+	name        string
+	description string
 }
 
 func (m *MockStrategy) Name() string {
 	return m.name
+}
+
+func (m *MockStrategy) GetDescription() (string, error) {
+	return m.description, nil
 }
 
 func (m *MockStrategy) Initialize(config string) error {

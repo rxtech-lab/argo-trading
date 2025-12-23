@@ -9,14 +9,13 @@ import (
 
 	"github.com/knqyf263/go-plugin/types/known/emptypb"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
-	"github.com/rxtech-lab/argo-trading/pkg/utils"
-	"gopkg.in/yaml.v3"
 )
 
 // SimpleMAStrategy implements a strategy based on two moving averages
 // Buy when fast MA crosses above slow MA, sell when fast MA crosses below slow MA
 type SimpleMAStrategy struct {
 	// Strategy is stateless, state is stored in cache
+	config Config
 }
 
 // Config represents the configuration for the SimpleMAStrategy
@@ -40,11 +39,16 @@ func NewSimpleMAStrategy() strategy.TradingStrategy {
 	return &SimpleMAStrategy{}
 }
 
+// GetDescription implements strategy.TradingStrategy.
+func (s *SimpleMAStrategy) GetDescription(_ context.Context, _ *strategy.GetDescriptionRequest) (*strategy.GetDescriptionResponse, error) {
+	return &strategy.GetDescriptionResponse{Description: "A strategy that buys when the fast MA crosses above the slow MA and sells when the fast MA crosses below the slow MA"}, nil
+}
+
 // Initialize implements strategy.TradingStrategy.
 func (s *SimpleMAStrategy) Initialize(_ context.Context, req *strategy.InitializeRequest) (*emptypb.Empty, error) {
 	// Parse configuration
 	var config Config
-	if err := yaml.Unmarshal([]byte(req.Config), &config); err != nil {
+	if err := json.Unmarshal([]byte(req.Config), &config); err != nil {
 		return nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
@@ -87,6 +91,8 @@ func (s *SimpleMAStrategy) Initialize(_ context.Context, req *strategy.Initializ
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure slow MA: %w", err)
 	}
+
+	s.config = config
 
 	return &emptypb.Empty{}, nil
 }
@@ -245,7 +251,7 @@ func (s *SimpleMAStrategy) ProcessData(ctx context.Context, req *strategy.Proces
 
 // GetConfigSchema implements strategy.TradingStrategy.
 func (s *SimpleMAStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetConfigSchemaRequest) (*strategy.GetConfigSchemaResponse, error) {
-	schema, err := utils.GetSchemaFromConfig(Config{})
+	schema, err := strategy.ToJSONSchema(Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema: %w", err)
 	}
