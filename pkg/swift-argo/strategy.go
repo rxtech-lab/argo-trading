@@ -11,30 +11,37 @@ type StrategyMetadata struct {
 	Description string
 }
 
+type StrategyApi struct {
+}
+
+func NewStrategyApi() *StrategyApi {
+	return &StrategyApi{}
+}
+
 // GetStrategyMetadata loads a WASM strategy from the given path and returns its metadata.
-func GetStrategyMetadata(path string) (StrategyMetadata, error) {
+func (s *StrategyApi) GetStrategyMetadata(path string) (*StrategyMetadata, error) {
 	runtime, err := wasm.NewStrategyWasmRuntime(path)
 	if err != nil {
-		return StrategyMetadata{}, err
+		return nil, err
 	}
 
 	if err != nil {
-		return StrategyMetadata{}, err
+		return nil, err
 	}
 
 	runtime.InitializeApi(nil)
 
 	schema, err := runtime.GetConfigSchema()
 	if err != nil {
-		return StrategyMetadata{}, err
+		return nil, err
 	}
 
 	description, err := runtime.GetDescription()
 	if err != nil {
-		return StrategyMetadata{}, err
+		return nil, err
 	}
 
-	return StrategyMetadata{
+	return &StrategyMetadata{
 		Name:        runtime.Name(),
 		Schema:      schema,
 		Description: description,
