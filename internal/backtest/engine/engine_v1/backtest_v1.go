@@ -26,6 +26,7 @@ type BacktestEngineV1 struct {
 	config              BacktestEngineV1Config
 	strategies          []runtime.StrategyRuntime
 	strategyConfigPaths []string
+	strategyConfigs     []string
 	dataPaths           []string
 	resultsFolder       string
 	log                 *logger.Logger
@@ -43,6 +44,7 @@ func NewBacktestEngineV1() engine.Engine {
 		config:              EmptyConfig(),
 		strategies:          nil,
 		strategyConfigPaths: nil,
+		strategyConfigs:     nil,
 		dataPaths:           nil,
 		resultsFolder:       "",
 		log:                 nil,
@@ -194,6 +196,17 @@ func (b *BacktestEngineV1) SetConfigPath(path string) error {
 	return nil
 }
 
+// SetConfigContent implements engine.Engine.
+func (b *BacktestEngineV1) SetConfigContent(configs []string) error {
+	b.strategyConfigs = configs
+	b.strategyConfigPaths = nil
+	b.log.Debug("Config content set",
+		zap.Int("count", len(configs)),
+	)
+
+	return nil
+}
+
 // SetDataPath implements engine.Engine.
 func (b *BacktestEngineV1) SetDataPath(path string) error {
 	// use glob to get all the files that match the path
@@ -269,10 +282,24 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 	// create results folder
 	os.MkdirAll(b.resultsFolder, 0755)
 
-	// Run strategies sequentially
-	for _, strategy := range b.strategies {
+	// Build config list from either file paths or direct content
+	type configItem struct {
+		name    string
+		content string
+	}
+
+	var configs []configItem
+
+	if len(b.strategyConfigs) > 0 {
+		for i, content := range b.strategyConfigs {
+			configs = append(configs, configItem{
+				name:    fmt.Sprintf("config_%d", i),
+				content: content,
+			})
+		}
+	} else {
 		for _, configPath := range b.strategyConfigPaths {
-			config, err := os.ReadFile(configPath)
+			content, err := os.ReadFile(configPath)
 			if err != nil {
 				b.log.Error("Failed to read config",
 					zap.String("config", configPath),
@@ -282,11 +309,23 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 				return err
 			}
 
+			configs = append(configs, configItem{
+				name:    configPath,
+				content: string(content),
+			})
+		}
+	}
+
+	// Run strategies sequentially
+	for _, strategy := range b.strategies {
+		for _, cfg := range configs {
 			for _, dataPath := range b.dataPaths {
 				// Initialize the state
 				if b.state == nil {
 					return fmt.Errorf("backtest state is nil")
 				}
+
+				var err error
 
 				b.marker, err = NewBacktestMarker(b.log)
 				if err != nil {
@@ -312,16 +351,16 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 					return fmt.Errorf("failed to initialize strategy api: %w", err)
 				}
 
-				err = strategy.Initialize(string(config))
+				err = strategy.Initialize(cfg.content)
 				if err != nil {
 					return fmt.Errorf("failed to initialize strategy: %w", err)
 				}
 
-				resultFolderPath := getResultFolder(configPath, dataPath, b, strategy)
+				resultFolderPath := getResultFolder(cfg.name, dataPath, b, strategy)
 
 				b.log.Debug("Running strategy",
 					zap.String("strategy", strategy.Name()),
-					zap.String("config", configPath),
+					zap.String("config", cfg.name),
 					zap.String("data", dataPath),
 					zap.String("result", resultFolderPath),
 				)
@@ -463,10 +502,10 @@ func (b *BacktestEngineV1) preRunCheck() error {
 		return errors.New("no strategies loaded")
 	}
 
-	if len(b.strategyConfigPaths) == 0 {
-		b.log.Error("No strategy config paths loaded")
+	if len(b.strategyConfigPaths) == 0 && len(b.strategyConfigs) == 0 {
+		b.log.Error("No strategy configs loaded")
 
-		return errors.New("no strategy config paths loaded")
+		return errors.New("no strategy configs loaded")
 	}
 
 	if len(b.dataPaths) == 0 {

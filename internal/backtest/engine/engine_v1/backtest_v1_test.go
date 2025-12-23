@@ -581,6 +581,179 @@ func TestBacktestEngineV1_LoadStrategyFromBytes(t *testing.T) {
 	})
 }
 
+// TestBacktestEngineV1_SetConfigContent tests SetConfigContent function
+func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
+	t.Run("Set config content directly", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		configs := []string{`{"param1": "value1"}`, `{"param2": "value2"}`}
+		err = backtestEngine.SetConfigContent(configs)
+		require.NoError(t, err)
+
+		assert.Equal(t, 2, len(backtestEngine.strategyConfigs))
+		assert.Equal(t, `{"param1": "value1"}`, backtestEngine.strategyConfigs[0])
+		assert.Equal(t, `{"param2": "value2"}`, backtestEngine.strategyConfigs[1])
+		assert.Nil(t, backtestEngine.strategyConfigPaths, "SetConfigContent should clear strategyConfigPaths")
+	})
+
+	t.Run("SetConfigContent clears config paths", func(t *testing.T) {
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		// First set config paths
+		tempDir := t.TempDir()
+		configPath := filepath.Join(tempDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+		err = backtestEngine.SetConfigPath(configPath)
+		require.NoError(t, err)
+		assert.NotEmpty(t, backtestEngine.strategyConfigPaths)
+
+		// Then set config content - should clear paths
+		configs := []string{`{"test": "content"}`}
+		err = backtestEngine.SetConfigContent(configs)
+		require.NoError(t, err)
+
+		assert.Nil(t, backtestEngine.strategyConfigPaths, "SetConfigContent should clear strategyConfigPaths")
+		assert.Equal(t, 1, len(backtestEngine.strategyConfigs))
+	})
+
+	t.Run("Run with SetConfigContent", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		tempDir := t.TempDir()
+
+		marketData := types.MarketData{
+			Symbol: "TEST",
+			Open:   100.0,
+			High:   105.0,
+			Low:    95.0,
+			Close:  102.0,
+			Volume: 1000,
+		}
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+
+		readAllFunc := func(handler func(types.MarketData, error) bool) {
+			handler(marketData, nil)
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		// Use SetConfigContent instead of SetConfigPath
+		configs := []string{`{"strategy_config": "direct_content"}`}
+		err = backtestEngine.SetConfigContent(configs)
+		require.NoError(t, err)
+
+		backtestEngine.dataPaths = []string{filepath.Join(tempDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.NoError(t, err)
+
+		// Verify results folder was created with config_0 naming
+		strategyDir := filepath.Join(tempDir, "TestStrategy")
+		_, err = os.Stat(strategyDir)
+		assert.NoError(t, err, "Strategy result directory should be created")
+
+		// Check the result directory uses config_0 naming
+		resultDir := filepath.Join(strategyDir, "config_0", "data_path")
+		_, err = os.Stat(resultDir)
+		assert.NoError(t, err, "Result directory should be created with config_0 naming")
+	})
+
+	t.Run("Run with multiple configs from SetConfigContent", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		tempDir := t.TempDir()
+
+		marketData := types.MarketData{
+			Symbol: "TEST",
+			Open:   100.0,
+			High:   105.0,
+			Low:    95.0,
+			Close:  102.0,
+			Volume: 1000,
+		}
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		// Expect Initialize to be called twice - once for each config
+		mockStrategy.EXPECT().Initialize(`{"config": 1}`).Return(nil).Times(1)
+		mockStrategy.EXPECT().Initialize(`{"config": 2}`).Return(nil).Times(1)
+		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+
+		readAllFunc := func(handler func(types.MarketData, error) bool) {
+			handler(marketData, nil)
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		engine := NewBacktestEngineV1()
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err := backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		// Use SetConfigContent with multiple configs
+		configs := []string{`{"config": 1}`, `{"config": 2}`}
+		err = backtestEngine.SetConfigContent(configs)
+		require.NoError(t, err)
+
+		backtestEngine.dataPaths = []string{filepath.Join(tempDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+
+		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		require.NoError(t, err)
+
+		// Verify both config directories were created
+		resultDir0 := filepath.Join(tempDir, "TestStrategy", "config_0", "data_path")
+		_, err = os.Stat(resultDir0)
+		assert.NoError(t, err, "Result directory for config_0 should be created")
+
+		resultDir1 := filepath.Join(tempDir, "TestStrategy", "config_1", "data_path")
+		_, err = os.Stat(resultDir1)
+		assert.NoError(t, err, "Result directory for config_1 should be created")
+	})
+}
+
 // TestBacktestEngineV1_GetConfigSchema tests GetConfigSchema function
 func TestBacktestEngineV1_GetConfigSchema(t *testing.T) {
 	t.Run("Get config schema", func(t *testing.T) {
@@ -613,7 +786,7 @@ func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 		assert.Contains(t, err.Error(), "no strategies loaded")
 	})
 
-	t.Run("No strategy config paths", func(t *testing.T) {
+	t.Run("No strategy configs", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -631,7 +804,7 @@ func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 
 		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no strategy config paths loaded")
+		assert.Contains(t, err.Error(), "no strategy configs loaded")
 	})
 
 	t.Run("No data paths", func(t *testing.T) {
