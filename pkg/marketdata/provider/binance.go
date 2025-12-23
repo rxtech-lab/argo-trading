@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"strconv"
 	"time"
 
@@ -118,6 +120,7 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 	// Use pagination to handle Binance API limits (max 500 data points per request)
 	// Keep track of the last data point time to use as start time for next request
 	currentStartTime := startTimeMillis
+	totalRecordsWritten := 0
 
 	for {
 		klines, err := c.apiClient.NewKlinesService().
@@ -129,6 +132,12 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 		if err != nil {
 			// Attempt to finalize/close even if fetch fails
 			_, finalizeErr := c.writer.Finalize()
+
+			// Cleanup file if no data was written
+			if totalRecordsWritten == 0 {
+				c.cleanupFileIfExists()
+			}
+
 			if finalizeErr != nil {
 				return "", fmt.Errorf("failed to fetch klines from Binance: %w; also failed to finalize writer: %v", err, finalizeErr)
 			}
@@ -149,12 +158,20 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 			if err := processKlines(c.writer, ticker, klines); err != nil {
 				// Attempt to finalize/close even if processing fails
 				_, finalizeErr := c.writer.Finalize()
+
+				// Cleanup file if no data was written
+				if totalRecordsWritten == 0 {
+					c.cleanupFileIfExists()
+				}
+
 				if finalizeErr != nil {
 					return "", fmt.Errorf("failed to process klines: %w; also failed to finalize writer: %v", err, finalizeErr)
 				}
 
 				return "", fmt.Errorf("failed to process klines: %w", err)
 			}
+
+			totalRecordsWritten += len(klines)
 
 			break
 		}
@@ -163,12 +180,20 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 		if err := processKlines(c.writer, ticker, klines); err != nil {
 			// Attempt to finalize/close even if processing fails
 			_, finalizeErr := c.writer.Finalize()
+
+			// Cleanup file if no data was written
+			if totalRecordsWritten == 0 {
+				c.cleanupFileIfExists()
+			}
+
 			if finalizeErr != nil {
 				return "", fmt.Errorf("failed to process klines: %w; also failed to finalize writer: %v", err, finalizeErr)
 			}
 
 			return "", fmt.Errorf("failed to process klines: %w", err)
 		}
+
+		totalRecordsWritten += len(klines)
 
 		// Update start time for next request
 		// Use the close time of the last kline + 1ms to avoid duplicates
@@ -244,5 +269,26 @@ func convertTimespanToBinanceInterval(timespan models.Timespan, multiplier int) 
 		return "", fmt.Errorf("unsupported monthly multiplier for Binance: %d", multiplier)
 	default:
 		return "", fmt.Errorf("unsupported timespan for Binance: %s", timespan)
+	}
+}
+
+// cleanupFileIfExists removes the output file if it exists.
+// This is used to clean up when download fails and no data was written.
+func (c *BinanceClient) cleanupFileIfExists() {
+	if c.writer == nil {
+		return
+	}
+
+	outputPath := c.writer.GetOutputPath()
+	if outputPath == "" {
+		return
+	}
+
+	if _, err := os.Stat(outputPath); err == nil {
+		if removeErr := os.Remove(outputPath); removeErr != nil {
+			log.Printf("Warning: failed to remove file %s: %v", outputPath, removeErr)
+		} else {
+			log.Printf("Removed file %s due to download failure with no data", outputPath)
+		}
 	}
 }
