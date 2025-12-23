@@ -474,11 +474,41 @@ func (x *GetConfigSchemaResponse) GetSchema() string {
 	return ""
 }
 
+type GetDescriptionRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *GetDescriptionRequest) ProtoReflect() protoreflect.Message {
+	panic(`not implemented`)
+}
+
+type GetDescriptionResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Description string `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
+}
+
+func (x *GetDescriptionResponse) ProtoReflect() protoreflect.Message {
+	panic(`not implemented`)
+}
+
+func (x *GetDescriptionResponse) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
 type InitializeRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// config is the configuration for the strategy in JSON format
 	Config string `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
 }
 
@@ -1875,6 +1905,8 @@ type TradingStrategy interface {
 	Name(context.Context, *NameRequest) (*NameResponse, error)
 	// GetConfigSchema returns the schema of the strategy configuration
 	GetConfigSchema(context.Context, *GetConfigSchemaRequest) (*GetConfigSchemaResponse, error)
+	// GetDescription returns a description of the strategy
+	GetDescription(context.Context, *GetDescriptionRequest) (*GetDescriptionResponse, error)
 }
 
 // StrategyApi defines all the functions that the host provides to the plugin

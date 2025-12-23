@@ -41,6 +41,20 @@ func NewStrategyWasmRuntimeFromBytes(wasmBytes []byte) (runtime.StrategyRuntime,
 	}, nil
 }
 
+// GetDescription implements runtime.StrategyRuntime.
+func (s *StrategyWasmRuntime) GetDescription() (string, error) {
+	if s.strategy == nil {
+		return "", fmt.Errorf("strategy is not initialized, call InitializeApi first")
+	}
+
+	description, err := s.strategy.GetDescription(context.Background(), &strategy.GetDescriptionRequest{})
+	if err != nil {
+		return "", err
+	}
+
+	return description.Description, nil
+}
+
 func (s *StrategyWasmRuntime) Initialize(config string) error {
 	if s.strategy == nil {
 		return fmt.Errorf("strategy is not initialized, call InitializeApi first")

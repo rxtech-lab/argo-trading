@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -13,13 +14,17 @@ import (
 
 // mockWriter is a simple mock implementation of MarketDataWriter for testing.
 type mockWriter struct {
-	initialized    bool
-	initializeErr  error
-	writeErr       error
-	finalizeErr    error
-	outputPath     string
-	writtenData    []types.MarketData
-	writeCallCount int
+	initialized      bool
+	initializeErr    error
+	writeErr         error
+	writeErrAfterN   int // Return writeErr after N successful writes (0 means immediate error)
+	finalizeErr      error
+	closeErr         error
+	outputPath       string
+	writtenData      []types.MarketData
+	writeCallCount   int
+	finalizeCallCount int
+	closeCallCount   int
 }
 
 func (m *mockWriter) Initialize() error {
@@ -32,7 +37,7 @@ func (m *mockWriter) Initialize() error {
 
 func (m *mockWriter) Write(data types.MarketData) error {
 	m.writeCallCount++
-	if m.writeErr != nil {
+	if m.writeErr != nil && (m.writeErrAfterN == 0 || m.writeCallCount > m.writeErrAfterN) {
 		return m.writeErr
 	}
 	m.writtenData = append(m.writtenData, data)
@@ -40,6 +45,7 @@ func (m *mockWriter) Write(data types.MarketData) error {
 }
 
 func (m *mockWriter) Finalize() (string, error) {
+	m.finalizeCallCount++
 	if m.finalizeErr != nil {
 		return "", m.finalizeErr
 	}
@@ -47,7 +53,68 @@ func (m *mockWriter) Finalize() (string, error) {
 }
 
 func (m *mockWriter) Close() error {
-	return nil
+	m.closeCallCount++
+	return m.closeErr
+}
+
+// mockBinanceAPIClient implements BinanceAPIClient for testing.
+type mockBinanceAPIClient struct {
+	klines    []*binance.Kline
+	klinesErr error
+	// For pagination testing - returns different results on subsequent calls
+	callCount       int
+	klinesPerCall   [][]*binance.Kline
+	errorsPerCall   []error
+}
+
+func (m *mockBinanceAPIClient) NewKlinesService() BinanceKlinesService {
+	return &mockBinanceKlinesService{client: m}
+}
+
+type mockBinanceKlinesService struct {
+	client   *mockBinanceAPIClient
+	symbol   string
+	interval string
+	start    int64
+	end      int64
+}
+
+func (m *mockBinanceKlinesService) Symbol(symbol string) BinanceKlinesService {
+	m.symbol = symbol
+	return m
+}
+
+func (m *mockBinanceKlinesService) Interval(interval string) BinanceKlinesService {
+	m.interval = interval
+	return m
+}
+
+func (m *mockBinanceKlinesService) StartTime(startTime int64) BinanceKlinesService {
+	m.start = startTime
+	return m
+}
+
+func (m *mockBinanceKlinesService) EndTime(endTime int64) BinanceKlinesService {
+	m.end = endTime
+	return m
+}
+
+func (m *mockBinanceKlinesService) Do(_ context.Context) ([]*binance.Kline, error) {
+	// If we have per-call data, use it
+	if len(m.client.klinesPerCall) > 0 {
+		idx := m.client.callCount
+		m.client.callCount++
+		if idx < len(m.client.klinesPerCall) {
+			var err error
+			if idx < len(m.client.errorsPerCall) {
+				err = m.client.errorsPerCall[idx]
+			}
+			return m.client.klinesPerCall[idx], err
+		}
+		return nil, nil
+	}
+	// Otherwise use single response
+	return m.client.klines, m.client.klinesErr
 }
 
 type BinanceClientTestSuite struct {
@@ -65,8 +132,16 @@ func (suite *BinanceClientTestSuite) TestNewBinanceClient() {
 
 	binanceClient, ok := client.(*BinanceClient)
 	suite.True(ok)
-	suite.NotNil(binanceClient.client)
+	suite.NotNil(binanceClient.apiClient)
 	suite.Nil(binanceClient.writer)
+}
+
+func (suite *BinanceClientTestSuite) TestNewBinanceClientWithAPI() {
+	mockAPI := &mockBinanceAPIClient{}
+	client := NewBinanceClientWithAPI(mockAPI)
+	suite.NotNil(client)
+	suite.Equal(mockAPI, client.apiClient)
+	suite.Nil(client.writer)
 }
 
 func (suite *BinanceClientTestSuite) TestConfigWriter() {
@@ -365,4 +440,581 @@ func (suite *BinanceClientTestSuite) TestProgressCalculation() {
 	// Verify that we're NOT using absolute timestamps
 	// Absolute timestamps for 2024 would be around 1.7 trillion milliseconds
 	suite.Less(progressTotal, float64(1e12), "Progress total should be relative, not an absolute timestamp")
+}
+
+// TestDownloadSuccess tests a successful download with mock API.
+func (suite *BinanceClientTestSuite) TestDownloadSuccess() {
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+		{
+			OpenTime:  1704067260000,
+			Open:      "42300.00",
+			High:      "42400.00",
+			Low:       "42200.00",
+			Close:     "42350.00",
+			Volume:    "500.25",
+			CloseTime: 1704067319999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.Equal("/tmp/test.parquet", path)
+	suite.Len(mockW.writtenData, 2)
+	suite.True(mockW.initialized)
+}
+
+// TestDownloadEmptyKlines tests download when API returns empty klines.
+func (suite *BinanceClientTestSuite) TestDownloadEmptyKlines() {
+	mockAPI := &mockBinanceAPIClient{klines: []*binance.Kline{}}
+	mockW := &mockWriter{outputPath: "/tmp/empty.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.Equal("/tmp/empty.parquet", path)
+	suite.Len(mockW.writtenData, 0)
+}
+
+// TestDownloadAPIError tests error handling when API returns an error.
+func (suite *BinanceClientTestSuite) TestDownloadAPIError() {
+	mockAPI := &mockBinanceAPIClient{klinesErr: errors.New("API rate limit exceeded")}
+	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to fetch klines from Binance")
+	suite.Contains(err.Error(), "API rate limit exceeded")
+}
+
+// TestDownloadAPIErrorWithFinalizeError tests combined API and finalize errors.
+func (suite *BinanceClientTestSuite) TestDownloadAPIErrorWithFinalizeError() {
+	mockAPI := &mockBinanceAPIClient{klinesErr: errors.New("API error")}
+	mockW := &mockWriter{finalizeErr: errors.New("finalize failed")}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to fetch klines from Binance")
+	suite.Contains(err.Error(), "also failed to finalize writer")
+}
+
+// TestDownloadFinalizeError tests error handling when finalize fails at the end.
+func (suite *BinanceClientTestSuite) TestDownloadFinalizeError() {
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{finalizeErr: errors.New("disk full")}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to finalize writer")
+}
+
+// TestDownloadWriteErrorWithFinalizeError tests write error with finalize error.
+func (suite *BinanceClientTestSuite) TestDownloadWriteErrorWithFinalizeError() {
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{
+		writeErr:    errors.New("write error"),
+		finalizeErr: errors.New("finalize failed"),
+	}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to process klines")
+	suite.Contains(err.Error(), "also failed to finalize writer")
+}
+
+// TestDownloadWriteErrorWithFinalizeSuccess tests write error with successful finalize.
+func (suite *BinanceClientTestSuite) TestDownloadWriteErrorWithFinalizeSuccess() {
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{writeErr: errors.New("write error")}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to process klines")
+	suite.NotContains(err.Error(), "also failed to finalize")
+}
+
+// TestDownloadPagination tests pagination when we get exactly 500 klines (full page).
+func (suite *BinanceClientTestSuite) TestDownloadPagination() {
+	// Create 500 klines to trigger pagination
+	firstPage := make([]*binance.Kline, 500)
+	for i := 0; i < 500; i++ {
+		firstPage[i] = &binance.Kline{
+			OpenTime:  1704067200000 + int64(i*60000),
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067200000 + int64(i*60000) + 59999,
+		}
+	}
+
+	// Second page has fewer than 500 (last page)
+	secondPage := []*binance.Kline{
+		{
+			OpenTime:  1704067200000 + 500*60000,
+			Open:      "42300.00",
+			High:      "42400.00",
+			Low:       "42200.00",
+			Close:     "42350.00",
+			Volume:    "500.25",
+			CloseTime: 1704067200000 + 500*60000 + 59999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{firstPage, secondPage},
+	}
+	mockW := &mockWriter{outputPath: "/tmp/paginated.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.Equal("/tmp/paginated.parquet", path)
+	// Should have written 501 records (500 from first page + 1 from second)
+	suite.Len(mockW.writtenData, 501)
+	suite.Equal(2, mockAPI.callCount)
+}
+
+// TestDownloadPaginationWithAPIErrorOnSecondPage tests API error during pagination.
+func (suite *BinanceClientTestSuite) TestDownloadPaginationWithAPIErrorOnSecondPage() {
+	// Create 500 klines to trigger pagination
+	firstPage := make([]*binance.Kline, 500)
+	for i := 0; i < 500; i++ {
+		firstPage[i] = &binance.Kline{
+			OpenTime:  1704067200000 + int64(i*60000),
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067200000 + int64(i*60000) + 59999,
+		}
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{firstPage, nil},
+		errorsPerCall: []error{nil, errors.New("connection timeout")},
+	}
+	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to fetch klines from Binance")
+	suite.Contains(err.Error(), "connection timeout")
+	// First page should have been written before error
+	suite.Len(mockW.writtenData, 500)
+}
+
+// TestDownloadPaginationWriteErrorOnSecondPage tests write error during pagination.
+func (suite *BinanceClientTestSuite) TestDownloadPaginationWriteErrorOnSecondPage() {
+	// Create 500 klines to trigger pagination
+	firstPage := make([]*binance.Kline, 500)
+	for i := 0; i < 500; i++ {
+		firstPage[i] = &binance.Kline{
+			OpenTime:  1704067200000 + int64(i*60000),
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067200000 + int64(i*60000) + 59999,
+		}
+	}
+
+	secondPage := []*binance.Kline{
+		{
+			OpenTime:  1704067200000 + 500*60000,
+			Open:      "42300.00",
+			High:      "42400.00",
+			Low:       "42200.00",
+			Close:     "42350.00",
+			Volume:    "500.25",
+			CloseTime: 1704067200000 + 500*60000 + 59999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{firstPage, secondPage},
+	}
+	mockW := &mockWriter{
+		writeErr:     errors.New("disk full"),
+		writeErrAfterN: 500, // Fail after first 500 writes
+	}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to process klines")
+}
+
+// TestDownloadProgressCallback tests that progress callback is called.
+func (suite *BinanceClientTestSuite) TestDownloadProgressCallback() {
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	progressCalled := false
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
+		progressCalled = true
+		suite.GreaterOrEqual(total, float64(0))
+		suite.Contains(message, "BTCUSDT")
+	})
+	suite.NoError(err)
+	suite.True(progressCalled)
+}
+
+// TestDownloadPaginationTimeBreak tests pagination ending due to time condition.
+func (suite *BinanceClientTestSuite) TestDownloadPaginationTimeBreak() {
+	// Create 500 klines where the last kline's CloseTime exceeds the end time
+	// This triggers the "currentStartTime >= endTimeMillis" break condition
+	startTimeMs := int64(1704067200000) // 2024-01-01 00:00:00 UTC
+	endTimeMs := int64(1704070800000)   // 2024-01-01 01:00:00 UTC (1 hour later)
+
+	firstPage := make([]*binance.Kline, 500)
+	for i := 0; i < 500; i++ {
+		// Each kline is 1 minute, but we set CloseTime to exceed endTime at the end
+		openTime := startTimeMs + int64(i*60000)
+		closeTime := openTime + 59999
+		// For the last kline, set CloseTime to be at or after endTime
+		if i == 499 {
+			closeTime = endTimeMs + 1000 // CloseTime exceeds endTime
+		}
+		firstPage[i] = &binance.Kline{
+			OpenTime:  openTime,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: closeTime,
+		}
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{firstPage},
+	}
+	mockW := &mockWriter{outputPath: "/tmp/timebreak.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.UnixMilli(startTimeMs)
+	endDate := time.UnixMilli(endTimeMs)
+
+	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.Equal("/tmp/timebreak.parquet", path)
+	suite.Len(mockW.writtenData, 500)
+	// Only one API call needed because time break condition was met
+	suite.Equal(1, mockAPI.callCount)
+}
+
+// TestDownloadFullPageWriteError tests write error during processing of a full page (500 records).
+func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteError() {
+	// Create exactly 500 klines (full page) to trigger processing via the full-page path (lines 162-171)
+	fullPage := make([]*binance.Kline, 500)
+	startTimeMs := int64(1704067200000)
+	endTimeMs := startTimeMs + int64(500*60000) // 500 minutes
+
+	for i := 0; i < 500; i++ {
+		openTime := startTimeMs + int64(i*60000)
+		fullPage[i] = &binance.Kline{
+			OpenTime:  openTime,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: openTime + 59999,
+		}
+	}
+
+	// Mock returns a full page, then an empty page (to not infinite loop)
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{fullPage, {}},
+	}
+	mockW := &mockWriter{
+		writeErr:       errors.New("disk full during full page"),
+		writeErrAfterN: 0, // Fail immediately
+	}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.UnixMilli(startTimeMs)
+	endDate := time.UnixMilli(endTimeMs + 60000) // A bit after the last kline
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to process klines")
+}
+
+// TestDownloadFullPageWriteErrorWithFinalizeError tests write error during full page with finalize error.
+func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteErrorWithFinalizeError() {
+	fullPage := make([]*binance.Kline, 500)
+	startTimeMs := int64(1704067200000)
+
+	for i := 0; i < 500; i++ {
+		openTime := startTimeMs + int64(i*60000)
+		fullPage[i] = &binance.Kline{
+			OpenTime:  openTime,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: openTime + 59999,
+		}
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{fullPage, {}},
+	}
+	mockW := &mockWriter{
+		writeErr:       errors.New("write failed on full page"),
+		writeErrAfterN: 0,
+		finalizeErr:    errors.New("finalize also failed"),
+	}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.UnixMilli(startTimeMs)
+	endDate := time.UnixMilli(startTimeMs + int64(600*60000))
+
+	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to process klines")
+	suite.Contains(err.Error(), "also failed to finalize writer")
+}
+
+// TestBinanceClientWrapperMethods tests the wrapper methods by verifying the client structure.
+func (suite *BinanceClientTestSuite) TestBinanceClientWrapperMethods() {
+	// Create a real BinanceClient to verify the wrapper is correctly set up
+	client, err := NewBinanceClient()
+	suite.NoError(err)
+
+	binanceClient, ok := client.(*BinanceClient)
+	suite.True(ok)
+
+	// Verify the apiClient is a binanceClientWrapper
+	_, ok = binanceClient.apiClient.(*binanceClientWrapper)
+	suite.True(ok, "apiClient should be a binanceClientWrapper")
+}
+
+// TestProcessKlinesWithInvalidNumbers tests processKlines with invalid number strings.
+func (suite *BinanceClientTestSuite) TestProcessKlinesWithInvalidNumbers() {
+	// ParseFloat will return 0 for truly invalid strings (not "NaN" or "inf")
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "invalid",
+			High:      "also_invalid",
+			Low:       "not_a_number",
+			Close:     "xyz",
+			Volume:    "abc",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockW := &mockWriter{}
+
+	err := processKlines(mockW, "BTCUSDT", klines)
+	suite.NoError(err)
+	suite.Len(mockW.writtenData, 1)
+	// Verify that invalid numbers are parsed as 0
+	suite.Equal(float64(0), mockW.writtenData[0].Open)
+	suite.Equal(float64(0), mockW.writtenData[0].High)
+	suite.Equal(float64(0), mockW.writtenData[0].Low)
+	suite.Equal(float64(0), mockW.writtenData[0].Close)
+	suite.Equal(float64(0), mockW.writtenData[0].Volume)
+}
+
+// TestDownloadPaginationWithLargeDataset tests pagination with multiple full pages.
+func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
+	startTimeMs := int64(1704067200000)
+
+	// Create three pages: two full (500 each) and one partial (100)
+	page1 := make([]*binance.Kline, 500)
+	page2 := make([]*binance.Kline, 500)
+	page3 := make([]*binance.Kline, 100)
+
+	for i := 0; i < 500; i++ {
+		openTime := startTimeMs + int64(i*60000)
+		page1[i] = &binance.Kline{
+			OpenTime:  openTime,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: openTime + 59999,
+		}
+	}
+
+	for i := 0; i < 500; i++ {
+		openTime := startTimeMs + int64((500+i)*60000)
+		page2[i] = &binance.Kline{
+			OpenTime:  openTime,
+			Open:      "42100.50",
+			High:      "42600.00",
+			Low:       "41900.00",
+			Close:     "42400.00",
+			Volume:    "1100.5",
+			CloseTime: openTime + 59999,
+		}
+	}
+
+	for i := 0; i < 100; i++ {
+		openTime := startTimeMs + int64((1000+i)*60000)
+		page3[i] = &binance.Kline{
+			OpenTime:  openTime,
+			Open:      "42200.50",
+			High:      "42700.00",
+			Low:       "42000.00",
+			Close:     "42500.00",
+			Volume:    "1200.5",
+			CloseTime: openTime + 59999,
+		}
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{page1, page2, page3},
+	}
+	mockW := &mockWriter{outputPath: "/tmp/large.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.UnixMilli(startTimeMs)
+	endDate := time.UnixMilli(startTimeMs + int64(2000*60000)) // Far enough in the future
+
+	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.Equal("/tmp/large.parquet", path)
+	// Should have written 1100 records (500 + 500 + 100)
+	suite.Len(mockW.writtenData, 1100)
+	suite.Equal(3, mockAPI.callCount)
 }

@@ -136,3 +136,10 @@ func (s *ConsecutiveCandlesStrategy) ProcessData(ctx context.Context, req *strat
 func (s *ConsecutiveCandlesStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetConfigSchemaRequest) (*strategy.GetConfigSchemaResponse, error) {
 	return &strategy.GetConfigSchemaResponse{Schema: ""}, nil
 }
+
+// GetDescription implements strategy.TradingStrategy.
+func (s *ConsecutiveCandlesStrategy) GetDescription(_ context.Context, _ *strategy.GetDescriptionRequest) (*strategy.GetDescriptionResponse, error) {
+	return &strategy.GetDescriptionResponse{
+		Description: "A strategy that buys on 2 consecutive up candles and sells on 2 consecutive down candles",
+	}, nil
+}
