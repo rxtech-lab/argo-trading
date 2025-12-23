@@ -13,6 +13,11 @@ type GoRuntime struct {
 	strategy runtime.StrategyRuntime
 }
 
+// GetDescription implements runtime.StrategyRuntime.
+func (g *GoRuntime) GetDescription() (string, error) {
+	panic("unimplemented")
+}
+
 // Initialize implements StrategyRuntime.
 func (g *GoRuntime) Initialize(config string) error {
 	panic("unimplemented")

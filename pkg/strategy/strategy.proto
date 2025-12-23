@@ -29,6 +29,8 @@ service TradingStrategy {
   rpc Name(NameRequest) returns (NameResponse) {}
   // GetConfigSchema returns the schema of the strategy configuration
   rpc GetConfigSchema(GetConfigSchemaRequest) returns (GetConfigSchemaResponse) {}
+  // GetDescription returns a description of the strategy
+  rpc GetDescription(GetDescriptionRequest) returns (GetDescriptionResponse) {}
 }
 
 message GetConfigSchemaRequest {}
@@ -37,6 +39,11 @@ message GetConfigSchemaResponse {
   string schema = 1;
 }
 
+message GetDescriptionRequest {}
+
+message GetDescriptionResponse {
+  string description = 1;
+}
 
 message InitializeRequest {
   string config = 1;
