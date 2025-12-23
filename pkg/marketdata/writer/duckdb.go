@@ -134,6 +134,11 @@ func (w *DuckDBWriter) Finalize() (outputPath string, err error) {
 	return w.outputPath, nil
 }
 
+// GetOutputPath returns the configured output file path.
+func (w *DuckDBWriter) GetOutputPath() string {
+	return w.outputPath
+}
+
 // Close cleans up resources used by the writer, including closing the statement,
 // closing the database connection, and removing the temporary database file.
 func (w *DuckDBWriter) Close() error {
