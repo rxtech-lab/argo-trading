@@ -2,6 +2,7 @@ package testhelper
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,12 +60,12 @@ func RunWasmStrategyTest(s *E2ETestSuite, strategyName string, wasmPath string, 
 		Symbol:     "BTCUSDT",
 	}
 
-	cfgBytes, err := yaml.Marshal(cfg)
+	cfgBytes, err := json.Marshal(cfg)
 	require.NoError(s.T(), err)
 
 	// write config to file
 	tmpFolder = s.T().TempDir()
-	configPath := filepath.Join(tmpFolder, "config", "config.yaml")
+	configPath := filepath.Join(tmpFolder, "config", "config.json")
 	resultPath := filepath.Join(tmpFolder, "results")
 
 	// create config folder

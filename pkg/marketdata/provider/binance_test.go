@@ -782,8 +782,6 @@ func (suite *BinanceClientTestSuite) TestDownloadProgressCallback() {
 		suite.Contains(message, "BTCUSDT")
 	})
 	suite.NoError(err)
-	// Give the goroutine time to execute
-	time.Sleep(10 * time.Millisecond)
 	suite.True(progressCalled)
 }
 

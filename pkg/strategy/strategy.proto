@@ -46,6 +46,7 @@ message GetDescriptionResponse {
 }
 
 message InitializeRequest {
+  // config is the configuration for the strategy in JSON format
   string config = 1;
 }
 

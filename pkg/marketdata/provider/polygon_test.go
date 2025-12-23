@@ -326,8 +326,6 @@ func (suite *PolygonClientTestSuite) TestDownloadManyDataPoints() {
 	suite.NoError(err)
 	suite.Equal("/tmp/large.parquet", path)
 	suite.Len(mockW.writtenData, 1500)
-	// Give the goroutine time to execute
-	time.Sleep(10 * time.Millisecond)
 	suite.True(progressCalled)
 }
 
@@ -361,8 +359,6 @@ func (suite *PolygonClientTestSuite) TestDownloadProgressCallback() {
 		suite.Contains(message, "SPY")
 	})
 	suite.NoError(err)
-	// Give the goroutine time to execute
-	time.Sleep(10 * time.Millisecond)
 	suite.True(progressCalled)
 }
 

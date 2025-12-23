@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/knqyf263/go-plugin/types/known/emptypb"
@@ -14,6 +15,12 @@ import (
 // Buy when fast MA crosses above slow MA, sell when fast MA crosses below slow MA
 type PlaceOrderStrategy struct {
 	// Strategy is stateless, state is stored in cache
+	config Config
+}
+
+// Config represents the configuration for the PlaceOrderStrategy
+type Config struct {
+	Symbol string `yaml:"symbol" jsonschema:"title=Symbol,description=The symbol to trade,default=AAPL"`
 }
 
 func main() {}
@@ -28,12 +35,24 @@ func NewPlaceOrderStrategy() strategy.TradingStrategy {
 
 // Initialize implements strategy.TradingStrategy.
 func (s *PlaceOrderStrategy) Initialize(_ context.Context, req *strategy.InitializeRequest) (*emptypb.Empty, error) {
+	var config Config
+	// unmarshal json to config
+	if err := json.Unmarshal([]byte(req.Config), &config); err != nil {
+		return nil, fmt.Errorf("failed to parse configuration: %w", err)
+	}
+
+	s.config = config
 	return &emptypb.Empty{}, nil
 }
 
 // Name implements strategy.TradingStrategy.
 func (s *PlaceOrderStrategy) Name(_ context.Context, _ *strategy.NameRequest) (*strategy.NameResponse, error) {
 	return &strategy.NameResponse{Name: "PlaceOrderStrategy"}, nil
+}
+
+// GetDescription implements strategy.TradingStrategy.
+func (s *PlaceOrderStrategy) GetDescription(_ context.Context, _ *strategy.GetDescriptionRequest) (*strategy.GetDescriptionResponse, error) {
+	return &strategy.GetDescriptionResponse{Description: "A strategy that places an order when the fast MA crosses above the slow MA and sells when the fast MA crosses below the slow MA"}, nil
 }
 
 // ProcessData implements strategy.TradingStrategy.
@@ -100,5 +119,9 @@ func (s *PlaceOrderStrategy) ProcessData(ctx context.Context, req *strategy.Proc
 
 // GetConfigSchema implements strategy.TradingStrategy.
 func (s *PlaceOrderStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetConfigSchemaRequest) (*strategy.GetConfigSchemaResponse, error) {
-	return &strategy.GetConfigSchemaResponse{Schema: ""}, nil
+	schema, err := strategy.ToJSONSchema(Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema: %w", err)
+	}
+	return &strategy.GetConfigSchemaResponse{Schema: schema}, nil
 }

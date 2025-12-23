@@ -508,6 +508,7 @@ type InitializeRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// config is the configuration for the strategy in JSON format
 	Config string `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
 }
 

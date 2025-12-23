@@ -18,6 +18,12 @@ func GetStrategyMetadata(path string) (StrategyMetadata, error) {
 		return StrategyMetadata{}, err
 	}
 
+	if err != nil {
+		return StrategyMetadata{}, err
+	}
+
+	runtime.InitializeApi(nil)
+
 	schema, err := runtime.GetConfigSchema()
 	if err != nil {
 		return StrategyMetadata{}, err

@@ -137,7 +137,7 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 		}
 
 		// Calculate relative progress (time elapsed vs total time range)
-		go onProgress(
+		onProgress(
 			float64(currentStartTime-startTimeMillis),
 			float64(endTimeMillis-startTimeMillis),
 			fmt.Sprintf("Downloading %s klines from Binance", ticker),

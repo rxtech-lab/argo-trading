@@ -108,7 +108,7 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 	processedCount := 0
 
 	for aggsIter.Next() {
-		go onProgress(float64(processedCount), float64(totalIterations), fmt.Sprintf("Downloading %s", ticker))
+		onProgress(float64(processedCount), float64(totalIterations), fmt.Sprintf("Downloading %s", ticker))
 
 		agg := aggsIter.Item()
 		marketData := types.MarketData{
