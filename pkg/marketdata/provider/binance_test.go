@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -55,6 +56,10 @@ func (m *mockWriter) Finalize() (string, error) {
 func (m *mockWriter) Close() error {
 	m.closeCallCount++
 	return m.closeErr
+}
+
+func (m *mockWriter) GetOutputPath() string {
+	return m.outputPath
 }
 
 // mockBinanceAPIClient implements BinanceAPIClient for testing.
@@ -1017,4 +1022,132 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
 	// Should have written 1100 records (500 + 500 + 100)
 	suite.Len(mockW.writtenData, 1100)
 	suite.Equal(3, mockAPI.callCount)
+}
+
+// TestDownloadAPIError_DeletesFileWhenNoData verifies that the output file is deleted
+// when an API error occurs and no data was written.
+func (suite *BinanceClientTestSuite) TestDownloadAPIError_DeletesFileWhenNoData() {
+	// Create a temporary file to simulate the output file
+	tmpFile, err := os.CreateTemp("", "binance_test_*.parquet")
+	suite.Require().NoError(err)
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Verify temp file exists
+	_, err = os.Stat(tmpPath)
+	suite.Require().NoError(err, "temp file should exist before test")
+
+	mockAPI := &mockBinanceAPIClient{klinesErr: errors.New("API rate limit exceeded")}
+	mockW := &mockWriter{outputPath: tmpPath}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to fetch klines from Binance")
+
+	// Verify temp file was deleted
+	_, err = os.Stat(tmpPath)
+	suite.True(os.IsNotExist(err), "temp file should be deleted when API error occurs with no data")
+}
+
+// TestDownloadAPIError_KeepsFileWhenPartialData verifies that the output file is kept
+// when an API error occurs but some data was already written.
+func (suite *BinanceClientTestSuite) TestDownloadAPIError_KeepsFileWhenPartialData() {
+	// Create a temporary file to simulate the output file
+	tmpFile, err := os.CreateTemp("", "binance_test_*.parquet")
+	suite.Require().NoError(err)
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Verify temp file exists
+	_, err = os.Stat(tmpPath)
+	suite.Require().NoError(err, "temp file should exist before test")
+
+	// Create 500 klines for first page (triggers pagination)
+	firstPage := make([]*binance.Kline, 500)
+	for i := 0; i < 500; i++ {
+		firstPage[i] = &binance.Kline{
+			OpenTime:  1704067200000 + int64(i*60000),
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067200000 + int64(i*60000) + 59999,
+		}
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{firstPage, nil},
+		errorsPerCall: []error{nil, errors.New("connection timeout on second page")},
+	}
+	mockW := &mockWriter{outputPath: tmpPath}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to fetch klines from Binance")
+
+	// Verify temp file was NOT deleted (partial data was written)
+	_, err = os.Stat(tmpPath)
+	suite.NoError(err, "temp file should be kept when error occurs after partial data was written")
+
+	// Clean up temp file
+	os.Remove(tmpPath)
+}
+
+// TestDownloadWriteError_DeletesFileWhenNoData verifies that the output file is deleted
+// when a write error occurs on the first record (no data written yet).
+func (suite *BinanceClientTestSuite) TestDownloadWriteError_DeletesFileWhenNoData() {
+	// Create a temporary file to simulate the output file
+	tmpFile, err := os.CreateTemp("", "binance_test_*.parquet")
+	suite.Require().NoError(err)
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Verify temp file exists
+	_, err = os.Stat(tmpPath)
+	suite.Require().NoError(err, "temp file should exist before test")
+
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{
+		outputPath: tmpPath,
+		writeErr:   errors.New("disk full"),
+	}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to process klines")
+
+	// Verify temp file was deleted
+	_, err = os.Stat(tmpPath)
+	suite.True(os.IsNotExist(err), "temp file should be deleted when write error occurs with no data")
 }

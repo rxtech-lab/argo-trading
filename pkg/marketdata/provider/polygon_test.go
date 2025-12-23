@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -451,4 +452,85 @@ func (suite *PolygonClientTestSuite) TestDownloadDataTransformation() {
 	suite.InDelta(149.00, data.Low, 0.001)
 	suite.InDelta(154.75, data.Close, 0.001)
 	suite.InDelta(2500000, data.Volume, 0.001)
+}
+
+// TestDownloadIteratorError_DeletesFileWhenNoData verifies that the output file is deleted
+// when an iterator error occurs and no data was written.
+func (suite *PolygonClientTestSuite) TestDownloadIteratorError_DeletesFileWhenNoData() {
+	// Create a temporary file to simulate the output file
+	tmpFile, err := os.CreateTemp("", "polygon_test_*.parquet")
+	suite.Require().NoError(err)
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Verify temp file exists
+	_, err = os.Stat(tmpPath)
+	suite.Require().NoError(err, "temp file should exist before test")
+
+	mockIter := &mockPolygonIterator{
+		aggs: []models.Agg{},
+		err:  errors.New("API rate limit exceeded"),
+	}
+	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
+	mockW := &mockWriter{outputPath: tmpPath}
+
+	client := NewPolygonClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err = client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "error iterating polygon aggregates")
+
+	// Verify temp file was deleted
+	_, err = os.Stat(tmpPath)
+	suite.True(os.IsNotExist(err), "temp file should be deleted when error occurs with no data")
+}
+
+// TestDownloadWriteError_DeletesFileWhenNoData verifies that the output file is deleted
+// when a write error occurs on the first record (no data written yet).
+func (suite *PolygonClientTestSuite) TestDownloadWriteError_DeletesFileWhenNoData() {
+	// Create a temporary file to simulate the output file
+	tmpFile, err := os.CreateTemp("", "polygon_test_*.parquet")
+	suite.Require().NoError(err)
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Verify temp file exists
+	_, err = os.Stat(tmpPath)
+	suite.Require().NoError(err, "temp file should exist before test")
+
+	aggs := []models.Agg{
+		{
+			Timestamp: models.Millis(time.Date(2024, 1, 1, 9, 30, 0, 0, time.UTC)),
+			Open:      100.0,
+			High:      101.0,
+			Low:       99.0,
+			Close:     100.5,
+			Volume:    1000000,
+		},
+	}
+
+	mockIter := &mockPolygonIterator{aggs: aggs}
+	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
+	mockW := &mockWriter{
+		outputPath: tmpPath,
+		writeErr:   errors.New("disk full"),
+	}
+
+	client := NewPolygonClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err = client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to write data")
+
+	// Verify temp file was deleted
+	_, err = os.Stat(tmpPath)
+	suite.True(os.IsNotExist(err), "temp file should be deleted when write error occurs with no data")
 }

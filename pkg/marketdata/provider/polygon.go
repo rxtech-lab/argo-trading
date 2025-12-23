@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
@@ -124,6 +125,11 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 
 		err = c.writer.Write(marketData)
 		if err != nil {
+			// Cleanup file if no data was written
+			if processedCount == 0 {
+				c.cleanupFileIfExists()
+			}
+
 			return "", fmt.Errorf("failed to write data: %w", err)
 		}
 
@@ -136,6 +142,11 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 	}
 
 	if aggsIter.Err() != nil {
+		// Cleanup file if no data was written
+		if processedCount == 0 {
+			c.cleanupFileIfExists()
+		}
+
 		return "", fmt.Errorf("error iterating polygon aggregates: %w", aggsIter.Err())
 	}
 
@@ -148,4 +159,25 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 	}
 
 	return outputPath, nil
+}
+
+// cleanupFileIfExists removes the output file if it exists.
+// This is used to clean up when download fails and no data was written.
+func (c *PolygonClient) cleanupFileIfExists() {
+	if c.writer == nil {
+		return
+	}
+
+	outputPath := c.writer.GetOutputPath()
+	if outputPath == "" {
+		return
+	}
+
+	if _, err := os.Stat(outputPath); err == nil {
+		if removeErr := os.Remove(outputPath); removeErr != nil {
+			log.Printf("Warning: failed to remove file %s: %v", outputPath, removeErr)
+		} else {
+			log.Printf("Removed file %s due to download failure with no data", outputPath)
+		}
+	}
 }

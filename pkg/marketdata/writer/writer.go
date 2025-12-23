@@ -14,4 +14,6 @@ type MarketDataWriter interface {
 	Finalize() (outputPath string, err error)
 	// Close releases any resources held by the writer.
 	Close() error
+	// GetOutputPath returns the configured output file path.
+	GetOutputPath() string
 }
