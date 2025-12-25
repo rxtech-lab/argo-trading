@@ -101,7 +101,7 @@ func (suite *PolygonClientTestSuite) TestPolygonClient_Download_WithoutWriter() 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "no writer configured")
 }
@@ -117,7 +117,7 @@ func (suite *PolygonClientTestSuite) TestPolygonClient_Download_WriterInitialize
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to initialize writer")
 }
@@ -153,7 +153,7 @@ func (suite *PolygonClientTestSuite) TestDownloadSuccess() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	path, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	path, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/test.parquet", path)
 	suite.Len(mockW.writtenData, 2)
@@ -180,7 +180,7 @@ func (suite *PolygonClientTestSuite) TestDownloadEmptyAggs() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	path, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	path, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/empty.parquet", path)
 	suite.Len(mockW.writtenData, 0)
@@ -201,7 +201,7 @@ func (suite *PolygonClientTestSuite) TestDownloadIteratorError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "error iterating polygon aggregates")
 	suite.Contains(err.Error(), "API rate limit exceeded")
@@ -230,7 +230,7 @@ func (suite *PolygonClientTestSuite) TestDownloadWriteError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to write data")
 }
@@ -258,7 +258,7 @@ func (suite *PolygonClientTestSuite) TestDownloadFinalizeError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to finalize writer")
 }
@@ -289,7 +289,7 @@ func (suite *PolygonClientTestSuite) TestDownloadCloseError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "error closing writer")
 }
@@ -321,7 +321,7 @@ func (suite *PolygonClientTestSuite) TestDownloadManyDataPoints() {
 	endDate := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 
 	progressCalled := false
-	path, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
+	path, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
 		progressCalled = true
 	})
 	suite.NoError(err)
@@ -354,7 +354,7 @@ func (suite *PolygonClientTestSuite) TestDownloadProgressCallback() {
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
 	progressCalled := false
-	_, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
+	_, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
 		progressCalled = true
 		suite.GreaterOrEqual(total, float64(0))
 		suite.Contains(message, "SPY")
@@ -389,7 +389,7 @@ func (suite *PolygonClientTestSuite) TestDownloadWriterCloseWithExistingError() 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	// The error should be about the write failure, not the close failure
 	suite.Contains(err.Error(), "failed to write data")
@@ -439,7 +439,7 @@ func (suite *PolygonClientTestSuite) TestDownloadDataTransformation() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("AAPL", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "AAPL", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Len(mockW.receivedData, 1)
 
@@ -480,7 +480,7 @@ func (suite *PolygonClientTestSuite) TestDownloadIteratorError_DeletesFileWhenNo
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "error iterating polygon aggregates")
 
@@ -526,11 +526,89 @@ func (suite *PolygonClientTestSuite) TestDownloadWriteError_DeletesFileWhenNoDat
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to write data")
 
 	// Verify temp file was deleted
 	_, err = os.Stat(tmpPath)
 	suite.True(os.IsNotExist(err), "temp file should be deleted when write error occurs with no data")
+}
+
+// TestDownload_Cancellation tests that download can be cancelled via context.
+func (suite *PolygonClientTestSuite) TestDownload_Cancellation() {
+	aggs := []models.Agg{
+		{
+			Timestamp: models.Millis(time.Date(2024, 1, 1, 9, 30, 0, 0, time.UTC)),
+			Open:      100.0,
+			High:      101.0,
+			Low:       99.0,
+			Close:     100.5,
+			Volume:    1000000,
+		},
+	}
+
+	mockIter := &mockPolygonIterator{aggs: aggs}
+	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
+	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
+
+	client := NewPolygonClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download(ctx, "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.ErrorIs(err, context.Canceled)
+}
+
+// TestDownload_CancellationCleansUpFile tests that file is deleted when cancelled with no data written.
+func (suite *PolygonClientTestSuite) TestDownload_CancellationCleansUpFile() {
+	// Create a temporary file to simulate the output file
+	tmpFile, err := os.CreateTemp("", "polygon_cancel_test_*.parquet")
+	suite.Require().NoError(err)
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Verify temp file exists
+	_, err = os.Stat(tmpPath)
+	suite.Require().NoError(err, "temp file should exist before test")
+
+	aggs := []models.Agg{
+		{
+			Timestamp: models.Millis(time.Date(2024, 1, 1, 9, 30, 0, 0, time.UTC)),
+			Open:      100.0,
+			High:      101.0,
+			Low:       99.0,
+			Close:     100.5,
+			Volume:    1000000,
+		},
+	}
+
+	mockIter := &mockPolygonIterator{aggs: aggs}
+	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
+	mockW := &mockWriter{outputPath: tmpPath}
+
+	client := NewPolygonClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err = client.Download(ctx, "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.ErrorIs(err, context.Canceled)
+
+	// Verify temp file was deleted
+	_, err = os.Stat(tmpPath)
+	suite.True(os.IsNotExist(err), "temp file should be deleted when cancelled with no data written")
 }

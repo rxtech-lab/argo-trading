@@ -1,10 +1,12 @@
 package swiftargo
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata"
-)	
+)
 
 type MarketDownloader struct {
 	helper        MarketDownloaderHelper
@@ -12,6 +14,10 @@ type MarketDownloader struct {
 	writer        string
 	dataFolder    string
 	polygonApiKey string
+
+	// Cancellation support
+	mu         sync.Mutex
+	cancelFunc context.CancelFunc
 }
 
 type MarketDownloaderHelper interface {
@@ -25,10 +31,29 @@ func NewMarketDownloader(helper MarketDownloaderHelper, provider string, writer 
 		writer:        writer,
 		dataFolder:    dataFolder,
 		polygonApiKey: polygonApiKey,
+		mu:            sync.Mutex{},
+		cancelFunc:    nil,
 	}
 }
 
+// Download downloads market data. This method is blocking.
+// Can be cancelled by calling Cancel() from another goroutine.
 func (m *MarketDownloader) Download(ticker string, from, to string, interval string) error {
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Store cancel function with mutex protection
+	m.mu.Lock()
+	m.cancelFunc = cancel
+	m.mu.Unlock()
+
+	// Ensure we clean up the cancel function when done
+	defer func() {
+		m.mu.Lock()
+		m.cancelFunc = nil
+		m.mu.Unlock()
+	}()
+
 	client, err := marketdata.NewClient(marketdata.ClientConfig{
 		ProviderType:  marketdata.ProviderType(m.provider),
 		WriterType:    marketdata.WriterType(m.writer),
@@ -53,7 +78,7 @@ func (m *MarketDownloader) Download(ticker string, from, to string, interval str
 
 	timespan := marketdata.Timespan(interval)
 
-	err = client.Download(marketdata.DownloadParams{
+	err = client.Download(ctx, marketdata.DownloadParams{
 		Ticker:     ticker,
 		StartDate:  fromTime,
 		EndDate:    toTime,
@@ -65,4 +90,21 @@ func (m *MarketDownloader) Download(ticker string, from, to string, interval str
 	}
 
 	return nil
+}
+
+// Cancel cancels any in-progress download.
+// This method is safe to call from any goroutine (e.g., Swift's main thread).
+// Returns true if a download was cancelled, false if no download was in progress.
+func (m *MarketDownloader) Cancel() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.cancelFunc != nil {
+		m.cancelFunc()
+		m.cancelFunc = nil
+
+		return true
+	}
+
+	return false
 }

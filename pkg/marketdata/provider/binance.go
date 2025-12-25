@@ -98,7 +98,8 @@ func (c *BinanceClient) ConfigWriter(w writer.MarketDataWriter) {
 
 // Download downloads the historical klines data for the given ticker and date range from Binance.
 // It converts the binance kline format to our internal MarketData format and writes it using the configured writer.
-func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
+// The context can be used to cancel the download operation.
+func (c *BinanceClient) Download(ctx context.Context, ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
 	interval, err := convertTimespanToBinanceInterval(timespan, multiplier)
 	if err != nil {
 		return "", fmt.Errorf("failed to convert timespan to Binance interval: %w", err)
@@ -123,12 +124,23 @@ func (c *BinanceClient) Download(ticker string, startDate time.Time, endDate tim
 	totalRecordsWritten := 0
 
 	for {
+		// Check for cancellation
+		select {
+		case <-ctx.Done():
+			if totalRecordsWritten == 0 {
+				c.cleanupFileIfExists()
+			}
+
+			return "", ctx.Err()
+		default:
+		}
+
 		klines, err := c.apiClient.NewKlinesService().
 			Symbol(ticker).
 			Interval(interval).
 			StartTime(currentStartTime).
 			EndTime(endTimeMillis).
-			Do(context.Background())
+			Do(ctx)
 		if err != nil {
 			// Attempt to finalize/close even if fetch fails
 			_, finalizeErr := c.writer.Finalize()

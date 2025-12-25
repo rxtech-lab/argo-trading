@@ -168,7 +168,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWithoutWriter() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "writer is not configured")
 }
@@ -184,7 +184,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWithInvalidTimespan() {
 	endDate := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 
 	// Use an invalid timespan (Quarter is not supported by Binance)
-	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Quarter, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Quarter, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "unsupported timespan")
 }
@@ -200,7 +200,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWriterInitializationError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to initialize writer")
 }
@@ -479,7 +479,7 @@ func (suite *BinanceClientTestSuite) TestDownloadSuccess() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/test.parquet", path)
 	suite.Len(mockW.writtenData, 2)
@@ -497,7 +497,7 @@ func (suite *BinanceClientTestSuite) TestDownloadEmptyKlines() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/empty.parquet", path)
 	suite.Len(mockW.writtenData, 0)
@@ -514,7 +514,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to fetch klines from Binance")
 	suite.Contains(err.Error(), "API rate limit exceeded")
@@ -531,7 +531,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIErrorWithFinalizeError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to fetch klines from Binance")
 	suite.Contains(err.Error(), "also failed to finalize writer")
@@ -560,7 +560,7 @@ func (suite *BinanceClientTestSuite) TestDownloadFinalizeError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to finalize writer")
 }
@@ -591,7 +591,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWriteErrorWithFinalizeError() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to process klines")
 	suite.Contains(err.Error(), "also failed to finalize writer")
@@ -620,7 +620,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWriteErrorWithFinalizeSuccess()
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to process klines")
 	suite.NotContains(err.Error(), "also failed to finalize")
@@ -666,7 +666,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPagination() {
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/paginated.parquet", path)
 	// Should have written 501 records (500 from first page + 1 from second)
@@ -702,7 +702,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithAPIErrorOnSecondP
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to fetch klines from Binance")
 	suite.Contains(err.Error(), "connection timeout")
@@ -752,7 +752,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWriteErrorOnSecondPag
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to process klines")
 }
@@ -781,7 +781,7 @@ func (suite *BinanceClientTestSuite) TestDownloadProgressCallback() {
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
 	progressCalled := false
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
 		progressCalled = true
 		suite.GreaterOrEqual(total, float64(0))
 		suite.Contains(message, "BTCUSDT")
@@ -828,7 +828,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationTimeBreak() {
 	startDate := time.UnixMilli(startTimeMs)
 	endDate := time.UnixMilli(endTimeMs)
 
-	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/timebreak.parquet", path)
 	suite.Len(mockW.writtenData, 500)
@@ -871,7 +871,7 @@ func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteError() {
 	startDate := time.UnixMilli(startTimeMs)
 	endDate := time.UnixMilli(endTimeMs + 60000) // A bit after the last kline
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to process klines")
 }
@@ -909,7 +909,7 @@ func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteErrorWithFinalizeE
 	startDate := time.UnixMilli(startTimeMs)
 	endDate := time.UnixMilli(startTimeMs + int64(600*60000))
 
-	_, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to process klines")
 	suite.Contains(err.Error(), "also failed to finalize writer")
@@ -1016,7 +1016,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
 	startDate := time.UnixMilli(startTimeMs)
 	endDate := time.UnixMilli(startTimeMs + int64(2000*60000)) // Far enough in the future
 
-	path, err := client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/large.parquet", path)
 	// Should have written 1100 records (500 + 500 + 100)
@@ -1046,7 +1046,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIError_DeletesFileWhenNoData(
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to fetch klines from Binance")
 
@@ -1094,7 +1094,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIError_KeepsFileWhenPartialDa
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to fetch klines from Binance")
 
@@ -1143,11 +1143,89 @@ func (suite *BinanceClientTestSuite) TestDownloadWriteError_DeletesFileWhenNoDat
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 
-	_, err = client.Download("BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	_, err = client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to process klines")
 
 	// Verify temp file was deleted
 	_, err = os.Stat(tmpPath)
 	suite.True(os.IsNotExist(err), "temp file should be deleted when write error occurs with no data")
+}
+
+// TestDownload_Cancellation tests that download can be cancelled via context.
+func (suite *BinanceClientTestSuite) TestDownload_Cancellation() {
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err := client.Download(ctx, "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.ErrorIs(err, context.Canceled)
+}
+
+// TestDownload_CancellationCleansUpFile tests that file is deleted when cancelled with no data written.
+func (suite *BinanceClientTestSuite) TestDownload_CancellationCleansUpFile() {
+	// Create a temporary file to simulate the output file
+	tmpFile, err := os.CreateTemp("", "binance_cancel_test_*.parquet")
+	suite.Require().NoError(err)
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+
+	// Verify temp file exists
+	_, err = os.Stat(tmpPath)
+	suite.Require().NoError(err, "temp file should exist before test")
+
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{outputPath: tmpPath}
+
+	client := NewBinanceClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	_, err = client.Download(ctx, "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
+	suite.Error(err)
+	suite.ErrorIs(err, context.Canceled)
+
+	// Verify temp file was deleted
+	_, err = os.Stat(tmpPath)
+	suite.True(os.IsNotExist(err), "temp file should be deleted when cancelled with no data written")
 }

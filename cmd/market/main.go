@@ -59,7 +59,7 @@ func downloadAction(ctx context.Context, cmd *cli.Command) error {
 	log.Printf("Starting download for %s from %s to %s using %s provider and %s writer...",
 		ticker, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"), providerFlag, writerFlag)
 
-	err = client.Download(downloadParams)
+	err = client.Download(ctx, downloadParams)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
