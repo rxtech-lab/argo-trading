@@ -71,7 +71,7 @@ func (c *PolygonClient) ConfigWriter(w writer.MarketDataWriter) {
 	c.writer = w
 }
 
-func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
+func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
 	if c.writer == nil {
 		return "", fmt.Errorf("no writer configured for PolygonClient. Call ConfigWriter first")
 	}
@@ -104,11 +104,22 @@ func (c *PolygonClient) Download(ticker string, startDate time.Time, endDate tim
 		To:         models.Millis(endDate),
 	}.WithLimit(50000)
 
-	aggsIter := c.apiClient.ListAggs(context.Background(), params)
+	aggsIter := c.apiClient.ListAggs(ctx, params)
 
 	processedCount := 0
 
 	for aggsIter.Next() {
+		// Check for cancellation
+		select {
+		case <-ctx.Done():
+			if processedCount == 0 {
+				c.cleanupFileIfExists()
+			}
+
+			return "", ctx.Err()
+		default:
+		}
+
 		onProgress(float64(processedCount), float64(totalIterations), fmt.Sprintf("Downloading %s", ticker))
 
 		agg := aggsIter.Item()

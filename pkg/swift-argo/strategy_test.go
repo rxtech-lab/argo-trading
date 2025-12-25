@@ -15,7 +15,8 @@ func TestStrategyTestSuite(t *testing.T) {
 }
 
 func (suite *StrategyTestSuite) TestGetStrategyMetadata() {
-	metadata, err := GetStrategyMetadata("../../e2e/backtest/wasm/sma/sma_plugin.wasm")
+	api := NewStrategyApi()
+	metadata, err := api.GetStrategyMetadata("../../e2e/backtest/wasm/sma/sma_plugin.wasm")
 	suite.NoError(err)
 	suite.NotEmpty(metadata)
 }

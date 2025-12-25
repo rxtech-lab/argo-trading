@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -75,6 +76,7 @@ func (suite *ClientTestSuite) TestClientDownload() {
 				// Mock successful download
 				suite.mockProvider.EXPECT().
 					Download(
+						gomock.Any(), // context
 						"AAPL",
 						time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
 						time.Date(2023, 1, 31, 0, 0, 0, 0, time.UTC),
@@ -105,6 +107,7 @@ func (suite *ClientTestSuite) TestClientDownload() {
 				// Mock download error
 				suite.mockProvider.EXPECT().
 					Download(
+						gomock.Any(), // context
 						"INVALID",
 						time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
 						time.Date(2023, 1, 31, 0, 0, 0, 0, time.UTC),
@@ -136,7 +139,7 @@ func (suite *ClientTestSuite) TestClientDownload() {
 			}
 
 			// Execute Download and check result
-			err := client.Download(tc.params)
+			err := client.Download(context.Background(), tc.params)
 
 			if tc.expectError {
 				suite.Error(err)
@@ -520,7 +523,7 @@ func (suite *ClientTestSuite) TestDownloadInvalidParams() {
 		Timespan:   models.Minute,
 	}
 
-	err := client.Download(params)
+	err := client.Download(context.Background(), params)
 	suite.Error(err)
 	suite.Contains(err.Error(), "invalid download parameters")
 }

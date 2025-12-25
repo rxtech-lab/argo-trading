@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"time"
 
 	"github.com/polygon-io/client-go/rest/models"
@@ -14,8 +15,9 @@ type Provider interface {
 	// Writer is used to write the market data to the database.
 	// It could be a file, a database, etc.
 	ConfigWriter(writer writer.MarketDataWriter)
-	// Download downloads the data for the given ticker and date range
+	// Download downloads the data for the given ticker and date range.
+	// The context can be used to cancel the download operation.
 	// example:
-	// Download("AAPL", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 31, 0, 0, 0, 0, time.UTC), 1, models.TimespanMinute)
-	Download(ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error)
+	// Download(ctx, "AAPL", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 31, 0, 0, 0, 0, time.UTC), 1, models.TimespanMinute, onProgress)
+	Download(ctx context.Context, ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error)
 }
