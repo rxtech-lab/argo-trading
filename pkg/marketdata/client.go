@@ -1,6 +1,7 @@
 package marketdata
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -87,7 +88,8 @@ func NewClient(config ClientConfig, onProgress provider.OnDownloadProgress) (*Cl
 }
 
 // Download initiates a market data download with the given parameters.
-func (c *Client) Download(params DownloadParams) error {
+// The context can be used to cancel the download operation.
+func (c *Client) Download(ctx context.Context, params DownloadParams) error {
 	// Validate download parameters
 	if err := c.validate.Struct(params); err != nil {
 		return fmt.Errorf("invalid download parameters: %w", err)
@@ -113,6 +115,7 @@ func (c *Client) Download(params DownloadParams) error {
 
 	// Execute download
 	_, err = c.provider.Download(
+		ctx,
 		params.Ticker,
 		params.StartDate,
 		params.EndDate,
