@@ -564,7 +564,7 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 		Side:         order.Side,
 		Quantity:     order.Quantity,
 		Price:        executePrice,
-		Timestamp:    time.Now(),
+		Timestamp:    b.marketData.Time,
 		IsCompleted:  true,
 		Reason:       order.Reason,
 		StrategyName: order.StrategyName,
