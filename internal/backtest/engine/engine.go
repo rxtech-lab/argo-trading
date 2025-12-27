@@ -1,12 +1,48 @@
 package engine
 
 import (
-	"github.com/moznion/go-optional"
+	"context"
+
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 )
 
+// Lifecycle callback types for backtest phases
+// All callbacks with error return can abort execution if they return an error
+
+// OnBacktestStartCallback is called when the entire backtest begins.
+type OnBacktestStartCallback func(totalStrategies int, totalConfigs int, totalDataFiles int) error
+
+// OnBacktestEndCallback is called when the entire backtest completes (always called via defer).
+type OnBacktestEndCallback func(err error)
+
+// OnStrategyStartCallback is called when a strategy iteration begins.
+type OnStrategyStartCallback func(strategyIndex int, strategyName string, totalStrategies int) error
+
+// OnStrategyEndCallback is called when a strategy iteration ends.
+type OnStrategyEndCallback func(strategyIndex int, strategyName string)
+
+// OnRunStartCallback is called when processing of a config+data file combination begins.
+// runID is a unique identifier for this run, generated before processing starts.
+type OnRunStartCallback func(runID string, configIndex int, configName string, dataFileIndex int, dataFilePath string, totalDataPoints int) error
+
+// OnRunEndCallback is called when processing of a config+data file combination ends.
+type OnRunEndCallback func(configIndex int, configName string, dataFileIndex int, dataFilePath string, resultFolderPath string)
+
+// OnProcessDataCallback is called for each data point processed.
 type OnProcessDataCallback func(current int, total int) error
+
+// LifecycleCallbacks holds all lifecycle callback functions for the backtest engine.
+// All fields are pointers - nil means no callback will be invoked.
+type LifecycleCallbacks struct {
+	OnBacktestStart *OnBacktestStartCallback
+	OnBacktestEnd   *OnBacktestEndCallback
+	OnStrategyStart *OnStrategyStartCallback
+	OnStrategyEnd   *OnStrategyEndCallback
+	OnRunStart      *OnRunStartCallback
+	OnRunEnd        *OnRunEndCallback
+	OnProcessData   *OnProcessDataCallback
+}
 
 type StrategyType string
 
@@ -38,8 +74,10 @@ type Engine interface {
 	LoadStrategyFromFile(strategyPath string) error
 	// LoadStrategyFromBytes loads the trading strategy from the given strategy bytes.
 	LoadStrategyFromBytes(strategyBytes []byte, strategyType StrategyType) error
-	// Run runs the engine and executes the trading strategy
-	Run(onProcessDataCallback optional.Option[OnProcessDataCallback]) error
+	// Run runs the engine and executes the trading strategy.
+	// The context can be used to cancel the backtest operation.
+	// Use LifecycleCallbacks to receive notifications at different phases of the backtest.
+	Run(ctx context.Context, callbacks LifecycleCallbacks) error
 	// SetDataSource sets the data source for the engine.
 	SetDataSource(dataSource datasource.DataSource) error
 	// GetConfigSchema returns the schema of the engine configuration
