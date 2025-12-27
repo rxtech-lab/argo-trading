@@ -1,12 +1,14 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
-	"github.com/moznion/go-optional"
+	"github.com/google/uuid"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
@@ -25,6 +27,7 @@ import (
 type BacktestEngineV1 struct {
 	config              BacktestEngineV1Config
 	strategies          []runtime.StrategyRuntime
+	strategyPaths       []string
 	strategyConfigPaths []string
 	strategyConfigs     []string
 	dataPaths           []string
@@ -39,15 +42,21 @@ type BacktestEngineV1 struct {
 	cache               cache.Cache
 }
 
-func NewBacktestEngineV1() engine.Engine {
+func NewBacktestEngineV1() (engine.Engine, error) {
+	log, err := logger.NewLogger()
+	if err != nil {
+		return nil, err
+	}
+
 	return &BacktestEngineV1{
 		config:              EmptyConfig(),
 		strategies:          nil,
+		strategyPaths:       nil,
 		strategyConfigPaths: nil,
 		strategyConfigs:     nil,
 		dataPaths:           nil,
 		resultsFolder:       "",
-		log:                 nil,
+		log:                 log,
 		indicatorRegistry:   nil,
 		marker:              nil,
 		tradingSystem:       nil,
@@ -55,7 +64,7 @@ func NewBacktestEngineV1() engine.Engine {
 		datasource:          nil,
 		balance:             0,
 		cache:               cache.NewCacheV1(),
-	}
+	}, nil
 }
 
 // Initialize implements engine.Engine.
@@ -66,13 +75,6 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 		return err
 	}
 
-	// initialize the logger
-	var loggerError error
-
-	b.log, loggerError = logger.NewLogger()
-	if loggerError != nil {
-		return loggerError
-	}
 
 	b.log.Debug("Backtest engine initialized",
 		zap.String("config", config),
@@ -119,6 +121,7 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 // LoadStrategy implements engine.Engine.
 func (b *BacktestEngineV1) LoadStrategy(strategy runtime.StrategyRuntime) error {
 	b.strategies = append(b.strategies, strategy)
+	b.strategyPaths = append(b.strategyPaths, "")
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -145,6 +148,7 @@ func (b *BacktestEngineV1) LoadStrategyFromFile(strategyPath string) error {
 	}
 
 	b.strategies = append(b.strategies, strategy)
+	b.strategyPaths = append(b.strategyPaths, strategyPath)
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -168,6 +172,7 @@ func (b *BacktestEngineV1) LoadStrategyFromBytes(strategyBytes []byte, strategyT
 	}
 
 	b.strategies = append(b.strategies, strategy)
+	b.strategyPaths = append(b.strategyPaths, "")
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -242,6 +247,18 @@ func (b *BacktestEngineV1) SetDataPath(path string) error {
 		zap.Strings("files", absolutePaths),
 	)
 
+	// Create and set the datasource (in-memory)
+	ds, err := datasource.NewDataSource(":memory:", b.log)
+	if err != nil {
+		b.log.Error("Failed to create datasource",
+			zap.Error(err),
+		)
+
+		return err
+	}
+
+	b.datasource = ds
+
 	return nil
 }
 
@@ -268,19 +285,32 @@ type ParallelRunState struct {
 	datasource datasource.DataSource
 }
 
+// runIterationParams holds parameters for a single run iteration.
+type runIterationParams struct {
+	ctx              context.Context
+	strategy         runtime.StrategyRuntime
+	strategyPath     string
+	runID            string
+	configIdx        int
+	configName       string
+	configContent    string
+	dataIdx          int
+	dataPath         string
+	callbacks        engine.LifecycleCallbacks
+	resultFolderPath string
+}
+
 // Run implements engine.Engine.
-func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnProcessDataCallback]) error {
+func (b *BacktestEngineV1) Run(ctx context.Context, callbacks engine.LifecycleCallbacks) error {
 	if err := b.preRunCheck(); err != nil {
 		return err
 	}
 
-	// clean the results folder
-	// remove results folder if it exists
-	if _, err := os.Stat(b.resultsFolder); err == nil {
-		os.RemoveAll(b.resultsFolder)
-	}
-	// create results folder
-	os.MkdirAll(b.resultsFolder, 0755)
+	// Create timestamped subfolder for this backtest session
+	timestamp := time.Now().Format("20060102_150405")
+	sessionFolder := filepath.Join(b.resultsFolder, timestamp)
+	os.MkdirAll(sessionFolder, 0755)
+	b.resultsFolder = sessionFolder
 
 	// Build config list from either file paths or direct content
 	type configItem struct {
@@ -316,107 +346,68 @@ func (b *BacktestEngineV1) Run(onProcessDataCallback optional.Option[engine.OnPr
 		}
 	}
 
+	// Track any error for OnBacktestEnd callback
+	var runErr error
+
+	// Ensure OnBacktestEnd is always called
+	defer func() {
+		if callbacks.OnBacktestEnd != nil {
+			(*callbacks.OnBacktestEnd)(runErr)
+		}
+	}()
+
+	// Invoke OnBacktestStart callback
+	if callbacks.OnBacktestStart != nil {
+		if err := (*callbacks.OnBacktestStart)(len(b.strategies), len(configs), len(b.dataPaths)); err != nil {
+			runErr = fmt.Errorf("OnBacktestStart callback failed: %w", err)
+
+			return runErr
+		}
+	}
+
 	// Run strategies sequentially
-	for _, strategy := range b.strategies {
-		for _, cfg := range configs {
-			for _, dataPath := range b.dataPaths {
-				// Initialize the state
-				if b.state == nil {
-					return fmt.Errorf("backtest state is nil")
-				}
+	for strategyIdx, strategy := range b.strategies {
+		strategyPath := b.strategyPaths[strategyIdx]
 
-				var err error
+		// Invoke OnStrategyStart callback
+		if callbacks.OnStrategyStart != nil {
+			if err := (*callbacks.OnStrategyStart)(strategyIdx, strategy.Name(), len(b.strategies)); err != nil {
+				runErr = fmt.Errorf("OnStrategyStart callback failed: %w", err)
 
-				b.marker, err = NewBacktestMarker(b.log)
-				if err != nil {
-					return fmt.Errorf("failed to create backtest marker: %w", err)
-				}
+				return runErr
+			}
+		}
 
-				if err := b.state.Initialize(); err != nil {
-					return fmt.Errorf("failed to initialize state: %w", err)
-				}
-
-				strategyContext := runtime.RuntimeContext{
-					DataSource:        b.datasource,
-					IndicatorRegistry: b.indicatorRegistry,
-					Marker:            b.marker,
-					TradingSystem:     b.tradingSystem,
-					Cache:             b.cache,
-					Logger:            b.log,
-				}
-
-				// need to initialize the strategy api first since there is no wasm plugin available before this line
-				err = strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
-				if err != nil {
-					return fmt.Errorf("failed to initialize strategy api: %w", err)
-				}
-
-				err = strategy.Initialize(cfg.content)
-				if err != nil {
-					return fmt.Errorf("failed to initialize strategy: %w", err)
-				}
-
+		for configIdx, cfg := range configs {
+			for dataIdx, dataPath := range b.dataPaths {
 				resultFolderPath := getResultFolder(cfg.name, dataPath, b, strategy)
+				runID := uuid.New().String()
 
-				b.log.Debug("Running strategy",
-					zap.String("strategy", strategy.Name()),
-					zap.String("config", cfg.name),
-					zap.String("data", dataPath),
-					zap.String("result", resultFolderPath),
-				)
-
-				// Initialize the data source with the given data path
-				if err := b.datasource.Initialize(dataPath); err != nil {
-					return fmt.Errorf("failed to initialize data source: %w", err)
+				params := runIterationParams{
+					ctx:              ctx,
+					strategy:         strategy,
+					strategyPath:     strategyPath,
+					runID:            runID,
+					configIdx:        configIdx,
+					configName:       cfg.name,
+					configContent:    cfg.content,
+					dataIdx:          dataIdx,
+					dataPath:         dataPath,
+					callbacks:        callbacks,
+					resultFolderPath: resultFolderPath,
 				}
 
-				// create a progress bar
-				count, err := b.datasource.Count(b.config.StartTime, b.config.EndTime)
-				if err != nil {
-					return fmt.Errorf("failed to get data count: %w", err)
-				}
+				if err := b.runSingleIteration(params); err != nil {
+					runErr = err
 
-				currentCount := 0
-
-				for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
-					if err != nil {
-						return fmt.Errorf("failed to read data: %w", err)
-					}
-					// run the strategy
-					if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
-						backtestTrading.UpdateCurrentMarketData(data)
-					}
-
-					err = strategy.ProcessData(data)
-					if err != nil {
-						return fmt.Errorf("failed to process data: %w", err)
-					}
-					// Update progress bar
-					currentCount++
-
-					// Call callback if provided
-					if onProcessDataCallback.IsSome() {
-						onProcessDataCallback.Unwrap()(currentCount, count)
-					}
-				}
-
-				// Create result folder
-				os.MkdirAll(resultFolderPath, 0755)
-
-				// Get stats
-				if b.state == nil {
-					return fmt.Errorf("backtest state is nil")
-				}
-
-				if err := b.writeResults(strategyContext, resultFolderPath); err != nil {
-					return fmt.Errorf("failed to write results: %w", err)
-				}
-
-				// Cleanup state
-				if err := b.cleanUpRun(); err != nil {
-					return fmt.Errorf("failed to cleanup run: %w", err)
+					return runErr
 				}
 			}
+		}
+
+		// Invoke OnStrategyEnd callback
+		if callbacks.OnStrategyEnd != nil {
+			(*callbacks.OnStrategyEnd)(strategyIdx, strategy.Name())
 		}
 	}
 
@@ -434,12 +425,155 @@ func (b *BacktestEngineV1) GetConfigSchema() (string, error) {
 	return schema, nil
 }
 
-func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, resultFolderPath string) error {
+// runSingleIteration processes a single config+data combination for a strategy.
+func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
+	// Initialize the state
 	if b.state == nil {
 		return fmt.Errorf("backtest state is nil")
 	}
 
-	stats, err := b.state.GetStats(strategyContext)
+	var err error
+
+	b.marker, err = NewBacktestMarker(b.log)
+	if err != nil {
+		return fmt.Errorf("failed to create backtest marker: %w", err)
+	}
+
+	if err := b.state.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize state: %w", err)
+	}
+
+	strategyContext := runtime.RuntimeContext{
+		DataSource:        b.datasource,
+		IndicatorRegistry: b.indicatorRegistry,
+		Marker:            b.marker,
+		TradingSystem:     b.tradingSystem,
+		Cache:             b.cache,
+		Logger:            b.log,
+	}
+
+	// need to initialize the strategy api first since there is no wasm plugin available before this line
+	err = params.strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
+	if err != nil {
+		return fmt.Errorf("failed to initialize strategy api: %w", err)
+	}
+
+	err = params.strategy.Initialize(params.configContent)
+	if err != nil {
+		return fmt.Errorf("failed to initialize strategy: %w", err)
+	}
+
+	b.log.Debug("Running strategy",
+		zap.String("strategy", params.strategy.Name()),
+		zap.String("config", params.configName),
+		zap.String("data", params.dataPath),
+		zap.String("result", params.resultFolderPath),
+	)
+
+	// Initialize the data source with the given data path
+	if err := b.datasource.Initialize(params.dataPath); err != nil {
+		return fmt.Errorf("failed to initialize data source: %w", err)
+	}
+
+	// create a progress bar
+	count, err := b.datasource.Count(b.config.StartTime, b.config.EndTime)
+	if err != nil {
+		return fmt.Errorf("failed to get data count: %w", err)
+	}
+
+	// Invoke OnRunStart callback
+	if params.callbacks.OnRunStart != nil {
+		if err := (*params.callbacks.OnRunStart)(params.runID, params.configIdx, params.configName, params.dataIdx, params.dataPath, count); err != nil {
+			return fmt.Errorf("OnRunStart callback failed: %w", err)
+		}
+	}
+
+	// Process data points
+	if err := b.processDataPoints(params, strategyContext, count); err != nil {
+		return err
+	}
+
+	// Create result folder
+	os.MkdirAll(params.resultFolderPath, 0755)
+
+	// Get stats
+	if b.state == nil {
+		return fmt.Errorf("backtest state is nil")
+	}
+
+	if err := b.writeResults(strategyContext, params.runID, params.resultFolderPath, params.strategyPath); err != nil {
+		return fmt.Errorf("failed to write results: %w", err)
+	}
+
+	// Invoke OnRunEnd callback
+	if params.callbacks.OnRunEnd != nil {
+		(*params.callbacks.OnRunEnd)(params.configIdx, params.configName, params.dataIdx, params.dataPath, params.resultFolderPath)
+	}
+
+	// Cleanup state
+	if err := b.cleanUpRun(); err != nil {
+		return fmt.Errorf("failed to cleanup run: %w", err)
+	}
+
+	return nil
+}
+
+// processDataPoints processes all data points for a single run iteration.
+func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext runtime.RuntimeContext, count int) error {
+	currentCount := 0
+
+	for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
+		// Check for context cancellation
+		select {
+		case <-params.ctx.Done():
+			if cleanupErr := b.cleanUpRun(); cleanupErr != nil {
+				b.log.Error("Failed to cleanup run after cancellation",
+					zap.Error(cleanupErr),
+				)
+			}
+
+			return params.ctx.Err()
+		default:
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to read data: %w", err)
+		}
+		// run the strategy
+		if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
+			backtestTrading.UpdateCurrentMarketData(data)
+		}
+
+		err = params.strategy.ProcessData(data)
+		if err != nil {
+			return fmt.Errorf("failed to process data: %w", err)
+		}
+		// Update progress bar
+		currentCount++
+
+		// Invoke OnProcessData callback
+		if params.callbacks.OnProcessData != nil {
+			if err := (*params.callbacks.OnProcessData)(currentCount, count); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, runID string, resultFolderPath string, strategyPath string) error {
+	if b.state == nil {
+		return fmt.Errorf("backtest state is nil")
+	}
+
+	// Calculate file paths
+	stateDBPath := filepath.Join(resultFolderPath, "state.db")
+	tradesFilePath := filepath.Join(stateDBPath, "trades.parquet")
+	ordersFilePath := filepath.Join(stateDBPath, "orders.parquet")
+	marksFilePath := filepath.Join(resultFolderPath, "marks.parquet")
+
+	stats, err := b.state.GetStats(strategyContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath)
 	if err != nil {
 		return fmt.Errorf("failed to get stats: %w", err)
 	}
@@ -454,7 +588,7 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 		return fmt.Errorf("backtest state is nil")
 	}
 
-	if err := b.state.Write(filepath.Join(resultFolderPath, "state.db")); err != nil {
+	if err := b.state.Write(stateDBPath); err != nil {
 		return fmt.Errorf("failed to write state: %w", err)
 	}
 

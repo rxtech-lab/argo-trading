@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/moznion/go-optional"
 	engine_types "github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	engine "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
@@ -34,7 +36,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	engine := engine.NewBacktestEngineV1()
+	engine, err := engine.NewBacktestEngineV1()
+	if err != nil {
+		log.Fatalf("Failed to create engine: %v", err)
+	}
 	var progressBar *progressbar.ProgressBar
 
 	// read config from the provided path
@@ -73,18 +78,39 @@ func main() {
 	}
 	engine.LoadStrategy(strategy_runtime)
 
-	onProcessDataCallback := func(currentCount int, totalCount int) error {
+	onProcessDataCallback := engine_types.OnProcessDataCallback(func(currentCount int, totalCount int) error {
 		if progressBar == nil {
 			progressBar = progressbar.New(totalCount)
 			progressBar.Add(currentCount)
 		}
 		progressBar.Add(1)
 		return nil
+	})
+
+	callbacks := engine_types.LifecycleCallbacks{
+		OnProcessData: &onProcessDataCallback,
 	}
 
+	// Create cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nReceived interrupt signal, cancelling backtest...")
+		cancel()
+	}()
+
 	// run the engine
-	err = engine.Run(optional.Some[engine_types.OnProcessDataCallback](onProcessDataCallback))
+	err = engine.Run(ctx, callbacks)
 	if err != nil {
+		if err == context.Canceled {
+			fmt.Println("Backtest cancelled by user")
+			os.Exit(0)
+		}
 		log.Fatalf("Failed to run engine: %v", err)
 	}
 }
