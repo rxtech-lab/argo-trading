@@ -515,7 +515,7 @@ func (b *BacktestState) Write(path string) error {
 // GetStats returns the statistics of the backtest.
 // runID is the unique identifier for this backtest run.
 // tradesFilePath, ordersFilePath, and marksFilePath are the paths to the output files.
-func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath string) ([]types.TradeStats, error) {
+func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath, dataPath string) ([]types.TradeStats, error) {
 	// Get all unique symbols that have trades using Squirrel
 	selectQuery := b.sq.
 		Select("DISTINCT symbol").
@@ -643,6 +643,7 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 			OrdersFilePath:   ordersFilePath,
 			MarksFilePath:    marksFilePath,
 			StrategyPath:     strategyPath,
+			DataPath:         dataPath,
 		})
 	}
 

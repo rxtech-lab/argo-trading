@@ -431,7 +431,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			// Get stats
 			stats, err := suite.state.GetStats(runtime.RuntimeContext{
 				DataSource: mockSource,
-			}, "test-run-id", "/path/to/trades.parquet", "/path/to/orders.parquet", "/path/to/marks.parquet", "/path/to/strategy.wasm")
+			}, "test-run-id", "/path/to/trades.parquet", "/path/to/orders.parquet", "/path/to/marks.parquet", "/path/to/strategy.wasm", "/path/to/data.parquet")
 			if tc.expectError {
 				suite.Assert().Error(err)
 				return
