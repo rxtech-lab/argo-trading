@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/moznion/go-optional"
 	engine_types "github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
@@ -18,6 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+// findTimestampFolder finds the timestamp subfolder created during a backtest run.
+// Returns the path to the timestamp folder, or empty string if not found.
+func findTimestampFolder(t *testing.T, resultsDir string) string {
+	entries, err := os.ReadDir(resultsDir)
+	require.NoError(t, err, "Should be able to read results directory")
+	require.NotEmpty(t, entries, "Results directory should have a timestamp subfolder")
+	return filepath.Join(resultsDir, entries[0].Name())
+}
 
 func TestBacktestEngineV1_Run(t *testing.T) {
 	t.Run("Complete execution flow through Run function", func(t *testing.T) {
@@ -71,7 +80,8 @@ func TestBacktestEngineV1_Run(t *testing.T) {
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
 
 		// Create backtest engine
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		// Initialize engine
@@ -102,11 +112,12 @@ endTime: "2023-01-31T23:59:59Z"
 		require.NoError(t, err)
 
 		// Run backtest
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.NoError(t, err)
 
-		// Verify results folder was created
-		strategyDir := filepath.Join(tempDir, "TestStrategy")
+		// Verify results folder was created (now under timestamp subfolder)
+		timestampDir := findTimestampFolder(t, tempDir)
+		strategyDir := filepath.Join(timestampDir, "TestStrategy")
 		_, err = os.Stat(strategyDir)
 		assert.NoError(t, err, "Strategy result directory should be created")
 	})
@@ -174,7 +185,8 @@ endTime: "2023-01-31T23:59:59Z"
 		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
 
 		// Create and initialize backtest engine
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 		config := `
 initialCapital: 10000
@@ -193,7 +205,7 @@ endTime: "2023-01-31T23:59:59Z"
 		backtestEngine.SetResultsFolder(tempDir)
 
 		// Run backtest
-		err := backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.NoError(t, err)
 	})
 
@@ -248,7 +260,8 @@ endTime: "2023-01-31T23:59:59Z"
 		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
 
 		// Create and initialize backtest engine
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 		config := `
 initialCapital: 10000
@@ -268,17 +281,18 @@ endTime: "2023-01-31T23:59:59Z"
 		backtestEngine.SetResultsFolder(tempDir)
 
 		// Run backtest
-		err := backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.NoError(t, err)
 
-		// Verify results folder structure was created
-		strategyDir := filepath.Join(tempDir, "TestStrategyResults")
+		// Verify results folder structure was created (now under timestamp subfolder)
+		timestampDir := findTimestampFolder(t, tempDir)
+		strategyDir := filepath.Join(timestampDir, "TestStrategyResults")
 		_, err = os.Stat(strategyDir)
 		assert.NoError(t, err, "Strategy result directory should be created")
 
 		// Check the actual directory structure created by the implementation
 		// Based on the logs, it's creating paths like:
-		// "/TestStrategyResults/strategy_config/data_path/"
+		// "/timestamp/TestStrategyResults/strategy_config/data_path/"
 		configBasename := strings.TrimSuffix(filepath.Base(configPath), filepath.Ext(configPath))
 		dataBasename := filepath.Base(dataPathValue)
 
@@ -342,7 +356,8 @@ endTime: "2023-01-31T23:59:59Z"
 		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
 
 		// Create and initialize backtest engine
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 		config := `
 initialCapital: 10000
@@ -362,11 +377,12 @@ endTime: "2023-01-31T23:59:59Z"
 		backtestEngine.SetResultsFolder(tempDir)
 
 		// Run backtest
-		err := backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.NoError(t, err)
 
-		// Verify stats file creation
-		strategyDir := filepath.Join(tempDir, "TestStrategyStats")
+		// Verify stats file creation (now under timestamp subfolder)
+		timestampDir := findTimestampFolder(t, tempDir)
+		strategyDir := filepath.Join(timestampDir, "TestStrategyStats")
 		configBasename := strings.TrimSuffix(filepath.Base(configPath), filepath.Ext(configPath))
 		dataBasename := filepath.Base(dataPathValue)
 
@@ -404,7 +420,8 @@ endTime: "2023-01-31T23:59:59Z"
 
 		// Create a simplified backtest engine for testing just the initialization error case
 		// Skip the full Run path by not setting up datasource expectations
-		engine := NewBacktestEngineV1()
+		engine, engineErr := NewBacktestEngineV1()
+		require.NoError(t, engineErr)
 		backtestEngine := engine.(*BacktestEngineV1)
 		config := `
 initialCapital: 10000
@@ -477,27 +494,30 @@ func matchMarketData(expected types.MarketData) gomock.Matcher {
 // TestBacktestEngineV1_Initialize tests the Initialize function
 func TestBacktestEngineV1_Initialize(t *testing.T) {
 	t.Run("Invalid YAML config", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		// Invalid YAML should cause an error
-		err := backtestEngine.Initialize("invalid: yaml: [")
+		err = backtestEngine.Initialize("invalid: yaml: [")
 		require.Error(t, err, "Initialize with invalid YAML should return an error")
 	})
 
 	t.Run("Valid config with different brokers", func(t *testing.T) {
 		// Test with interactive broker
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 		config := `
 initialCapital: 10000
 broker: interactive_broker
 `
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		// Test with zero commission broker
-		engine2 := NewBacktestEngineV1()
+		engine2, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine2 := engine2.(*BacktestEngineV1)
 		config2 := `
 initialCapital: 10000
@@ -507,7 +527,8 @@ broker: zero
 		require.NoError(t, err)
 
 		// Test with default broker (empty)
-		engine3 := NewBacktestEngineV1()
+		engine3, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine3 := engine3.(*BacktestEngineV1)
 		config3 := `
 initialCapital: 10000
@@ -520,11 +541,12 @@ initialCapital: 10000
 // TestBacktestEngineV1_LoadStrategyFromFile tests LoadStrategyFromFile function
 func TestBacktestEngineV1_LoadStrategyFromFile(t *testing.T) {
 	t.Run("Unsupported strategy type", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		// Try to load a .txt file which is not supported
@@ -534,11 +556,12 @@ func TestBacktestEngineV1_LoadStrategyFromFile(t *testing.T) {
 	})
 
 	t.Run("Non-existent WASM file", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		// Try to load a non-existent .wasm file
@@ -551,11 +574,12 @@ func TestBacktestEngineV1_LoadStrategyFromFile(t *testing.T) {
 // TestBacktestEngineV1_LoadStrategyFromBytes tests LoadStrategyFromBytes function
 func TestBacktestEngineV1_LoadStrategyFromBytes(t *testing.T) {
 	t.Run("Unsupported strategy type", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		// Try to load with an unsupported strategy type
@@ -565,11 +589,12 @@ func TestBacktestEngineV1_LoadStrategyFromBytes(t *testing.T) {
 	})
 
 	t.Run("Valid WASM bytes loading", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		// NewStrategyWasmRuntimeFromBytes doesn't validate bytes on load,
@@ -584,11 +609,12 @@ func TestBacktestEngineV1_LoadStrategyFromBytes(t *testing.T) {
 // TestBacktestEngineV1_SetConfigContent tests SetConfigContent function
 func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 	t.Run("Set config content directly", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		configs := []string{`{"param1": "value1"}`, `{"param2": "value2"}`}
@@ -602,11 +628,12 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 	})
 
 	t.Run("SetConfigContent clears config paths", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		// First set config paths
@@ -657,11 +684,12 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		}
 		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -675,11 +703,12 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		backtestEngine.dataPaths = []string{filepath.Join(tempDir, "data_path")}
 		backtestEngine.SetResultsFolder(tempDir)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.NoError(t, err)
 
-		// Verify results folder was created with config_0 naming
-		strategyDir := filepath.Join(tempDir, "TestStrategy")
+		// Verify results folder was created with config_0 naming (now under timestamp subfolder)
+		timestampDir := findTimestampFolder(t, tempDir)
+		strategyDir := filepath.Join(timestampDir, "TestStrategy")
 		_, err = os.Stat(strategyDir)
 		assert.NoError(t, err, "Strategy result directory should be created")
 
@@ -722,11 +751,12 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		}
 		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -740,15 +770,16 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		backtestEngine.dataPaths = []string{filepath.Join(tempDir, "data_path")}
 		backtestEngine.SetResultsFolder(tempDir)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.NoError(t, err)
 
-		// Verify both config directories were created
-		resultDir0 := filepath.Join(tempDir, "TestStrategy", "config_0", "data_path")
+		// Verify both config directories were created (now under timestamp subfolder)
+		timestampDir := findTimestampFolder(t, tempDir)
+		resultDir0 := filepath.Join(timestampDir, "TestStrategy", "config_0", "data_path")
 		_, err = os.Stat(resultDir0)
 		assert.NoError(t, err, "Result directory for config_0 should be created")
 
-		resultDir1 := filepath.Join(tempDir, "TestStrategy", "config_1", "data_path")
+		resultDir1 := filepath.Join(timestampDir, "TestStrategy", "config_1", "data_path")
 		_, err = os.Stat(resultDir1)
 		assert.NoError(t, err, "Result directory for config_1 should be created")
 	})
@@ -757,11 +788,12 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 // TestBacktestEngineV1_GetConfigSchema tests GetConfigSchema function
 func TestBacktestEngineV1_GetConfigSchema(t *testing.T) {
 	t.Run("Get config schema", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		schema, err := backtestEngine.GetConfigSchema()
@@ -774,14 +806,15 @@ func TestBacktestEngineV1_GetConfigSchema(t *testing.T) {
 // TestBacktestEngineV1_PreRunCheck tests the preRunCheck function
 func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 	t.Run("No strategies loaded", func(t *testing.T) {
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no strategies loaded")
 	})
@@ -793,16 +826,17 @@ func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no strategy configs loaded")
 	})
@@ -818,17 +852,18 @@ func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 		configPath := filepath.Join(tempDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
 		backtestEngine.SetConfigPath(configPath)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no data paths loaded")
 	})
@@ -844,18 +879,19 @@ func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 		configPath := filepath.Join(tempDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
 		backtestEngine.SetConfigPath(configPath)
 		backtestEngine.dataPaths = []string{"/some/data/path"}
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no results folder set")
 	})
@@ -871,11 +907,12 @@ func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 		configPath := filepath.Join(tempDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -883,7 +920,7 @@ func TestBacktestEngineV1_PreRunCheck(t *testing.T) {
 		backtestEngine.dataPaths = []string{"/some/data/path"}
 		backtestEngine.SetResultsFolder(tempDir)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no datasource set")
 	})
@@ -902,11 +939,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 
 		tempDir := t.TempDir()
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -916,7 +954,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 	})
 
@@ -935,11 +973,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		configPath := filepath.Join(configDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -948,7 +987,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to initialize strategy api")
 	})
@@ -969,11 +1008,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		configPath := filepath.Join(configDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -982,7 +1022,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to initialize strategy")
 	})
@@ -1005,11 +1045,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		configPath := filepath.Join(configDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -1018,7 +1059,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to initialize data source")
 	})
@@ -1042,11 +1083,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		configPath := filepath.Join(configDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -1055,7 +1097,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get data count")
 	})
@@ -1085,11 +1127,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		configPath := filepath.Join(configDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -1098,7 +1141,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to read data")
 	})
@@ -1129,11 +1172,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		configPath := filepath.Join(configDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -1142,7 +1186,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
-		err = backtestEngine.Run(optional.None[engine_types.OnProcessDataCallback]())
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to process data")
 	})
@@ -1175,11 +1219,12 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		configPath := filepath.Join(configDir, "config.yaml")
 		os.WriteFile(configPath, []byte("test: config"), 0644)
 
-		engine := NewBacktestEngineV1()
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
 		backtestEngine := engine.(*BacktestEngineV1)
 
 		config := `initialCapital: 10000`
-		err := backtestEngine.Initialize(config)
+		err = backtestEngine.Initialize(config)
 		require.NoError(t, err)
 
 		backtestEngine.LoadStrategy(mockStrategy)
@@ -1189,14 +1234,246 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetDataSource(mockDatasource)
 
 		callbackCalled := 0
-		callback := func(current int, total int) error {
+		callback := engine_types.OnProcessDataCallback(func(current int, total int) error {
 			callbackCalled++
 			return nil
-		}
+		})
 
-		err = backtestEngine.Run(optional.Some[engine_types.OnProcessDataCallback](callback))
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{
+			OnProcessData: &callback,
+		})
 		require.NoError(t, err)
 		assert.Equal(t, 2, callbackCalled, "Callback should be called for each data point")
+	})
+}
+
+// TestLifecycleCallbacks tests the lifecycle callback system
+func TestLifecycleCallbacks(t *testing.T) {
+	t.Run("All lifecycle callbacks are invoked in order", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
+
+		marketData1 := types.MarketData{Symbol: "TEST", Close: 100.0}
+		marketData2 := types.MarketData{Symbol: "TEST", Close: 101.0}
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			yield(marketData1, nil)
+			yield(marketData2, nil)
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err = backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{filepath.Join(configDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		// Track callback invocations
+		var callOrder []string
+
+		onBacktestStart := engine_types.OnBacktestStartCallback(func(totalStrategies, totalConfigs, totalDataFiles int) error {
+			callOrder = append(callOrder, "OnBacktestStart")
+			assert.Equal(t, 1, totalStrategies)
+			assert.Equal(t, 1, totalConfigs)
+			assert.Equal(t, 1, totalDataFiles)
+			return nil
+		})
+
+		onBacktestEnd := engine_types.OnBacktestEndCallback(func(err error) {
+			callOrder = append(callOrder, "OnBacktestEnd")
+		})
+
+		onStrategyStart := engine_types.OnStrategyStartCallback(func(strategyIndex int, strategyName string, totalStrategies int) error {
+			callOrder = append(callOrder, "OnStrategyStart")
+			assert.Equal(t, 0, strategyIndex)
+			assert.Equal(t, "TestStrategy", strategyName)
+			assert.Equal(t, 1, totalStrategies)
+			return nil
+		})
+
+		onStrategyEnd := engine_types.OnStrategyEndCallback(func(strategyIndex int, strategyName string) {
+			callOrder = append(callOrder, "OnStrategyEnd")
+			assert.Equal(t, 0, strategyIndex)
+			assert.Equal(t, "TestStrategy", strategyName)
+		})
+
+		onRunStart := engine_types.OnRunStartCallback(func(runID string, configIndex int, configName string, dataFileIndex int, dataFilePath string, totalDataPoints int) error {
+			callOrder = append(callOrder, "OnRunStart")
+			assert.Equal(t, 0, configIndex)
+			assert.Equal(t, 0, dataFileIndex)
+			assert.Equal(t, 2, totalDataPoints)
+			return nil
+		})
+
+		onRunEnd := engine_types.OnRunEndCallback(func(configIndex int, configName string, dataFileIndex int, dataFilePath string, resultFolderPath string) {
+			callOrder = append(callOrder, "OnRunEnd")
+			assert.Equal(t, 0, configIndex)
+			assert.Equal(t, 0, dataFileIndex)
+		})
+
+		processDataCount := 0
+		onProcessData := engine_types.OnProcessDataCallback(func(current, total int) error {
+			processDataCount++
+			return nil
+		})
+
+		callbacks := engine_types.LifecycleCallbacks{
+			OnBacktestStart: &onBacktestStart,
+			OnBacktestEnd:   &onBacktestEnd,
+			OnStrategyStart: &onStrategyStart,
+			OnStrategyEnd:   &onStrategyEnd,
+			OnRunStart:      &onRunStart,
+			OnRunEnd:        &onRunEnd,
+			OnProcessData:   &onProcessData,
+		}
+
+		err = backtestEngine.Run(context.Background(), callbacks)
+		require.NoError(t, err)
+
+		// Verify callback order
+		expectedOrder := []string{
+			"OnBacktestStart",
+			"OnStrategyStart",
+			"OnRunStart",
+			"OnRunEnd",
+			"OnStrategyEnd",
+			"OnBacktestEnd",
+		}
+		assert.Equal(t, expectedOrder, callOrder, "Callbacks should be invoked in correct order")
+		assert.Equal(t, 2, processDataCount, "OnProcessData should be called for each data point")
+	})
+
+	t.Run("OnBacktestEnd is called even on error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(errors.New("processing failed")).AnyTimes()
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+
+		marketData := types.MarketData{Symbol: "TEST", Close: 100.0}
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			yield(marketData, nil)
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err = backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{filepath.Join(configDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		onBacktestEndCalled := false
+		var receivedErr error
+
+		onBacktestEnd := engine_types.OnBacktestEndCallback(func(err error) {
+			onBacktestEndCalled = true
+			receivedErr = err
+		})
+
+		callbacks := engine_types.LifecycleCallbacks{
+			OnBacktestEnd: &onBacktestEnd,
+		}
+
+		err = backtestEngine.Run(context.Background(), callbacks)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to process data")
+
+		// OnBacktestEnd should still be called with the error
+		assert.True(t, onBacktestEndCalled, "OnBacktestEnd should be called even on error")
+		assert.NotNil(t, receivedErr, "OnBacktestEnd should receive the error")
+	})
+
+	t.Run("Callback error stops execution", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err = backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{filepath.Join(configDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+		backtestEngine.SetDataSource(mockDatasource)
+
+		strategyStartCalled := false
+		onBacktestStart := engine_types.OnBacktestStartCallback(func(totalStrategies, totalConfigs, totalDataFiles int) error {
+			return errors.New("callback error")
+		})
+
+		onStrategyStart := engine_types.OnStrategyStartCallback(func(strategyIndex int, strategyName string, totalStrategies int) error {
+			strategyStartCalled = true
+			return nil
+		})
+
+		callbacks := engine_types.LifecycleCallbacks{
+			OnBacktestStart: &onBacktestStart,
+			OnStrategyStart: &onStrategyStart,
+		}
+
+		err = backtestEngine.Run(context.Background(), callbacks)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "OnBacktestStart callback failed")
+		assert.False(t, strategyStartCalled, "OnStrategyStart should not be called after OnBacktestStart fails")
 	})
 }
 

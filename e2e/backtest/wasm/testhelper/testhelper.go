@@ -1,6 +1,7 @@
 package testhelper
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Note: optional is still imported for types.Mark.Signal field usage
+
 // E2ETestSuite is a base test suite for E2E tests
 type E2ETestSuite struct {
 	suite.Suite
@@ -29,8 +32,9 @@ type E2ETestSuite struct {
 // SetupTest initializes the backtest engine
 func (s *E2ETestSuite) SetupTest(engineConfig string) {
 	// initialize backtest engine
-	backtest := v1.NewBacktestEngineV1()
-	err := backtest.Initialize(engineConfig)
+	backtest, err := v1.NewBacktestEngineV1()
+	s.Require().NoError(err)
+	err = backtest.Initialize(engineConfig)
 	s.Require().NoError(err)
 
 	// initialize strategy api
@@ -102,7 +106,7 @@ func RunWasmStrategyTest(s *E2ETestSuite, strategyName string, wasmPath string, 
 	err = s.Backtest.SetConfigPath(configPath)
 	require.NoError(s.T(), err)
 
-	err = s.Backtest.Run(optional.None[engine.OnProcessDataCallback]())
+	err = s.Backtest.Run(context.Background(), engine.LifecycleCallbacks{})
 	require.NoError(s.T(), err)
 
 	return tmpFolder

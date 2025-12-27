@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -43,6 +44,10 @@ type TradeResult struct {
 }
 
 type TradeStats struct {
+	// ID is the unique identifier for this backtest run.
+	ID string `yaml:"id" json:"id"`
+	// Timestamp is when this backtest run was executed.
+	Timestamp time.Time `yaml:"timestamp" json:"timestamp"`
 	// Symbol of the trading pair.
 	Symbol string `yaml:"symbol"`
 	// Result of all trades.
@@ -55,6 +60,14 @@ type TradeStats struct {
 	TradePnl TradePnl `yaml:"trade_pnl"`
 	// Buy and hold PnL.
 	BuyAndHoldPnl float64 `yaml:"buy_and_hold_pnl"`
+	// TradesFilePath is the path to the trades parquet file.
+	TradesFilePath string `yaml:"trades_file_path" json:"trades_file_path"`
+	// OrdersFilePath is the path to the orders parquet file.
+	OrdersFilePath string `yaml:"orders_file_path" json:"orders_file_path"`
+	// MarksFilePath is the path to the marks parquet file.
+	MarksFilePath string `yaml:"marks_file_path" json:"marks_file_path"`
+	// StrategyPath is the path to the strategy WASM file.
+	StrategyPath string `yaml:"strategy_path" json:"strategy_path"`
 }
 
 func WriteTradeStats(path string, stats []TradeStats) error {
