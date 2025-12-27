@@ -27,6 +27,7 @@ import (
 type BacktestEngineV1 struct {
 	config              BacktestEngineV1Config
 	strategies          []runtime.StrategyRuntime
+	strategyPaths       []string
 	strategyConfigPaths []string
 	strategyConfigs     []string
 	dataPaths           []string
@@ -50,6 +51,7 @@ func NewBacktestEngineV1() (engine.Engine, error) {
 	return &BacktestEngineV1{
 		config:              EmptyConfig(),
 		strategies:          nil,
+		strategyPaths:       nil,
 		strategyConfigPaths: nil,
 		strategyConfigs:     nil,
 		dataPaths:           nil,
@@ -119,6 +121,7 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 // LoadStrategy implements engine.Engine.
 func (b *BacktestEngineV1) LoadStrategy(strategy runtime.StrategyRuntime) error {
 	b.strategies = append(b.strategies, strategy)
+	b.strategyPaths = append(b.strategyPaths, "")
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -145,6 +148,7 @@ func (b *BacktestEngineV1) LoadStrategyFromFile(strategyPath string) error {
 	}
 
 	b.strategies = append(b.strategies, strategy)
+	b.strategyPaths = append(b.strategyPaths, strategyPath)
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -168,6 +172,7 @@ func (b *BacktestEngineV1) LoadStrategyFromBytes(strategyBytes []byte, strategyT
 	}
 
 	b.strategies = append(b.strategies, strategy)
+	b.strategyPaths = append(b.strategyPaths, "")
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -284,6 +289,7 @@ type ParallelRunState struct {
 type runIterationParams struct {
 	ctx              context.Context
 	strategy         runtime.StrategyRuntime
+	strategyPath     string
 	runID            string
 	configIdx        int
 	configName       string
@@ -361,6 +367,8 @@ func (b *BacktestEngineV1) Run(ctx context.Context, callbacks engine.LifecycleCa
 
 	// Run strategies sequentially
 	for strategyIdx, strategy := range b.strategies {
+		strategyPath := b.strategyPaths[strategyIdx]
+
 		// Invoke OnStrategyStart callback
 		if callbacks.OnStrategyStart != nil {
 			if err := (*callbacks.OnStrategyStart)(strategyIdx, strategy.Name(), len(b.strategies)); err != nil {
@@ -378,6 +386,7 @@ func (b *BacktestEngineV1) Run(ctx context.Context, callbacks engine.LifecycleCa
 				params := runIterationParams{
 					ctx:              ctx,
 					strategy:         strategy,
+					strategyPath:     strategyPath,
 					runID:            runID,
 					configIdx:        configIdx,
 					configName:       cfg.name,
@@ -492,7 +501,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		return fmt.Errorf("backtest state is nil")
 	}
 
-	if err := b.writeResults(strategyContext, params.runID, params.resultFolderPath); err != nil {
+	if err := b.writeResults(strategyContext, params.runID, params.resultFolderPath, params.strategyPath); err != nil {
 		return fmt.Errorf("failed to write results: %w", err)
 	}
 
@@ -553,7 +562,7 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 	return nil
 }
 
-func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, runID string, resultFolderPath string) error {
+func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, runID string, resultFolderPath string, strategyPath string) error {
 	if b.state == nil {
 		return fmt.Errorf("backtest state is nil")
 	}
@@ -564,7 +573,7 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	ordersFilePath := filepath.Join(stateDBPath, "orders.parquet")
 	marksFilePath := filepath.Join(resultFolderPath, "marks.parquet")
 
-	stats, err := b.state.GetStats(strategyContext, runID, tradesFilePath, ordersFilePath, marksFilePath)
+	stats, err := b.state.GetStats(strategyContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath)
 	if err != nil {
 		return fmt.Errorf("failed to get stats: %w", err)
 	}
