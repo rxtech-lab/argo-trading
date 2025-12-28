@@ -12,3 +12,4 @@ internal/indicator/test_data/src/indicator_calculator/__pycache__
 !test_data.parquet
 *.xcframework
 *.out
+.build
