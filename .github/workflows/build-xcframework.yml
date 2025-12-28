@@ -63,7 +63,12 @@ jobs:
       - name: Compute checksum
         id: checksum
         run: |
+          set -e
           CHECKSUM=$(swift package compute-checksum ArgoTrading.xcframework.zip)
+          if [ -z "$CHECKSUM" ]; then
+            echo "::error::Checksum is empty"
+            exit 1
+          fi
           echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
           echo "Computed checksum: $CHECKSUM"
 
