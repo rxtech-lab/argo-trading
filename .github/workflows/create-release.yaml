@@ -61,7 +61,7 @@ jobs:
             echo "No release needed"
           fi
 
-  # Step 2: Build xcframework using reusable workflow
+  # Step 2: Build xcframework using reusable workflow (no signing needed for SPM)
   build-xcframework:
     name: Build XCFramework
     needs: [get-version]
@@ -69,10 +69,6 @@ jobs:
     uses: ./.github/workflows/build-xcframework.yml
     with:
       version: ${{ needs.get-version.outputs.version }}
-    secrets:
-      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-      SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
   # Step 3: Build macOS binaries
   build-macos-binaries:

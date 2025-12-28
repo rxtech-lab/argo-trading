@@ -11,17 +11,10 @@ on:
       checksum:
         description: "SHA256 checksum of the xcframework zip"
         value: ${{ jobs.build.outputs.checksum }}
-    secrets:
-      BUILD_CERTIFICATE_BASE64:
-        required: true
-      P12_PASSWORD:
-        required: true
-      SIGNING_CERTIFICATE_NAME:
-        required: true
 
 jobs:
   build:
-    name: Build and Sign XCFramework
+    name: Build XCFramework
     runs-on: macos-latest
     outputs:
       checksum: ${{ steps.checksum.outputs.checksum }}
@@ -44,16 +37,8 @@ jobs:
       - name: Generate sdk and mocks
         run: make generate
 
-      - name: Import code signing certificates
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          p12-password: ${{ secrets.P12_PASSWORD }}
-
-      - name: Build and Sign the framework
-        run: make build-swift-argo && ./scripts/sign-framework.sh
-        env:
-          SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
+      - name: Build the framework
+        run: make build-swift-argo
 
       - name: Create xcframework zip
         run: |
