@@ -8,6 +8,16 @@ on:
       - main
 
 jobs:
+  build-xcframework:
+    name: Build XCFramework
+    uses: ./.github/workflows/build-xcframework.yml
+    with:
+      version: dev-${{ github.sha }}
+    secrets:
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
+
   build-macos:
     name: Build macOS Binary
     runs-on: macos-latest
@@ -46,24 +56,11 @@ jobs:
         env:
           SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
-      - name: Build and Sign the framework
-        run: make build-swift-argo && ./scripts/sign-framework.sh
-        env:
-          SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
-
-      - name: Prepare assets
-        run: |
-          mkdir -p assets
-          cp output/trading-backtest assets/
-          cp -r pkg/swift-argo/ArgoTrading.xcframework assets/ArgoTrading.xcframework
-          zip -r assets/ArgoTrading.xcframework.zip assets/ArgoTrading.xcframework
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: argo-trading-macos-${{ github.sha }}
-          path: |
-            assets/ArgoTrading.xcframework.zip
+          path: output/trading-backtest
           retention-days: 1
 
   build-linux:
