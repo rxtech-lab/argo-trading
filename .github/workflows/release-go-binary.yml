@@ -1,4 +1,4 @@
-name: Release Go Binary
+name: CI Build
 on:
   push:
     branches:
@@ -6,16 +6,11 @@ on:
   pull_request:
     branches:
       - main
-  release:
-    types:
-      - created
 
 jobs:
   build-macos:
-    name: Build, Sign and Notarize macOS Binary
+    name: Build macOS Binary
     runs-on: macos-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,10 +35,12 @@ jobs:
         with:
           p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.P12_PASSWORD }}
+
       - name: Build the binary
         run: ./scripts/build.sh
         env:
-          VERSION: ${{ github.event_name == 'release' && github.ref_name || format('dev-{0}', github.sha) }}
+          VERSION: dev-${{ github.sha }}
+
       - name: Sign the binary
         run: ./scripts/sign.sh
         env:
@@ -54,54 +51,14 @@ jobs:
         env:
           SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
-      - name: Import code installer certificates
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.INSTALLER_CERTIFICATE_BASE64 }}
-          p12-password: ${{ secrets.P12_PASSWORD }}
-          keychain: installer
-
-      - name: Notarize the binary
-        run: ./scripts/package-notarize.sh
-        if: github.event_name == 'release'
-        env:
-          INSTALLER_SIGNING_CERTIFICATE_NAME: ${{ secrets.INSTALLER_SIGNING_CERTIFICATE_NAME }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PWD: ${{ secrets.APPLE_ID_PWD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Prepare assets for release
-        if: github.event_name == 'release'
-        run: |
-          mkdir -p assets
-          cp output/trading-backtest assets/
-          cp ArgoTrading_macOS_arm64.pkg assets/ArgoTrading_macOS_arm64.pkg
-          cp -r pkg/swift-argo/ArgoTrading.xcframework assets/ArgoTrading.xcframework
-          # zip ArgoTrading.xcframework
-          zip -r assets/ArgoTrading.xcframework.zip assets/ArgoTrading.xcframework
-
-      - name: Prepare assets for push
-        if: github.event_name != 'release'
+      - name: Prepare assets
         run: |
           mkdir -p assets
           cp output/trading-backtest assets/
           cp -r pkg/swift-argo/ArgoTrading.xcframework assets/ArgoTrading.xcframework
-          # zip ArgoTrading.xcframework
           zip -r assets/ArgoTrading.xcframework.zip assets/ArgoTrading.xcframework
 
-      # Upload to release if this is a release event
-      - name: Upload binaries to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            assets/ArgoTrading_macOS_arm64.pkg
-            assets/ArgoTrading.xcframework.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Upload as artifacts if this is a push event
       - name: Upload artifacts
-        if: github.event_name != 'release'
         uses: actions/upload-artifact@v4
         with:
           name: argo-trading-macos-${{ github.sha }}
@@ -112,8 +69,6 @@ jobs:
   build-linux:
     name: Build Linux Binary
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -137,7 +92,7 @@ jobs:
         run: |
           mkdir -p output
           go build -o output/trading-backtest \
-            -ldflags "-X main.Version=${{ github.event_name == 'release' && github.ref_name || format('dev-{0}', github.sha) }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -ldflags "-X main.Version=dev-${{ github.sha }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             ./cmd/backtest
           chmod +x output/trading-backtest
 
@@ -147,18 +102,7 @@ jobs:
           cp output/trading-backtest assets/
           zip -j assets/ArgoTrading_Linux_amd64.zip output/trading-backtest
 
-      # Upload to release if this is a release event
-      - name: Upload binaries to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            assets/ArgoTrading_Linux_amd64.zip
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Upload as artifacts if this is a push event
       - name: Upload artifacts
-        if: github.event_name != 'release'
         uses: actions/upload-artifact@v4
         with:
           name: argo-trading-linux-${{ github.sha }}

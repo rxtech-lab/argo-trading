@@ -3,19 +3,245 @@ on:
   workflow_dispatch:
 
 jobs:
-  create-release:
+  # Step 1: Determine the next version using semantic-release dry-run
+  get-version:
+    name: Get Next Version
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_release: ${{ steps.version.outputs.should_release }}
+      release_notes: ${{ steps.version.outputs.release_notes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Create Release
-        uses: cycjimmy/semantic-release-action@v4
+
+      - name: Install semantic-release
+        run: npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/github
+
+      - name: Get next version and release notes
+        id: version
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          # Run semantic-release in dry-run mode to get the next version and release notes
+          npx semantic-release --dry-run --no-ci 2>&1 | tee semantic-release-output.txt || true
+
+          # Extract version from output
+          VERSION=$(grep -oP "The next release version is \K[0-9]+\.[0-9]+\.[0-9]+" semantic-release-output.txt || echo "")
+
+          if [ -n "$VERSION" ]; then
+            echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "Next version: v${VERSION}"
+
+            # Extract release notes (between "Release note" markers)
+            # Save to file for multiline output
+            sed -n '/^##/,/^$/p' semantic-release-output.txt > release-notes.md || true
+            if [ ! -s release-notes.md ]; then
+              echo "## What's Changed" > release-notes.md
+              echo "" >> release-notes.md
+              echo "Release v${VERSION}" >> release-notes.md
+            fi
+
+            # Use heredoc for multiline output
+            {
+              echo 'release_notes<<EOF'
+              cat release-notes.md
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "No release needed"
+          fi
+
+  # Step 2: Build xcframework using reusable workflow
+  build-xcframework:
+    name: Build XCFramework
+    needs: [get-version]
+    if: needs.get-version.outputs.should_release == 'true'
+    uses: ./.github/workflows/build-xcframework.yml
+    with:
+      version: ${{ needs.get-version.outputs.version }}
+    secrets:
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
+
+  # Step 3: Build macOS binaries
+  build-macos-binaries:
+    name: Build macOS Binaries
+    needs: [get-version]
+    if: needs.get-version.outputs.should_release == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          branch: main
+          go-version: "1.25.5"
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Install required tools
+        run: ./scripts/setup.sh
+
+      - name: Generate sdk and mocks
+        run: make generate
+
+      - name: Import code signing certificates
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
+
+      - name: Build the binary
+        run: ./scripts/build.sh
+        env:
+          VERSION: ${{ needs.get-version.outputs.version }}
+
+      - name: Sign the binary
+        run: ./scripts/sign.sh
+        env:
+          SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
+
+      - name: Import installer certificates
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.INSTALLER_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
+          keychain: installer
+
+      - name: Notarize the binary
+        run: ./scripts/package-notarize.sh
+        env:
+          INSTALLER_SIGNING_CERTIFICATE_NAME: ${{ secrets.INSTALLER_SIGNING_CERTIFICATE_NAME }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PWD: ${{ secrets.APPLE_ID_PWD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-binaries-${{ needs.get-version.outputs.version }}
+          path: |
+            output/trading-backtest
+            ArgoTrading_macOS_arm64.pkg
+          retention-days: 1
+
+  # Step 4: Build Linux binaries
+  build-linux-binaries:
+    name: Build Linux Binaries
+    needs: [get-version]
+    if: needs.get-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Setup
+        run: ./scripts/setup.sh
+
+      - name: Generate sdk and mocks
+        run: make generate
+
+      - name: Build the binary
+        run: |
+          mkdir -p output
+          go build -o output/trading-backtest \
+            -ldflags "-X main.Version=${{ needs.get-version.outputs.version }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            ./cmd/backtest
+          chmod +x output/trading-backtest
+
+      - name: Create zip
+        run: zip -j ArgoTrading_Linux_amd64.zip output/trading-backtest
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries-${{ needs.get-version.outputs.version }}
+          path: ArgoTrading_Linux_amd64.zip
+          retention-days: 1
+
+  # Step 5: Create release with updated Package.swift
+  create-release:
+    name: Create Release
+    needs: [get-version, build-xcframework, build-macos-binaries, build-linux-binaries]
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Download xcframework artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: xcframework-${{ needs.get-version.outputs.version }}
+
+      - name: Download macOS binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-binaries-${{ needs.get-version.outputs.version }}
+          path: macos-binaries
+
+      - name: Download Linux binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-binaries-${{ needs.get-version.outputs.version }}
+
+      - name: Update Package.swift
+        run: |
+          chmod +x scripts/update-package-swift.sh
+          ./scripts/update-package-swift.sh "${{ needs.get-version.outputs.version }}" "${{ needs.build-xcframework.outputs.checksum }}"
+          cat Package.swift
+
+      - name: Create commit and tag
+        run: |
+          TAG="${{ needs.get-version.outputs.version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Commit updated Package.swift
+          git add Package.swift
+          git commit -m "chore: update Package.swift for ${TAG}"
+
+          # Create annotated tag
+          git tag -a "${TAG}" -m "Release ${TAG}"
+
+          # Push tag only (commit stays detached, not on main)
+          git push origin "${TAG}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.get-version.outputs.version }}
+          body: ${{ needs.get-version.outputs.release_notes }}
+          files: |
+            ArgoTrading.xcframework.zip
+            macos-binaries/ArgoTrading_macOS_arm64.pkg
+            ArgoTrading_Linux_amd64.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
