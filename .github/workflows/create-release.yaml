@@ -214,12 +214,20 @@ jobs:
           ./scripts/update-package-swift.sh "${{ needs.get-version.outputs.version }}" "${{ needs.build-xcframework.outputs.checksum }}"
           cat Package.swift
 
+      - name: Setup SSH for deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+
       - name: Create commit and tag
         run: |
           TAG="${{ needs.get-version.outputs.version }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Configure git to use SSH
+          git remote set-url origin git@github.com:${{ github.repository }}.git
 
           # Commit updated Package.swift
           git add Package.swift
@@ -228,7 +236,8 @@ jobs:
           # Create annotated tag
           git tag -a "${TAG}" -m "Release ${TAG}"
 
-          # Push tag only (commit stays detached, not on main)
+          # Push commit to main, then push tag
+          git push origin HEAD:main
           git push origin "${TAG}"
 
       - name: Create GitHub Release
