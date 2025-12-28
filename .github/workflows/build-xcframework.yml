@@ -57,6 +57,7 @@ jobs:
 
       - name: Create xcframework zip
         run: |
+          set -e
           cd pkg/swift-argo
           zip -r ../../ArgoTrading.xcframework.zip ArgoTrading.xcframework
 
