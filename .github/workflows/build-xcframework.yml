@@ -62,7 +62,7 @@ jobs:
         run: |
           set -e
           cd pkg/swift-argo
-          zip -r ../../ArgoTrading.xcframework.zip ArgoTrading.xcframework
+          ditto -c -k --sequesterRsrc --keepParent ArgoTrading.xcframework ../../ArgoTrading.xcframework.zip
 
       - name: Compute checksum
         id: checksum
