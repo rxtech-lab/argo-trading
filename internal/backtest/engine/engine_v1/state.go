@@ -543,8 +543,14 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 			return nil, err
 		}
 
-		// Calculate holding time
-		holdingTime, err := b.calculateTradeHoldingTime(symbol)
+		// Get last market data for unrealized PnL calculation and holding time
+		lastData, err := ctx.DataSource.ReadLastData(symbol)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get last market data for %s: %w", symbol, err)
+		}
+
+		// Calculate holding time (uses lastData.Time for open positions)
+		holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time)
 		if err != nil {
 			return nil, err
 		}
@@ -559,12 +565,6 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 		position, err := b.GetPosition(symbol)
 		if err != nil {
 			return nil, err
-		}
-
-		// Get last market data for unrealized PnL calculation
-		lastData, err := ctx.DataSource.ReadLastData(symbol)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get last market data for %s: %w", symbol, err)
 		}
 
 		tradePnl := types.TradePnl{
@@ -884,46 +884,67 @@ func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, 
 }
 
 // calculateTradeHoldingTime calculates the holding time statistics for a symbol.
-func (b *BacktestState) calculateTradeHoldingTime(symbol string) (types.TradeHoldingTime, error) {
+// endTime is used to calculate holding time for open positions (positions not yet sold).
+func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Time) (types.TradeHoldingTime, error) {
 	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex query
+	// Uses FIFO matching: first buy matches first sell, second buy matches second sell, etc.
+	// Open positions (buys without matching sells) use endTime as the "sell time"
 	query := `
 		WITH buy_trades AS (
-			SELECT executed_at
+			SELECT executed_at, ROW_NUMBER() OVER (ORDER BY executed_at) as rn
 			FROM trades
 			WHERE symbol = ? AND order_type = ?
 		),
 		sell_trades AS (
-			SELECT executed_at
+			SELECT executed_at, ROW_NUMBER() OVER (ORDER BY executed_at) as rn
 			FROM trades
 			WHERE symbol = ? AND order_type = ?
 		),
-		trade_durations AS (
-			SELECT 
-				EXTRACT(EPOCH FROM (s.executed_at - b.executed_at)) / 3600 as duration
+		-- Closed positions: matched buy-sell pairs using FIFO
+		closed_durations AS (
+			SELECT
+				EXTRACT(EPOCH FROM (s.executed_at - b.executed_at)) as duration
 			FROM buy_trades b
-			JOIN sell_trades s ON s.executed_at > b.executed_at
+			JOIN sell_trades s ON s.rn = b.rn
+		),
+		-- Open positions: buys without matching sells (use end time)
+		open_durations AS (
+			SELECT
+				EXTRACT(EPOCH FROM (CAST(? AS TIMESTAMP) - b.executed_at)) as duration
+			FROM buy_trades b
+			WHERE b.rn > (SELECT COALESCE(MAX(rn), 0) FROM sell_trades)
+		),
+		all_durations AS (
+			SELECT duration FROM closed_durations
+			UNION ALL
+			SELECT duration FROM open_durations
 		)
-		SELECT 
+		SELECT
 			COALESCE(MIN(duration), 0) as min_duration,
 			COALESCE(MAX(duration), 0) as max_duration,
 			COALESCE(AVG(duration), 0) as avg_duration
-		FROM trade_durations
+		FROM all_durations
 	`
 
-	var holdingTime types.TradeHoldingTime
+	var minDuration, maxDuration, avgDuration float64
 
-	var avgDuration float64
+	// Format endTime as ISO 8601 string for DuckDB compatibility
+	endTimeStr := endTime.Format("2006-01-02 15:04:05")
 
-	err := b.db.QueryRow(query, symbol, types.PurchaseTypeBuy, symbol, types.PurchaseTypeSell).Scan(
-		&holdingTime.Min,
-		&holdingTime.Max,
+	err := b.db.QueryRow(query, symbol, types.PurchaseTypeBuy, symbol, types.PurchaseTypeSell, endTimeStr).Scan(
+		&minDuration,
+		&maxDuration,
 		&avgDuration,
 	)
 	if err != nil {
 		return types.TradeHoldingTime{}, fmt.Errorf("failed to calculate holding time: %w", err)
 	}
 
-	holdingTime.Avg = int(math.Round(avgDuration))
+	holdingTime := types.TradeHoldingTime{
+		Min: int(math.Round(minDuration)),
+		Max: int(math.Round(maxDuration)),
+		Avg: int(math.Round(avgDuration)),
+	}
 
 	return holdingTime, nil
 }

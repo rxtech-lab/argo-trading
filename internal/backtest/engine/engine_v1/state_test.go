@@ -182,19 +182,30 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 	mockSource := mocks.NewMockDataSource(ctrl)
 
 	// Set up mock behavior for ReadLastData
+	// End time is 15:00 for holding time calculations on open positions
 	mockSource.EXPECT().ReadLastData("AAPL").Return(types.MarketData{
 		Symbol: "AAPL",
 		Close:  120.0,
+		Time:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
 	}, nil).AnyTimes()
 
 	mockSource.EXPECT().ReadLastData("GOOGL").Return(types.MarketData{
 		Symbol: "GOOGL",
 		Close:  2100.0,
+		Time:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
 	}, nil).AnyTimes()
 
 	mockSource.EXPECT().ReadLastData("TSLA").Return(types.MarketData{
 		Symbol: "TSLA",
 		Close:  800.0,
+		Time:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
+	}, nil).AnyTimes()
+
+	// IBM mock for multi-day hold time test - end time is 3 days after buy
+	mockSource.EXPECT().ReadLastData("IBM").Return(types.MarketData{
+		Symbol: "IBM",
+		Close:  150.0,
+		Time:   time.Date(2024, 1, 4, 10, 0, 0, 0, time.UTC), // Jan 4, 10:00
 	}, nil).AnyTimes()
 
 	// For GetPreviousNumberOfDataPoints (required by interface but not used in test)
@@ -263,9 +274,9 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TotalFees: 2.0,
 					TradeHoldingTime: types.TradeHoldingTime{
-						Min: 1, // 1 hour between buy and sell
-						Max: 1,
-						Avg: 1,
+						Min: 3600, // 1 hour between buy and sell = 3600 seconds
+						Max: 3600,
+						Avg: 3600,
 					},
 					BuyAndHoldPnl: 2000.0, // (120 - 100) * 100
 				},
@@ -327,9 +338,9 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TotalFees: 1.0,
 					TradeHoldingTime: types.TradeHoldingTime{
-						Min: 0,
-						Max: 0,
-						Avg: 0,
+						Min: 18000, // Open position: buy at 10:00, end at 15:00 = 5 hours = 18000 seconds
+						Max: 18000,
+						Avg: 18000,
 					},
 					BuyAndHoldPnl: 2000.0,
 				},
@@ -351,9 +362,9 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TotalFees: 1.0,
 					TradeHoldingTime: types.TradeHoldingTime{
-						Min: 0,
-						Max: 0,
-						Avg: 0,
+						Min: 18000, // Open position: buy at 10:00, end at 15:00 = 5 hours = 18000 seconds
+						Max: 18000,
+						Avg: 18000,
 					},
 					BuyAndHoldPnl: 5000,
 				},
@@ -410,6 +421,265 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 						Avg: 0,
 					},
 					BuyAndHoldPnl: 2000.0, // (1000 - 800) * 10 = positive 2000 for a short position
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "All realized hold time - all positions closed",
+			orders: []types.Order{
+				{
+					OrderID:      "buy1",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        100.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "buy1"},
+				},
+				{
+					OrderID:      "sell1",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeSell,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        110.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC), // 1 hour later
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "sell1"},
+				},
+				{
+					OrderID:      "buy2",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        105.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "buy2"},
+				},
+				{
+					OrderID:      "sell2",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeSell,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        115.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC), // 2 hours later
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "sell2"},
+				},
+			},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "AAPL",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   0,      // Position fully closed, system shows 0
+						TotalPnL:      0,      // Position fully closed, system shows 0
+						UnrealizedPnL: 0,
+						MaximumLoss:   0,
+						MaximumProfit: 1248.0, // From trades table MAX(pnl)
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        4,
+						NumberOfWinningTrades: 2,
+						NumberOfLosingTrades:  0,
+						WinRate:               0.5,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 4.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 3600,  // First trade: 1 hour = 3600 seconds
+						Max: 7200,  // Second trade: 2 hours = 7200 seconds
+						Avg: 5400,  // Average: (3600+7200)/2 = 5400 seconds
+					},
+					BuyAndHoldPnl: 2000.0, // (120 - 100) * 100 based on first buy
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Partial realized hold time - mix of closed and open positions",
+			orders: []types.Order{
+				{
+					OrderID:      "buy1",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        100.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "buy1"},
+				},
+				{
+					OrderID:      "sell1",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeSell,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        110.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC), // 1 hour later
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "sell1"},
+				},
+				{
+					OrderID:      "buy2",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        105.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), // No matching sell, open until end time (15:00) = 3 hours
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "buy2"},
+				},
+			},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "AAPL",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   748.0,
+						TotalPnL:      2497.0, // Realized + unrealized
+						UnrealizedPnL: 1749.0,
+						MaximumLoss:   0,
+						MaximumProfit: 998.0, // From trades table MAX(pnl)
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        3,
+						NumberOfWinningTrades: 1,
+						NumberOfLosingTrades:  0,
+						WinRate:               0.3333333333333333,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 3.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 3600,  // First trade: 1 hour (closed) = 3600 seconds
+						Max: 10800, // Second trade: 3 hours (open, end time 15:00 - buy time 12:00) = 10800 seconds
+						Avg: 7200,  // Average: (3600+10800)/2 = 7200 seconds
+					},
+					BuyAndHoldPnl: 2000.0, // (120 - 100) * 100
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Non-realized hold time only - all positions open",
+			orders: []types.Order{
+				{
+					OrderID:      "buy1",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        100.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC), // Open until end time (15:00) = 5 hours
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "buy1"},
+				},
+				{
+					OrderID:      "buy2",
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        105.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), // Open until end time (15:00) = 3 hours
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "buy2"},
+				},
+			},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "AAPL",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   0,
+						TotalPnL:      3498.0, // Unrealized only
+						UnrealizedPnL: 3498.0, // (120 - 100.01) * 100 + (120 - 105.01) * 100
+						MaximumLoss:   0,
+						MaximumProfit: 0,
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        2,
+						NumberOfWinningTrades: 0,
+						NumberOfLosingTrades:  0,
+						WinRate:               0,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 2.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 10800, // Second buy: 3 hours (end time 15:00 - buy time 12:00) = 10800 seconds
+						Max: 18000, // First buy: 5 hours (end time 15:00 - buy time 10:00) = 18000 seconds
+						Avg: 14400, // Average: (18000+10800)/2 = 14400 seconds
+					},
+					BuyAndHoldPnl: 2000.0, // (120 - 100) * 100 based on first buy
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Multi-day hold time - open position across multiple days",
+			orders: []types.Order{
+				{
+					OrderID:      "buy1",
+					Symbol:       "IBM",
+					Side:         types.PurchaseTypeBuy,
+					PositionType: types.PositionTypeLong,
+					Quantity:     100,
+					Price:        140.0,
+					Fee:          1.0,
+					Timestamp:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC), // Jan 1, 10:00
+					IsCompleted:  true,
+					StrategyName: "test",
+					Reason:       types.Reason{Reason: "test", Message: "buy1"},
+				},
+			},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "IBM",
+					TradePnl: types.TradePnl{
+						RealizedPnL:   0,
+						TotalPnL:      999.0,  // (150 - 140.01) * 100
+						UnrealizedPnL: 999.0,
+						MaximumLoss:   0,
+						MaximumProfit: 0,
+					},
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        1,
+						NumberOfWinningTrades: 0,
+						NumberOfLosingTrades:  0,
+						WinRate:               0,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 1.0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						// Buy: Jan 1, 10:00, End: Jan 4, 10:00 = exactly 72 hours (3 days) = 259200 seconds
+						Min: 259200,
+						Max: 259200,
+						Avg: 259200,
+					},
+					BuyAndHoldPnl: 1000.0, // (150 - 140) * 100
 				},
 			},
 			expectError: false,

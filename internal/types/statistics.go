@@ -9,11 +9,11 @@ import (
 )
 
 type TradeHoldingTime struct {
-	// Minimum holding time of a trade
+	// Minimum holding time of a trade in seconds
 	Min int `yaml:"min"`
-	// Maximum holding time of a trade
+	// Maximum holding time of a trade in seconds
 	Max int `yaml:"max"`
-	// Average holding time of a trade
+	// Average holding time of a trade in seconds
 	Avg int `yaml:"avg"`
 }
 
