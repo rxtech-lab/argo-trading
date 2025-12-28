@@ -68,6 +68,8 @@ type TradeStats struct {
 	MarksFilePath string `yaml:"marks_file_path" json:"marks_file_path"`
 	// StrategyPath is the path to the strategy WASM file.
 	StrategyPath string `yaml:"strategy_path" json:"strategy_path"`
+	// DataPath is the path to the market data file used for this backtest.
+	DataPath string `yaml:"data_path" json:"data_path"`
 }
 
 func WriteTradeStats(path string, stats []TradeStats) error {
