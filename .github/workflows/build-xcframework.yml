@@ -1,0 +1,81 @@
+name: Build XCFramework
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version string for the build"
+        required: true
+        type: string
+    outputs:
+      checksum:
+        description: "SHA256 checksum of the xcframework zip"
+        value: ${{ jobs.build.outputs.checksum }}
+    secrets:
+      BUILD_CERTIFICATE_BASE64:
+        required: true
+      P12_PASSWORD:
+        required: true
+      SIGNING_CERTIFICATE_NAME:
+        required: true
+
+jobs:
+  build:
+    name: Build and Sign XCFramework
+    runs-on: macos-latest
+    outputs:
+      checksum: ${{ steps.checksum.outputs.checksum }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Install required tools
+        run: ./scripts/setup.sh
+
+      - name: Generate sdk and mocks
+        run: make generate
+
+      - name: Import code signing certificates
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
+
+      - name: Build and Sign the framework
+        run: make build-swift-argo && ./scripts/sign-framework.sh
+        env:
+          SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
+
+      - name: Create xcframework zip
+        run: |
+          set -e
+          cd pkg/swift-argo
+          zip -r ../../ArgoTrading.xcframework.zip ArgoTrading.xcframework
+
+      - name: Compute checksum
+        id: checksum
+        run: |
+          set -e
+          CHECKSUM=$(swift package compute-checksum ArgoTrading.xcframework.zip)
+          if [ -z "$CHECKSUM" ]; then
+            echo "::error::Checksum is empty"
+            exit 1
+          fi
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+          echo "Computed checksum: $CHECKSUM"
+
+      - name: Upload xcframework artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcframework-${{ inputs.version }}
+          path: ArgoTrading.xcframework.zip
+          retention-days: 1
