@@ -7,6 +7,13 @@ on:
         description: "Version string for the build"
         required: true
         type: string
+    secrets:
+      BUILD_CERTIFICATE_BASE64:
+        required: true
+      P12_PASSWORD:
+        required: true
+      SIGNING_CERTIFICATE_NAME:
+        required: true
     outputs:
       checksum:
         description: "SHA256 checksum of the xcframework zip"
@@ -39,6 +46,17 @@ jobs:
 
       - name: Build the framework
         run: make build-swift-argo
+
+      - name: Import code signing certificates
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
+
+      - name: Sign the framework
+        run: ./scripts/sign-framework.sh
+        env:
+          SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
       - name: Create xcframework zip
         run: |

@@ -8,9 +8,8 @@ jobs:
     name: Get Next Version
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      should_release: ${{ steps.version.outputs.should_release }}
-      release_notes: ${{ steps.version.outputs.release_notes }}
+      version: v${{ steps.semantic.outputs.new_release_version }}
+      release_notes: ${{ steps.semantic.outputs.new_release_notes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,63 +17,34 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - name: Get next version
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
         with:
-          node-version: "24"
-
-      - name: Install semantic-release
-        run: npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/github
-
-      - name: Get next version and release notes
-        id: version
+          dry_run: true
+          extra_plugins: |
+            @semantic-release/commit-analyzer
+            @semantic-release/release-notes-generator
+            @semantic-release/github
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: |
-          # Run semantic-release in dry-run mode to get the next version and release notes
-          npx semantic-release --dry-run --no-ci 2>&1 | tee semantic-release-output.txt || true
 
-          # Extract version from output
-          VERSION=$(grep -oP "The next release version is \K[0-9]+\.[0-9]+\.[0-9]+" semantic-release-output.txt || echo "")
-
-          if [ -n "$VERSION" ]; then
-            echo "version=v${VERSION}" >> $GITHUB_OUTPUT
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "Next version: v${VERSION}"
-
-            # Extract release notes (between "Release note" markers)
-            # Save to file for multiline output
-            sed -n '/^##/,/^$/p' semantic-release-output.txt > release-notes.md || true
-            if [ ! -s release-notes.md ]; then
-              echo "## What's Changed" > release-notes.md
-              echo "" >> release-notes.md
-              echo "Release v${VERSION}" >> release-notes.md
-            fi
-
-            # Use heredoc for multiline output
-            {
-              echo 'release_notes<<EOF'
-              cat release-notes.md
-              echo 'EOF'
-            } >> $GITHUB_OUTPUT
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "No release needed"
-          fi
-
-  # Step 2: Build xcframework using reusable workflow (no signing needed for SPM)
+  # Step 2: Build xcframework using reusable workflow
   build-xcframework:
     name: Build XCFramework
     needs: [get-version]
-    if: needs.get-version.outputs.should_release == 'true'
     uses: ./.github/workflows/build-xcframework.yml
     with:
       version: ${{ needs.get-version.outputs.version }}
+    secrets:
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
   # Step 3: Build macOS binaries
   build-macos-binaries:
     name: Build macOS Binaries
     needs: [get-version]
-    if: needs.get-version.outputs.should_release == 'true'
     runs-on: macos-latest
     steps:
       - name: Checkout repository
@@ -139,7 +109,6 @@ jobs:
   build-linux-binaries:
     name: Build Linux Binaries
     needs: [get-version]
-    if: needs.get-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
