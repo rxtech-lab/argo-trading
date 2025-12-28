@@ -71,6 +71,7 @@ func TestBacktestTradingTestSuite(t *testing.T) {
 func (suite *BacktestTradingTestSuite) TestUpdateCurrentMarketData() {
 	marketData := types.MarketData{
 		Symbol: "AAPL",
+		Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 		High:   100.0,
 		Low:    90.0,
 		Close:  95.0,
@@ -171,6 +172,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Valid order within price range",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   100.0,
 					Low:    90.0,
 				},
@@ -197,6 +199,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Order price above range",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   100.0,
 					Low:    90.0,
 				},
@@ -223,6 +226,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Order price below range",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   100.0,
 					Low:    90.0,
 				},
@@ -249,6 +253,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Order quantity exceeds buying power",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   100.0,
 					Low:    90.0,
 				},
@@ -275,6 +280,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Order quantity exceeds selling power",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   100.0,
 					Low:    90.0,
 				},
@@ -308,6 +314,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Limit order within price range",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   100.0,
 					Low:    90.0,
 				},
@@ -333,6 +340,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Limit order outside price range but after within the range",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   101.0,
 					Low:    100.0,
 				},
@@ -351,6 +359,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				},
 				marketDataAfterOrder: optional.Some(types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
 					High:   100.0,
 					Low:    94.0,
 				}),
@@ -363,6 +372,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				name: "Limit order outside price range and never within the range",
 				marketData: types.MarketData{
 					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   101.0,
 					Low:    100.0,
 				},
@@ -396,6 +406,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 	// Setup market data
 	marketData := types.MarketData{
 		Symbol: "AAPL",
+		Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 		High:   100.0,
 		Low:    90.0,
 	}
@@ -511,6 +522,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 	// Setup market data
 	marketData := types.MarketData{
 		Symbol: "AAPL",
+		Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 		High:   100.0,
 		Low:    90.0,
 	}
@@ -616,6 +628,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 	// Setup initial market data
 	marketData := types.MarketData{
 		Symbol: "AAPL",
+		Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 		High:   100.0,
 		Low:    90.0,
 	}
@@ -664,6 +677,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 			quantity:   10.0,
 			updatedMarketData: &types.MarketData{
 				Symbol: "AAPL",
+				Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
 				High:   90.0,
 				Low:    80.0, // Now below our limit price
 			},
@@ -766,6 +780,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 	// Setup market data
 	marketData := types.MarketData{
 		Symbol: "AAPL",
+		Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 		High:   100.0,
 		Low:    90.0,
 	}
@@ -803,6 +818,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			sellQuantity: 20.0,
 			updatedMarketData: &types.MarketData{
 				Symbol: "AAPL",
+				Time:   time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC),
 				High:   120.0, // Now above our limit price
 				Low:    100.0,
 			},
@@ -919,6 +935,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 func (suite *BacktestTradingTestSuite) TestPlaceMultipleOrders() {
 	marketData := types.MarketData{
 		Symbol: "AAPL",
+		Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 		High:   100.0,
 		Low:    90.0,
 	}
@@ -1085,6 +1102,7 @@ func (suite *BacktestTradingTestSuite) TestDecimalPrecisionHandling() {
 				balance: 1000000.0, // Set a high balance to allow all trades
 				marketData: types.MarketData{
 					Symbol: "BTC/USD",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   40000.0,
 					Low:    39000.0,
 					Close:  39500.0,
@@ -1152,6 +1170,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrderWithDecimalPrecision() {
 				balance: 1000000.0, // Set a high balance for crypto trading
 				marketData: types.MarketData{
 					Symbol: "BTC/USD",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 					High:   40000.0,
 					Low:    39000.0,
 					Close:  39500.0,
@@ -1311,6 +1330,7 @@ func (suite *BacktestTradingTestSuite) TestGetAccountInfo() {
 		suite.trading.UpdateBalance(10000.0)
 		suite.trading.UpdateCurrentMarketData(types.MarketData{
 			Symbol: "AAPL",
+			Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			High:   100.0,
 			Low:    90.0,
 			Close:  95.0,
@@ -1355,6 +1375,7 @@ func (suite *BacktestTradingTestSuite) TestGetAccountInfo() {
 		suite.trading.UpdateBalance(1000.0)
 		suite.trading.UpdateCurrentMarketData(types.MarketData{
 			Symbol: "AAPL",
+			Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
 			High:   100.0,
 			Low:    90.0,
 			Close:  95.0, // Price increased from entry price of 90

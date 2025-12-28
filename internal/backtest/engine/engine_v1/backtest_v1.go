@@ -501,7 +501,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		return fmt.Errorf("backtest state is nil")
 	}
 
-	if err := b.writeResults(strategyContext, params.runID, params.resultFolderPath, params.strategyPath); err != nil {
+	if err := b.writeResults(strategyContext, params.runID, params.resultFolderPath, params.strategyPath, params.dataPath); err != nil {
 		return fmt.Errorf("failed to write results: %w", err)
 	}
 
@@ -562,7 +562,7 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 	return nil
 }
 
-func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, runID string, resultFolderPath string, strategyPath string) error {
+func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, runID string, resultFolderPath string, strategyPath string, dataPath string) error {
 	if b.state == nil {
 		return fmt.Errorf("backtest state is nil")
 	}
@@ -573,7 +573,7 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	ordersFilePath := filepath.Join(stateDBPath, "orders.parquet")
 	marksFilePath := filepath.Join(resultFolderPath, "marks.parquet")
 
-	stats, err := b.state.GetStats(strategyContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath)
+	stats, err := b.state.GetStats(strategyContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath, dataPath)
 	if err != nil {
 		return fmt.Errorf("failed to get stats: %w", err)
 	}
