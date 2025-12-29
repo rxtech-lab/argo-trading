@@ -137,6 +137,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 		expectError          bool
 		executedOrderNumber  int
 		pendingOrderNumber   int
+		expectFailedOrder    bool
+		expectedFailReason   string
 	}
 
 	testRunner := func(tests []Test) {
@@ -158,7 +160,23 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				suite.Assert().Equal(tc.pendingOrderNumber, len(suite.trading.pendingOrders))
 
 				allOrders, err := suite.state.GetAllOrders()
+				suite.Require().NoError(err)
 				suite.Assert().Equal(tc.executedOrderNumber, len(allOrders))
+
+				// Check for failed order
+				if tc.expectFailedOrder {
+					var failedOrder *types.Order
+					for i := range allOrders {
+						if allOrders[i].Status == types.OrderStatusFailed {
+							failedOrder = &allOrders[i]
+							break
+						}
+					}
+					suite.Require().NotNil(failedOrder, "Expected a failed order but none found")
+					suite.Assert().Equal(types.OrderStatusFailed, failedOrder.Status)
+					suite.Assert().Equal(tc.expectedFailReason, failedOrder.Reason.Reason)
+				}
+
 				if err := suite.state.Cleanup(); err != nil {
 					suite.T().Fatalf("failed to cleanup state: %v", err)
 				}
@@ -271,10 +289,12 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					},
 				},
 				decimalPrecision:     0,
-				expectError:          true,
-				executedOrderNumber:  0,
+				expectError:          false, // No error, but order is failed
+				executedOrderNumber:  1,     // Failed order is stored
 				pendingOrderNumber:   0,
 				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInsufficientBuyPower,
 			},
 			{
 				name: "Order quantity exceeds selling power",
@@ -298,10 +318,12 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 					},
 				},
 				decimalPrecision:     0,
-				expectError:          true,
-				executedOrderNumber:  0,
+				expectError:          false, // No error, but order is failed
+				executedOrderNumber:  1,     // Failed order is stored
 				pendingOrderNumber:   0,
 				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInsufficientSellPower,
 			},
 		}
 
@@ -416,11 +438,13 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 	avgPrice := (marketData.High + marketData.Low) / 2 // 95.0
 
 	testCases := []struct {
-		name         string
-		balance      float64
-		quantity     float64
-		expectError  bool
-		errorMessage string
+		name               string
+		balance            float64
+		quantity           float64
+		expectError        bool
+		errorMessage       string
+		expectFailedOrder  bool
+		expectedFailReason string
 	}{
 		{
 			name:        "Successful buy - sufficient balance",
@@ -429,11 +453,12 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 			expectError: false,
 		},
 		{
-			name:         "Failed buy - insufficient balance",
-			balance:      500.0,
-			quantity:     10.0, // Total cost: 950.0 (10 * 95.0)
-			expectError:  true,
-			errorMessage: "market buy order cost (950.00) exceeds available balance (500.00)",
+			name:               "Failed buy - insufficient balance",
+			balance:            500.0,
+			quantity:           10.0, // Total cost: 950.0 (10 * 95.0)
+			expectError:        false,
+			expectFailedOrder:  true,
+			expectedFailReason: types.OrderReasonInsufficientBuyPower,
 		},
 		{
 			name:        "Successful buy - exact balance",
@@ -487,15 +512,24 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 			} else {
 				suite.Assert().NoError(err)
 
-				// Verify the trade was executed correctly
-				trades, err := suite.state.GetAllTrades()
-				suite.Require().NoError(err)
-				suite.Require().NotEmpty(trades)
+				if tc.expectFailedOrder {
+					// Check for failed order
+					allOrders, err := suite.state.GetAllOrders()
+					suite.Require().NoError(err)
+					suite.Require().Len(allOrders, 1)
+					suite.Assert().Equal(types.OrderStatusFailed, allOrders[0].Status)
+					suite.Assert().Equal(tc.expectedFailReason, allOrders[0].Reason.Reason)
+				} else {
+					// Verify the trade was executed correctly
+					trades, err := suite.state.GetAllTrades()
+					suite.Require().NoError(err)
+					suite.Require().NotEmpty(trades)
 
-				// Check that the trade was executed at the average price
-				suite.Assert().Equal(avgPrice, trades[0].Order.Price)
-				suite.Assert().Equal(tc.quantity, trades[0].Order.Quantity)
-				suite.Assert().Equal(types.PurchaseTypeBuy, trades[0].Order.Side)
+					// Check that the trade was executed at the average price
+					suite.Assert().Equal(avgPrice, trades[0].Order.Price)
+					suite.Assert().Equal(tc.quantity, trades[0].Order.Quantity)
+					suite.Assert().Equal(types.PurchaseTypeBuy, trades[0].Order.Side)
+				}
 			}
 		})
 	}
@@ -531,10 +565,12 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 	avgPrice := (marketData.High + marketData.Low) / 2 // 95.0
 
 	testCases := []struct {
-		name             string
-		sellQuantity     float64
-		expectError      bool
-		expectedQuantity float64 // Expected quantity to be sold after adjustment
+		name               string
+		sellQuantity       float64
+		expectError        bool
+		expectedQuantity   float64 // Expected quantity to be sold after adjustment
+		expectFailedOrder  bool
+		expectedFailReason string
 	}{
 		{
 			name:             "Successful sell - within holdings",
@@ -555,9 +591,11 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 			expectedQuantity: 50.0, // Should adjust to available 50.0
 		},
 		{
-			name:         "Failed sell - no holdings",
-			sellQuantity: 10.0,
-			expectError:  true, // No shares in a clean state
+			name:               "Failed sell - no holdings",
+			sellQuantity:       10.0,
+			expectError:        false, // No error, but order is failed
+			expectFailedOrder:  true,
+			expectedFailReason: types.OrderReasonInsufficientSellPower,
 		},
 	}
 
@@ -569,8 +607,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
 
-			// Only add initial position for non-error cases or when testing oversize sells
-			if !tc.expectError {
+			// Only add initial position for non-failed order cases
+			if !tc.expectFailedOrder {
 				_, err = suite.state.Update([]types.Order{initialOrder})
 				suite.Require().NoError(err)
 			}
@@ -601,24 +639,33 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 			} else {
 				suite.Assert().NoError(err)
 
-				// Verify the trade was executed correctly
-				trades, err := suite.state.GetAllTrades()
-				suite.Require().NoError(err)
-				suite.Assert().GreaterOrEqual(len(trades), 2) // Initial buy + our sell
+				if tc.expectFailedOrder {
+					// Check for failed order
+					allOrders, err := suite.state.GetAllOrders()
+					suite.Require().NoError(err)
+					suite.Require().Len(allOrders, 1)
+					suite.Assert().Equal(types.OrderStatusFailed, allOrders[0].Status)
+					suite.Assert().Equal(tc.expectedFailReason, allOrders[0].Reason.Reason)
+				} else {
+					// Verify the trade was executed correctly
+					trades, err := suite.state.GetAllTrades()
+					suite.Require().NoError(err)
+					suite.Assert().GreaterOrEqual(len(trades), 2) // Initial buy + our sell
 
-				// Find our sell trade (most recent one)
-				var sellTrade types.Trade
-				for _, trade := range trades {
-					if trade.Order.Side == types.PurchaseTypeSell {
-						sellTrade = trade
-						break
+					// Find our sell trade (most recent one)
+					var sellTrade types.Trade
+					for _, trade := range trades {
+						if trade.Order.Side == types.PurchaseTypeSell {
+							sellTrade = trade
+							break
+						}
 					}
-				}
 
-				// Check that the trade was adjusted properly
-				suite.Assert().Equal(tc.expectedQuantity, sellTrade.Order.Quantity)
-				// Check that the avg price was used
-				suite.Assert().Equal((marketData.High+marketData.Low)/2, sellTrade.Order.Price)
+					// Check that the trade was adjusted properly
+					suite.Assert().Equal(tc.expectedQuantity, sellTrade.Order.Quantity)
+					// Check that the avg price was used
+					suite.Assert().Equal((marketData.High+marketData.Low)/2, sellTrade.Order.Price)
+				}
 			}
 		})
 	}
@@ -634,15 +681,17 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 	}
 
 	testCases := []struct {
-		name              string
-		balance           float64
-		limitPrice        float64
-		quantity          float64
-		updatedMarketData *types.MarketData // To simulate price changes
-		expectError       bool
-		errorMessage      string
-		shouldExecute     bool    // Should the order execute immediately or be pending?
-		executionPrice    float64 // Expected execution price
+		name               string
+		balance            float64
+		limitPrice         float64
+		quantity           float64
+		updatedMarketData  *types.MarketData // To simulate price changes
+		expectError        bool
+		errorMessage       string
+		shouldExecute      bool    // Should the order execute immediately or be pending?
+		executionPrice     float64 // Expected execution price
+		expectFailedOrder  bool
+		expectedFailReason string
 	}{
 		{
 			name:           "Buy limit below market - execute immediately",
@@ -686,12 +735,13 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 			executionPrice: 85.0, // Should use our limit price
 		},
 		{
-			name:         "Buy limit - insufficient balance",
-			balance:      500.0,
-			limitPrice:   95.0,
-			quantity:     10.0, // Total cost: 950.0
-			expectError:  true,
-			errorMessage: "limit buy order cost (950.00) exceeds available balance (500.00)",
+			name:               "Buy limit - insufficient balance",
+			balance:            500.0,
+			limitPrice:         95.0,
+			quantity:           10.0, // Total cost: 950.0
+			expectError:        false,
+			expectFailedOrder:  true,
+			expectedFailReason: types.OrderReasonInsufficientBuyPower,
 		},
 	}
 
@@ -734,6 +784,16 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 			}
 
 			suite.Assert().NoError(err)
+
+			// Check for failed order first
+			if tc.expectFailedOrder {
+				allOrders, err := suite.state.GetAllOrders()
+				suite.Require().NoError(err)
+				suite.Require().Len(allOrders, 1)
+				suite.Assert().Equal(types.OrderStatusFailed, allOrders[0].Status)
+				suite.Assert().Equal(tc.expectedFailReason, allOrders[0].Reason.Reason)
+				return
+			}
 
 			// If we have updated market data, simulate a price change
 			if tc.updatedMarketData != nil {
@@ -786,14 +846,16 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 	}
 
 	testCases := []struct {
-		name              string
-		limitPrice        float64
-		sellQuantity      float64
-		updatedMarketData *types.MarketData // To simulate price changes
-		expectError       bool
-		expectedQuantity  float64 // Expected quantity after adjustment
-		shouldExecute     bool    // Should execute immediately or be pending
-		executionPrice    float64 // Expected execution price
+		name               string
+		limitPrice         float64
+		sellQuantity       float64
+		updatedMarketData  *types.MarketData // To simulate price changes
+		expectError        bool
+		expectedQuantity   float64 // Expected quantity after adjustment
+		shouldExecute      bool    // Should execute immediately or be pending
+		executionPrice     float64 // Expected execution price
+		expectFailedOrder  bool
+		expectedFailReason string
 	}{
 		{
 			name:             "Sell limit below current high - execute immediately",
@@ -837,10 +899,12 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			executionPrice:   95.0,
 		},
 		{
-			name:         "Sell limit with no holdings",
-			limitPrice:   95.0,
-			sellQuantity: 10.0,
-			expectError:  true, // No shares in a clean state
+			name:               "Sell limit with no holdings",
+			limitPrice:         95.0,
+			sellQuantity:       10.0,
+			expectError:        false,
+			expectFailedOrder:  true,
+			expectedFailReason: types.OrderReasonInsufficientSellPower,
 		},
 	}
 
@@ -852,8 +916,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
 
-			// Only add initial position for non-error cases or when testing oversize sells
-			if !tc.expectError {
+			// Only add initial position for non-failed order cases
+			if !tc.expectFailedOrder {
 				_, err = suite.state.Update([]types.Order{initialOrder})
 				suite.Require().NoError(err)
 			}
@@ -886,6 +950,16 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 
 			suite.Assert().NoError(err)
 
+			// Check for failed order first
+			if tc.expectFailedOrder {
+				allOrders, err := suite.state.GetAllOrders()
+				suite.Require().NoError(err)
+				suite.Require().Len(allOrders, 1)
+				suite.Assert().Equal(types.OrderStatusFailed, allOrders[0].Status)
+				suite.Assert().Equal(tc.expectedFailReason, allOrders[0].Reason.Reason)
+				return
+			}
+
 			// If we have updated market data, simulate a price change
 			if tc.updatedMarketData != nil {
 				suite.trading.UpdateCurrentMarketData(*tc.updatedMarketData)
@@ -895,10 +969,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			trades, err := suite.state.GetAllTrades()
 			suite.Require().NoError(err)
 
-			// Initial buy should always be there if not an error case
-			if !tc.expectError {
-				suite.Assert().GreaterOrEqual(len(trades), 1)
-			}
+			// Initial buy should always be there if not a failed order case
+			suite.Assert().GreaterOrEqual(len(trades), 1)
 
 			if tc.shouldExecute {
 				// Should have at least 2 trades (initial buy + our sell)
@@ -973,22 +1045,37 @@ func (suite *BacktestTradingTestSuite) TestPlaceMultipleOrders() {
 	err := suite.trading.PlaceMultipleOrders(orders)
 	suite.Require().NoError(err)
 
-	// Test with invalid order
-	invalidOrders := append(orders, types.ExecuteOrder{
-		Symbol:       "AAPL",
-		Side:         types.PurchaseTypeBuy,
-		OrderType:    types.OrderTypeLimit,
-		Quantity:     1000000, // Very large quantity
-		Price:        95.0,
-		StrategyName: "test_strategy",
-		PositionType: types.PositionTypeLong,
-		Reason: types.Reason{
-			Reason:  "test",
-			Message: "reason",
+	// Test with order that exceeds buying power - should not return error but create a failed order
+	ordersWithFailingOrder := []types.ExecuteOrder{
+		{
+			Symbol:       "AAPL",
+			Side:         types.PurchaseTypeBuy,
+			OrderType:    types.OrderTypeLimit,
+			Quantity:     1000000, // Very large quantity that exceeds buying power
+			Price:        95.0,
+			StrategyName: "test_strategy",
+			PositionType: types.PositionTypeLong,
+			Reason: types.Reason{
+				Reason:  "test",
+				Message: "reason",
+			},
 		},
-	})
-	err = suite.trading.PlaceMultipleOrders(invalidOrders)
-	suite.Assert().Error(err)
+	}
+	err = suite.trading.PlaceMultipleOrders(ordersWithFailingOrder)
+	suite.Assert().NoError(err) // No error returned, order is just marked as failed
+
+	// Verify that a failed order was stored
+	allOrders, err := suite.state.GetAllOrders()
+	suite.Require().NoError(err)
+	var failedOrder *types.Order
+	for i := range allOrders {
+		if allOrders[i].Status == types.OrderStatusFailed {
+			failedOrder = &allOrders[i]
+			break
+		}
+	}
+	suite.Require().NotNil(failedOrder)
+	suite.Assert().Equal(types.OrderReasonInsufficientBuyPower, failedOrder.Reason.Reason)
 }
 
 func (suite *BacktestTradingTestSuite) TestGetOrderStatus() {

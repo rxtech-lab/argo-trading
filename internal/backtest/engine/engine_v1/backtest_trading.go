@@ -160,7 +160,24 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 			// Check if we can afford this order
 			totalCost := order.Quantity * order.Price
 			if totalCost > b.balance {
-				return fmt.Errorf("limit buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+				// Create failed order and store it
+				failedOrder := types.Order{
+					OrderID:      order.ID,
+					Symbol:       order.Symbol,
+					Side:         order.Side,
+					Quantity:     order.Quantity,
+					Price:        order.Price,
+					Timestamp:    b.marketData.Time,
+					IsCompleted:  true,
+					Status:       types.OrderStatusFailed,
+					StrategyName: order.StrategyName,
+					PositionType: order.PositionType,
+					Reason: types.Reason{
+						Reason:  types.OrderReasonInsufficientBuyPower,
+						Message: fmt.Sprintf("limit buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance),
+					},
+				}
+				return b.state.StoreFailedOrder(failedOrder)
 			}
 
 			// If current price is already below limit price, execute immediately with the current market price
@@ -184,7 +201,24 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 			// If trying to sell more than available, adjust quantity to max available
 			if order.Quantity > sellingPower {
 				if sellingPower <= 0 {
-					return fmt.Errorf("no shares available to sell")
+					// Create failed order and store it
+					failedOrder := types.Order{
+						OrderID:      order.ID,
+						Symbol:       order.Symbol,
+						Side:         order.Side,
+						Quantity:     order.Quantity,
+						Price:        order.Price,
+						Timestamp:    b.marketData.Time,
+						IsCompleted:  true,
+						Status:       types.OrderStatusFailed,
+						StrategyName: order.StrategyName,
+						PositionType: order.PositionType,
+						Reason: types.Reason{
+							Reason:  types.OrderReasonInsufficientSellPower,
+							Message: "no shares available to sell",
+						},
+					}
+					return b.state.StoreFailedOrder(failedOrder)
 				}
 
 				order.Quantity = sellingPower
@@ -220,14 +254,48 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 		if order.Side == types.PurchaseTypeBuy {
 			totalCost := order.Quantity * avgPrice
 			if totalCost > b.balance {
-				return fmt.Errorf("market buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+				// Create failed order and store it
+				failedOrder := types.Order{
+					OrderID:      order.ID,
+					Symbol:       order.Symbol,
+					Side:         order.Side,
+					Quantity:     order.Quantity,
+					Price:        avgPrice,
+					Timestamp:    b.marketData.Time,
+					IsCompleted:  true,
+					Status:       types.OrderStatusFailed,
+					StrategyName: order.StrategyName,
+					PositionType: order.PositionType,
+					Reason: types.Reason{
+						Reason:  types.OrderReasonInsufficientBuyPower,
+						Message: fmt.Sprintf("market buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance),
+					},
+				}
+				return b.state.StoreFailedOrder(failedOrder)
 			}
 		} else {
 			// For sell orders, adjust quantity if needed
 			sellingPower := b.getSellingPower()
 			if order.Quantity > sellingPower {
 				if sellingPower <= 0 {
-					return fmt.Errorf("no shares available to sell")
+					// Create failed order and store it
+					failedOrder := types.Order{
+						OrderID:      order.ID,
+						Symbol:       order.Symbol,
+						Side:         order.Side,
+						Quantity:     order.Quantity,
+						Price:        avgPrice,
+						Timestamp:    b.marketData.Time,
+						IsCompleted:  true,
+						Status:       types.OrderStatusFailed,
+						StrategyName: order.StrategyName,
+						PositionType: order.PositionType,
+						Reason: types.Reason{
+							Reason:  types.OrderReasonInsufficientSellPower,
+							Message: "no shares available to sell",
+						},
+					}
+					return b.state.StoreFailedOrder(failedOrder)
 				}
 
 				order.Quantity = sellingPower
@@ -541,13 +609,47 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 	if order.Side == types.PurchaseTypeBuy {
 		totalCost := order.Quantity * executePrice
 		if totalCost > b.balance {
-			return fmt.Errorf("order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+			// Create failed order and store it
+			failedOrder := types.Order{
+				OrderID:      order.ID,
+				Symbol:       order.Symbol,
+				Side:         order.Side,
+				Quantity:     order.Quantity,
+				Price:        executePrice,
+				Timestamp:    b.marketData.Time,
+				IsCompleted:  true,
+				Status:       types.OrderStatusFailed,
+				StrategyName: order.StrategyName,
+				PositionType: order.PositionType,
+				Reason: types.Reason{
+					Reason:  types.OrderReasonInsufficientBuyPower,
+					Message: fmt.Sprintf("order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance),
+				},
+			}
+			return b.state.StoreFailedOrder(failedOrder)
 		}
 	} else {
 		sellingPower := b.getSellingPower()
 		if order.Quantity > sellingPower {
 			if sellingPower <= 0 {
-				return fmt.Errorf("no shares available to sell")
+				// Create failed order and store it
+				failedOrder := types.Order{
+					OrderID:      order.ID,
+					Symbol:       order.Symbol,
+					Side:         order.Side,
+					Quantity:     order.Quantity,
+					Price:        executePrice,
+					Timestamp:    b.marketData.Time,
+					IsCompleted:  true,
+					Status:       types.OrderStatusFailed,
+					StrategyName: order.StrategyName,
+					PositionType: order.PositionType,
+					Reason: types.Reason{
+						Reason:  types.OrderReasonInsufficientSellPower,
+						Message: "no shares available to sell",
+					},
+				}
+				return b.state.StoreFailedOrder(failedOrder)
 			}
 
 			order.Quantity = sellingPower
