@@ -75,6 +75,7 @@ func (b *BacktestState) Initialize() error {
 			price DOUBLE,
 			timestamp TIMESTAMP,
 			is_completed BOOLEAN,
+			status TEXT,
 			reason TEXT,
 			message TEXT,
 			strategy_name TEXT,
@@ -147,11 +148,11 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			Insert("orders").
 			Columns(
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
-				"is_completed", "reason", "message", "strategy_name", "position_type",
+				"is_completed", "status", "reason", "message", "strategy_name", "position_type",
 			).
 			Values(
 				orderID, order.Symbol, order.Side, order.Quantity, order.Price,
-				order.Timestamp, order.IsCompleted, order.Reason.Reason, order.Reason.Message,
+				order.Timestamp, order.IsCompleted, order.Status, order.Reason.Reason, order.Reason.Message,
 				order.StrategyName, order.PositionType,
 			).
 			RunWith(tx)
@@ -202,6 +203,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				Price:        order.Price,
 				Timestamp:    order.Timestamp,
 				IsCompleted:  order.IsCompleted,
+				Status:       order.Status,
 				Reason:       order.Reason,
 				StrategyName: order.StrategyName,
 				Fee:          order.Fee,
@@ -268,6 +270,38 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 	}
 
 	return results, nil
+}
+
+// StoreFailedOrder stores a failed order in the database without creating a trade.
+// This is used when an order fails validation (e.g., insufficient buying power).
+func (b *BacktestState) StoreFailedOrder(order types.Order) error {
+	// Check for nil fields
+	if b == nil || b.db == nil {
+		return fmt.Errorf("backtest state or database is nil")
+	}
+
+	orderID := uuid.New().String()
+
+	// Insert order with failed status
+	insertQuery := b.sq.
+		Insert("orders").
+		Columns(
+			"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
+			"is_completed", "status", "reason", "message", "strategy_name", "position_type",
+		).
+		Values(
+			orderID, order.Symbol, order.Side, order.Quantity, order.Price,
+			order.Timestamp, order.IsCompleted, order.Status, order.Reason.Reason, order.Reason.Message,
+			order.StrategyName, order.PositionType,
+		).
+		RunWith(b.db)
+
+	_, err := insertQuery.Exec()
+	if err != nil {
+		return fmt.Errorf("failed to insert failed order: %w", err)
+	}
+
+	return nil
 }
 
 // GetPosition retrieves the current position for a symbol by calculating from trades.
@@ -657,7 +691,7 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 // GetOrderById returns an order by its id.
 func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Order], error) {
 	query := b.sq.
-		Select("order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed", "reason", "message", "strategy_name", "position_type").
+		Select("order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed", "status", "reason", "message", "strategy_name", "position_type").
 		From("orders").
 		Where(squirrel.Eq{"order_id": orderID}).
 		RunWith(b.db)
@@ -672,6 +706,7 @@ func (b *BacktestState) GetOrderById(orderID string) (optional.Option[types.Orde
 		&order.Price,
 		&order.Timestamp,
 		&order.IsCompleted,
+		&order.Status,
 		&order.Reason.Reason,
 		&order.Reason.Message,
 		&order.StrategyName,
@@ -801,7 +836,7 @@ func (b *BacktestState) GetAllPositions() ([]types.Position, error) {
 
 func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	query := b.sq.
-		Select("order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed", "reason", "message", "strategy_name", "position_type").
+		Select("order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed", "status", "reason", "message", "strategy_name", "position_type").
 		From("orders").
 		OrderBy("timestamp ASC").
 		RunWith(b.db)
@@ -825,6 +860,7 @@ func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 			&order.Price,
 			&order.Timestamp,
 			&order.IsCompleted,
+			&order.Status,
 			&order.Reason.Reason,
 			&order.Reason.Message,
 			&order.StrategyName,

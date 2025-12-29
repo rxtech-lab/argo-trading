@@ -21,7 +21,7 @@ const (
 	OrderStatusFilled    OrderStatus = "FILLED"
 	OrderStatusCancelled OrderStatus = "CANCELLED"
 	OrderStatusRejected  OrderStatus = "REJECTED"
-	OrderStatusFailed    OrderStatus = "Failed"
+	OrderStatusFailed    OrderStatus = "FAILED"
 )
 
 const (
@@ -40,9 +40,13 @@ const (
 )
 
 const (
-	OrderReasonStopLoss   string = "stop_loss"
-	OrderReasonTakeProfit string = "take_profit"
-	OrderReasonStrategy   string = "strategy"
+	OrderReasonStopLoss              string = "stop_loss"
+	OrderReasonTakeProfit            string = "take_profit"
+	OrderReasonStrategy              string = "strategy"
+	OrderReasonInsufficientBuyPower  string = "insufficient_buying_power"
+	OrderReasonInsufficientSellPower string = "insufficient_selling_power"
+	OrderReasonInvalidQuantity       string = "invalid_quantity"
+	OrderReasonInvalidPrice          string = "invalid_price"
 )
 
 type Reason struct {
@@ -81,6 +85,8 @@ type Order struct {
 	Timestamp time.Time    `yaml:"timestamp" json:"timestamp" csv:"timestamp" validate:"required"`
 	// IsCompleted is true if the order has been filled or cancelled
 	IsCompleted bool `yaml:"is_completed" json:"is_completed" csv:"is_completed"`
+	// Status is the status of the order (PENDING, FILLED, CANCELLED, REJECTED, Failed)
+	Status OrderStatus `yaml:"status" json:"status" csv:"status"`
 	// Reason is the reason for the order
 	// It can be used to store the reason for the order
 	// like "buy_signal", "sell_signal", "stop_loss", "take_profit", etc.
