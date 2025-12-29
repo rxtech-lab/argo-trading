@@ -19,13 +19,14 @@ func TestPlaceOrderTestSuite(t *testing.T) {
 
 // SetupTest initializes the test with config
 func (s *PlaceOrderTestSuite) SetupTest() {
-	s.E2ETestSuite.SetupTest(`
-initial_capital: 10000
-`)
+
 }
 
 func (s *PlaceOrderTestSuite) TestPlaceOrderStrategy() {
 	s.Run("TestPlaceOrderStrategy", func() {
+		s.E2ETestSuite.SetupTest(`
+initial_capital: 10000
+`)
 		tmpFolder := testhelper.RunWasmStrategyTest(&s.E2ETestSuite, "PlaceOrderStrategy", "./place_order_plugin.wasm", "")
 		// read stats
 		stats, err := testhelper.ReadStats(&s.E2ETestSuite, tmpFolder)
@@ -53,5 +54,16 @@ func (s *PlaceOrderTestSuite) TestPlaceOrderStrategy() {
 
 		// Check message instead of reason
 		s.Require().Equal("PlaceOrderStrategy", marker[0].Message)
+	})
+
+	s.Run("TestPlaceOrderStrategyWithoutEnoughInitialCapital", func() {
+		s.E2ETestSuite.SetupTest(`
+initial_capital: 0
+`)
+		tmpFolder := testhelper.RunWasmStrategyTest(&s.E2ETestSuite, "PlaceOrderStrategy", "./place_order_plugin.wasm", "")
+		// read stats
+		stats, err := testhelper.ReadStats(&s.E2ETestSuite, tmpFolder)
+		s.Require().NoError(err)
+		s.Require().Greater(len(stats), 0)
 	})
 }
