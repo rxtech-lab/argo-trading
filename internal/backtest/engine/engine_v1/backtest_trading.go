@@ -172,11 +172,13 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 					Status:       types.OrderStatusFailed,
 					StrategyName: order.StrategyName,
 					PositionType: order.PositionType,
+					Fee:          0,
 					Reason: types.Reason{
 						Reason:  types.OrderReasonInsufficientBuyPower,
 						Message: fmt.Sprintf("limit buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance),
 					},
 				}
+
 				return b.state.StoreFailedOrder(failedOrder)
 			}
 
@@ -213,11 +215,13 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 						Status:       types.OrderStatusFailed,
 						StrategyName: order.StrategyName,
 						PositionType: order.PositionType,
+						Fee:          0,
 						Reason: types.Reason{
 							Reason:  types.OrderReasonInsufficientSellPower,
 							Message: "no shares available to sell",
 						},
 					}
+
 					return b.state.StoreFailedOrder(failedOrder)
 				}
 
@@ -266,11 +270,13 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 					Status:       types.OrderStatusFailed,
 					StrategyName: order.StrategyName,
 					PositionType: order.PositionType,
+					Fee:          0,
 					Reason: types.Reason{
 						Reason:  types.OrderReasonInsufficientBuyPower,
 						Message: fmt.Sprintf("market buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance),
 					},
 				}
+
 				return b.state.StoreFailedOrder(failedOrder)
 			}
 		} else {
@@ -290,11 +296,13 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 						Status:       types.OrderStatusFailed,
 						StrategyName: order.StrategyName,
 						PositionType: order.PositionType,
+						Fee:          0,
 						Reason: types.Reason{
 							Reason:  types.OrderReasonInsufficientSellPower,
 							Message: "no shares available to sell",
 						},
 					}
+
 					return b.state.StoreFailedOrder(failedOrder)
 				}
 
@@ -626,6 +634,7 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 					Message: fmt.Sprintf("order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance),
 				},
 			}
+
 			return b.state.StoreFailedOrder(failedOrder)
 		}
 	} else {
@@ -644,11 +653,13 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 					Status:       types.OrderStatusFailed,
 					StrategyName: order.StrategyName,
 					PositionType: order.PositionType,
+					Fee:          0,
 					Reason: types.Reason{
 						Reason:  types.OrderReasonInsufficientSellPower,
 						Message: "no shares available to sell",
 					},
 				}
+
 				return b.state.StoreFailedOrder(failedOrder)
 			}
 
@@ -668,6 +679,7 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 		Price:        executePrice,
 		Timestamp:    b.marketData.Time,
 		IsCompleted:  true,
+		Status:       types.OrderStatusFilled,
 		Reason:       order.Reason,
 		StrategyName: order.StrategyName,
 		Fee:          commission,

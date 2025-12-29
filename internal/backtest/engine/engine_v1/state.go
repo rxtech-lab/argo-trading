@@ -203,6 +203,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				Price:        order.Price,
 				Timestamp:    order.Timestamp,
 				IsCompleted:  order.IsCompleted,
+				Status:       order.Status,
 				Reason:       order.Reason,
 				StrategyName: order.StrategyName,
 				Fee:          order.Fee,
