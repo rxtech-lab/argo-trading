@@ -11,3 +11,8 @@ func TestGetBacktestEngineConfigSchema(t *testing.T) {
 	schema := swiftargo.GetBacktestEngineConfigSchema()
 	assert.NotEmpty(t, schema)
 }
+
+func TestGetBacktestEngineVersion(t *testing.T) {
+	version := swiftargo.GetBacktestEngineVersion()
+	assert.NotEmpty(t, version)
+}

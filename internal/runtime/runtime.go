@@ -24,6 +24,8 @@ type StrategyRuntime interface {
 	Name() string
 	// GetDescription returns the description of the strategy
 	GetDescription() (string, error)
+	// GetRuntimeEngineVersion returns the engine version the strategy was compiled against
+	GetRuntimeEngineVersion() (string, error)
 }
 
 type RuntimeContext struct {

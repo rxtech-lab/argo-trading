@@ -20,6 +20,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/version"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -74,7 +75,6 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 	if err != nil {
 		return err
 	}
-
 
 	b.log.Debug("Backtest engine initialized",
 		zap.String("config", config),
@@ -456,6 +456,17 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	err = params.strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
 	if err != nil {
 		return fmt.Errorf("failed to initialize strategy api: %w", err)
+	}
+
+	// Check version compatibility between engine and strategy
+	strategyRuntimeVersion, err := params.strategy.GetRuntimeEngineVersion()
+	if err != nil {
+		return fmt.Errorf("failed to get strategy runtime version: %w", err)
+	}
+
+	if err := version.CheckVersionCompatibility(version.Version, strategyRuntimeVersion); err != nil {
+		return fmt.Errorf("version mismatch: engine version %s is incompatible with strategy compiled for version %s: %w",
+			version.Version, strategyRuntimeVersion, err)
 	}
 
 	err = params.strategy.Initialize(params.configContent)

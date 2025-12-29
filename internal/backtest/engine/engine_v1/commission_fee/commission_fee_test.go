@@ -46,11 +46,11 @@ func (suite *CommissionFeeTestSuite) TestInteractiveBrokerCommissionFee() {
 		quantity float64
 		expected float64
 	}{
-		{"zero quantity", 0, 1.0},        // minimum fee is 1.0
-		{"small quantity - min fee", 10, 1.0},  // 0.005 * 10 = 0.05 < 1.0, so min fee applies
-		{"quantity at threshold", 200, 1.0},    // 0.005 * 200 = 1.0, so exactly at threshold
-		{"large quantity", 1000, 5.0},          // 0.005 * 1000 = 5.0 > 1.0
-		{"very large quantity", 10000, 50.0},   // 0.005 * 10000 = 50.0
+		{"zero quantity", 0, 1.0},             // minimum fee is 1.0
+		{"small quantity - min fee", 10, 1.0}, // 0.005 * 10 = 0.05 < 1.0, so min fee applies
+		{"quantity at threshold", 200, 1.0},   // 0.005 * 200 = 1.0, so exactly at threshold
+		{"large quantity", 1000, 5.0},         // 0.005 * 1000 = 5.0 > 1.0
+		{"very large quantity", 10000, 50.0},  // 0.005 * 10000 = 50.0
 	}
 
 	for _, tc := range tests {
