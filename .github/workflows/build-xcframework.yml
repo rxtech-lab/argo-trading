@@ -45,7 +45,7 @@ jobs:
         run: make generate
 
       - name: Build the framework
-        run: make build-swift-argo
+        run: make build-swift-argo VERSION=${{ inputs.version }}
 
       - name: Import code signing certificates
         uses: apple-actions/import-codesign-certs@v3

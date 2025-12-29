@@ -15,12 +15,15 @@ mkdir -p output
 echo "Building trading-backtest binary version: ${VERSION}"
 
 # Build the Go binary with version information
+# Note: We inject version into both main package and internal/version package
+LDFLAGS="-X main.Version=${VERSION} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X github.com/rxtech-lab/argo-trading/internal/version.Version=${VERSION}"
+
 go build -o output/trading-backtest \
-  -ldflags "-X main.Version=${VERSION} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -ldflags "${LDFLAGS}" \
   ./cmd/backtest
 
 go build -o output/trading-market \
-  -ldflags "-X main.Version=${VERSION} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -ldflags "${LDFLAGS}" \
   ./cmd/market
 
 echo "Build completed"

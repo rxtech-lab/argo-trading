@@ -17,10 +17,10 @@ func TestUtilsSuite(t *testing.T) {
 
 // TestConfig is a sample config struct for testing
 type TestConfig struct {
-	Name        string `json:"name" jsonschema:"description=The name of the config"`
-	Value       int    `json:"value" jsonschema:"description=A numeric value"`
-	Enabled     bool   `json:"enabled"`
-	Tags        []string `json:"tags,omitempty"`
+	Name    string   `json:"name" jsonschema:"description=The name of the config"`
+	Value   int      `json:"value" jsonschema:"description=A numeric value"`
+	Enabled bool     `json:"enabled"`
+	Tags    []string `json:"tags,omitempty"`
 }
 
 // NestedConfig is a sample nested config struct for testing

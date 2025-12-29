@@ -9,7 +9,7 @@ type Broker string
 
 const (
 	BrokerInteractiveBroker Broker = "interactive_broker"
-	BrokerZero             Broker = "zero_commission"
+	BrokerZero              Broker = "zero_commission"
 )
 
 var AllBrokers = []any{
