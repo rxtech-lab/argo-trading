@@ -3,6 +3,7 @@ module github.com/rxtech-lab/argo-trading
 go 1.25.5
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/adshao/go-binance/v2 v2.8.2
 	github.com/go-playground/validator/v10 v10.23.0
@@ -22,11 +23,6 @@ require (
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
-)
-
-require (
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
-	golang.org/x/mobile v0.0.0-20251209145715-2553ed8ce294 // indirect
 )
 
 require (

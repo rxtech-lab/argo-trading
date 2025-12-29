@@ -716,6 +716,32 @@ func (d *DuckDBDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 	return result, nil
 }
 
+// GetAllSymbols returns all distinct symbols from the market data.
+func (d *DuckDBDataSource) GetAllSymbols() ([]string, error) {
+	rows, err := d.db.Query("SELECT DISTINCT symbol FROM market_data ORDER BY symbol")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get symbols: %w", err)
+	}
+	defer rows.Close()
+
+	var symbols []string
+
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			return nil, fmt.Errorf("failed to scan symbol: %w", err)
+		}
+
+		symbols = append(symbols, symbol)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating symbols: %w", err)
+	}
+
+	return symbols, nil
+}
+
 // buildGetRangeQuery constructs the SQL query for GetRange method.
 func (d *DuckDBDataSource) buildGetRangeQuery(start time.Time, end time.Time, intervalMinutes optional.Option[int]) (string, []interface{}, error) {
 	// If no interval is specified, use a simple query with squirrel

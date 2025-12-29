@@ -213,6 +213,16 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 		[]types.MarketData{}, nil,
 	).AnyTimes()
 
+	// For GetAllSymbols (used when no trades exist to get symbols from market data)
+	mockSource.EXPECT().GetAllSymbols().Return([]string{"SPY"}, nil).AnyTimes()
+
+	// SPY mock for "No trades" test - return market data for the symbol
+	mockSource.EXPECT().ReadLastData("SPY").Return(types.MarketData{
+		Symbol: "SPY",
+		Close:  450.0,
+		Time:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
+	}, nil).AnyTimes()
+
 	tests := []struct {
 		name          string
 		orders        []types.Order
@@ -372,10 +382,35 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			expectError: false,
 		},
 		{
-			name:          "No trades",
-			orders:        []types.Order{},
-			expectedStats: []types.TradeStats{},
-			expectError:   false,
+			name:   "No trades - stats from market data",
+			orders: []types.Order{},
+			expectedStats: []types.TradeStats{
+				{
+					Symbol: "SPY",
+					TradeResult: types.TradeResult{
+						NumberOfTrades:        0,
+						NumberOfWinningTrades: 0,
+						NumberOfLosingTrades:  0,
+						WinRate:               0,
+						MaxDrawdown:           0,
+					},
+					TotalFees: 0,
+					TradeHoldingTime: types.TradeHoldingTime{
+						Min: 0,
+						Max: 0,
+						Avg: 0,
+					},
+					TradePnl: types.TradePnl{
+						RealizedPnL:   0,
+						UnrealizedPnL: 0,
+						TotalPnL:      0,
+						MaximumLoss:   0,
+						MaximumProfit: 0,
+					},
+					BuyAndHoldPnl: 0,
+				},
+			},
+			expectError: false,
 		},
 		{
 			name: "Short position calculation",
