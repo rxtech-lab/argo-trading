@@ -90,6 +90,8 @@ func TestBacktestEngineV1_Run(t *testing.T) {
 		}
 		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData, nil).AnyTimes()
 
 		// Create backtest engine
 		engine, err := NewBacktestEngineV1()
@@ -189,6 +191,8 @@ endTime: "2023-01-31T23:59:59Z"
 			return nil
 		}).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData1, nil).AnyTimes()
 
 		// Setup ReadAll behavior to return our test data in order
 		readAllFunc := func(handler func(types.MarketData, error) bool) {
@@ -268,6 +272,8 @@ endTime: "2023-01-31T23:59:59Z"
 			return nil
 		}).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData, nil).AnyTimes()
 
 		readAllFunc := func(handler func(types.MarketData, error) bool) {
 			handler(marketData, nil)
@@ -366,6 +372,8 @@ endTime: "2023-01-31T23:59:59Z"
 			return nil
 		}).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData, nil).AnyTimes()
 
 		readAllFunc := func(handler func(types.MarketData, error) bool) {
 			handler(marketData, nil)
@@ -698,6 +706,8 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData, nil).AnyTimes()
 
 		readAllFunc := func(handler func(types.MarketData, error) bool) {
 			handler(marketData, nil)
@@ -767,6 +777,8 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData, nil).AnyTimes()
 
 		readAllFunc := func(handler func(types.MarketData, error) bool) {
 			handler(marketData, nil)
@@ -1242,6 +1254,9 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 
 		marketData1 := types.MarketData{Symbol: "TEST", Close: 100.0}
 		marketData2 := types.MarketData{Symbol: "TEST", Close: 101.0}
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData1, nil).AnyTimes()
+
 		readAllFunc := func(yield func(types.MarketData, error) bool) {
 			yield(marketData1, nil)
 			yield(marketData2, nil)
@@ -1302,6 +1317,9 @@ func TestLifecycleCallbacks(t *testing.T) {
 
 		marketData1 := types.MarketData{Symbol: "TEST", Close: 100.0}
 		marketData2 := types.MarketData{Symbol: "TEST", Close: 101.0}
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData1, nil).AnyTimes()
+
 		readAllFunc := func(yield func(types.MarketData, error) bool) {
 			yield(marketData1, nil)
 			yield(marketData2, nil)

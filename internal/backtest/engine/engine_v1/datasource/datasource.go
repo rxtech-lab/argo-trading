@@ -49,4 +49,6 @@ type DataSource interface {
 	Count(start optional.Option[time.Time], end optional.Option[time.Time]) (int, error)
 	// Close closes the data source and releases any resources
 	Close() error
+	// GetAllSymbols returns all distinct symbols from the market data
+	GetAllSymbols() ([]string, error)
 }

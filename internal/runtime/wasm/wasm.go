@@ -8,7 +8,6 @@ import (
 	timestamppb "github.com/knqyf263/go-plugin/types/known/timestamppb"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
-	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
@@ -138,13 +137,25 @@ func (s *StrategyWasmRuntime) Name() string {
 	return name.Name
 }
 
+// engineVersionGetter is implemented by strategies that export engine version info.
+type engineVersionGetter interface {
+	GetEngineVersion(ctx context.Context) string
+}
+
 // GetRuntimeEngineVersion returns the engine version the strategy was compiled against.
+// Returns empty string if the strategy doesn't export version info (older strategies).
 func (s *StrategyWasmRuntime) GetRuntimeEngineVersion() (string, error) {
 	if s.strategy == nil {
 		return "", fmt.Errorf("strategy is not initialized, call InitializeApi first")
 	}
 
-	return version.GetVersion(), nil
+	// Try to get version from strategy (compiled-in version)
+	if getter, ok := s.strategy.(engineVersionGetter); ok {
+		return getter.GetEngineVersion(context.Background()), nil
+	}
+
+	// Older strategies without version export
+	return "", nil
 }
 
 func (s *StrategyWasmRuntime) loadPlugin(ctx context.Context, api strategy.StrategyApi) (strategy.TradingStrategy, error) {
