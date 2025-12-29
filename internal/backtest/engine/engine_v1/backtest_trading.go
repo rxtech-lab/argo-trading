@@ -128,8 +128,25 @@ func (b *BacktestTrading) PlaceMultipleOrders(orders []types.ExecuteOrder) error
 //   - For buy orders, if limit price is higher than market price, use market price.
 //   - For sell orders, only sell if market price is >= limit price, and use limit price as execution price.
 func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
-	// validate the order using go-playground/validator/v10
 	order.ID = uuid.New().String()
+
+	// Check for invalid quantity before struct validation
+	if order.Quantity <= 0 {
+		failedOrder := b.createFailedOrder(order, order.Price, types.OrderReasonInvalidQuantity,
+			fmt.Sprintf("order quantity must be greater than zero: %.2f", order.Quantity))
+
+		return b.state.StoreFailedOrder(failedOrder)
+	}
+
+	// Check for invalid price before struct validation
+	if order.Price <= 0 {
+		failedOrder := b.createFailedOrder(order, order.Price, types.OrderReasonInvalidPrice,
+			fmt.Sprintf("order price must be greater than zero: %.2f", order.Price))
+
+		return b.state.StoreFailedOrder(failedOrder)
+	}
+
+	// validate the order using go-playground/validator/v10
 	if err := order.Validate(); err != nil {
 		return err
 	}
@@ -160,7 +177,10 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 			// Check if we can afford this order
 			totalCost := order.Quantity * order.Price
 			if totalCost > b.balance {
-				return fmt.Errorf("limit buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+				failedOrder := b.createFailedOrder(order, order.Price, types.OrderReasonInsufficientBuyPower,
+					fmt.Sprintf("limit buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance))
+
+				return b.state.StoreFailedOrder(failedOrder)
 			}
 
 			// If current price is already below limit price, execute immediately with the current market price
@@ -181,13 +201,12 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 		if order.Side == types.PurchaseTypeSell {
 			sellingPower := b.getSellingPower()
 
-			// If trying to sell more than available, adjust quantity to max available
+			// If trying to sell more than available, fail the order
 			if order.Quantity > sellingPower {
-				if sellingPower <= 0 {
-					return fmt.Errorf("no shares available to sell")
-				}
+				failedOrder := b.createFailedOrder(order, order.Price, types.OrderReasonInsufficientSellPower,
+					fmt.Sprintf("order quantity (%.2f) exceeds selling power (%.2f)", order.Quantity, sellingPower))
 
-				order.Quantity = sellingPower
+				return b.state.StoreFailedOrder(failedOrder)
 			}
 
 			// If current price is already above limit price, execute immediately with the limit price
@@ -220,17 +239,19 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 		if order.Side == types.PurchaseTypeBuy {
 			totalCost := order.Quantity * avgPrice
 			if totalCost > b.balance {
-				return fmt.Errorf("market buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+				failedOrder := b.createFailedOrder(order, avgPrice, types.OrderReasonInsufficientBuyPower,
+					fmt.Sprintf("market buy order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance))
+
+				return b.state.StoreFailedOrder(failedOrder)
 			}
 		} else {
-			// For sell orders, adjust quantity if needed
+			// For sell orders, fail if quantity exceeds selling power
 			sellingPower := b.getSellingPower()
 			if order.Quantity > sellingPower {
-				if sellingPower <= 0 {
-					return fmt.Errorf("no shares available to sell")
-				}
+				failedOrder := b.createFailedOrder(order, avgPrice, types.OrderReasonInsufficientSellPower,
+					fmt.Sprintf("order quantity (%.2f) exceeds selling power (%.2f)", order.Quantity, sellingPower))
 
-				order.Quantity = sellingPower
+				return b.state.StoreFailedOrder(failedOrder)
 			}
 		}
 
@@ -422,12 +443,41 @@ func NewBacktestTrading(state *BacktestState, initialBalance float64, commission
 	}
 }
 
+// GetMaxBuyQuantity implements trading.TradingSystem.
+// Returns the maximum quantity that can be bought for a symbol at the given price.
+func (b *BacktestTrading) GetMaxBuyQuantity(symbol string, price float64) (float64, error) {
+	if price <= 0 {
+		return 0, fmt.Errorf("price must be greater than zero")
+	}
+
+	if b.balance <= 0 {
+		return 0, nil
+	}
+
+	maxQty := utils.CalculateMaxQuantity(b.balance, price, b.commission)
+
+	return utils.RoundToDecimalPrecision(maxQty, b.decimalPrecision), nil
+}
+
+// GetMaxSellQuantity implements trading.TradingSystem.
+// Returns the maximum quantity that can be sold for a symbol (total long position quantity).
+func (b *BacktestTrading) GetMaxSellQuantity(symbol string) (float64, error) {
+	position, err := b.state.GetPosition(symbol)
+	if err != nil {
+		return 0, nil
+	}
+
+	return utils.RoundToDecimalPrecision(position.TotalLongPositionQuantity, b.decimalPrecision), nil
+}
+
+// getBuyingPower returns the maximum quantity that can be bought for the current market data.
 func (b *BacktestTrading) getBuyingPower() float64 {
 	maxQty := utils.CalculateMaxQuantity(b.balance, (b.marketData.High+b.marketData.Low)/2, b.commission)
 
 	return utils.RoundToDecimalPrecision(maxQty, b.decimalPrecision)
 }
 
+// getSellingPower returns the maximum quantity that can be sold for the current market data.
 func (b *BacktestTrading) getSellingPower() float64 {
 	// get current position
 	position, err := b.GetPosition(b.marketData.Symbol)
@@ -436,6 +486,28 @@ func (b *BacktestTrading) getSellingPower() float64 {
 	}
 
 	return utils.RoundToDecimalPrecision(position.TotalLongPositionQuantity, b.decimalPrecision)
+}
+
+// createFailedOrder creates a failed order with the given parameters.
+// This helper consolidates the repeated failed order creation logic.
+func (b *BacktestTrading) createFailedOrder(order types.ExecuteOrder, executePrice float64, reason string, message string) types.Order {
+	return types.Order{
+		OrderID:      order.ID,
+		Symbol:       order.Symbol,
+		Side:         order.Side,
+		Quantity:     order.Quantity,
+		Price:        executePrice,
+		Timestamp:    b.marketData.Time,
+		IsCompleted:  true,
+		Status:       types.OrderStatusFailed,
+		StrategyName: order.StrategyName,
+		PositionType: order.PositionType,
+		Fee:          0,
+		Reason: types.Reason{
+			Reason:  reason,
+			Message: message,
+		},
+	}
 }
 
 // processPendingOrders processes all pending limit orders based on current market data.
@@ -541,16 +613,18 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 	if order.Side == types.PurchaseTypeBuy {
 		totalCost := order.Quantity * executePrice
 		if totalCost > b.balance {
-			return fmt.Errorf("order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance)
+			failedOrder := b.createFailedOrder(order, executePrice, types.OrderReasonInsufficientBuyPower,
+				fmt.Sprintf("order cost (%.2f) exceeds available balance (%.2f)", totalCost, b.balance))
+
+			return b.state.StoreFailedOrder(failedOrder)
 		}
 	} else {
 		sellingPower := b.getSellingPower()
 		if order.Quantity > sellingPower {
-			if sellingPower <= 0 {
-				return fmt.Errorf("no shares available to sell")
-			}
+			failedOrder := b.createFailedOrder(order, executePrice, types.OrderReasonInsufficientSellPower,
+				fmt.Sprintf("order quantity (%.2f) exceeds selling power (%.2f)", order.Quantity, sellingPower))
 
-			order.Quantity = sellingPower
+			return b.state.StoreFailedOrder(failedOrder)
 		}
 	}
 
@@ -566,6 +640,7 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 		Price:        executePrice,
 		Timestamp:    b.marketData.Time,
 		IsCompleted:  true,
+		Status:       types.OrderStatusFilled,
 		Reason:       order.Reason,
 		StrategyName: order.StrategyName,
 		Fee:          commission,

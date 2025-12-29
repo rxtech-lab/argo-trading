@@ -286,10 +286,13 @@ func ReadOrders(s *E2ETestSuite, tmpFolder string) (orders []types.Order, err er
 	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 
 	// Construct query using Squirrel
+	// Note: column is named "order_type" in DB but maps to "Side" field in Order struct
+	// Note: column is named "message" in DB (not "reason_message")
+	// Note: orders table does not have "fee" column (only trades table has it)
 	query, args, err := sq.
 		Select(
-			"order_id", "symbol", "side", "quantity", "price", "timestamp", "is_completed",
-			"reason", "reason_message", "strategy_name", "fee",
+			"order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed",
+			"status", "reason", "message", "strategy_name",
 		).
 		From("orders_view").
 		ToSql()
@@ -309,6 +312,7 @@ func ReadOrders(s *E2ETestSuite, tmpFolder string) (orders []types.Order, err er
 	for rows.Next() {
 		var (
 			order         types.Order
+			status        string
 			reason        string
 			reasonMessage string
 		)
@@ -316,11 +320,14 @@ func ReadOrders(s *E2ETestSuite, tmpFolder string) (orders []types.Order, err er
 		err := rows.Scan(
 			&order.OrderID, &order.Symbol, &order.Side, &order.Quantity,
 			&order.Price, &order.Timestamp, &order.IsCompleted,
-			&reason, &reasonMessage, &order.StrategyName, &order.Fee,
+			&status, &reason, &reasonMessage, &order.StrategyName,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan order row: %w", err)
 		}
+
+		// Set the Status
+		order.Status = types.OrderStatus(status)
 
 		// Set the Reason struct
 		order.Reason = types.Reason{
