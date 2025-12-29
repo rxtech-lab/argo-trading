@@ -6,9 +6,10 @@ import (
 
 // StrategyMetadata contains the metadata of a trading strategy.
 type StrategyMetadata struct {
-	Name        string
-	Schema      string
-	Description string
+	Name           string
+	Schema         string
+	Description    string
+	RuntimeVersion string // The engine version the strategy was compiled against
 }
 
 type StrategyApi struct {
@@ -41,9 +42,15 @@ func (s *StrategyApi) GetStrategyMetadata(path string) (*StrategyMetadata, error
 		return nil, err
 	}
 
+	runtimeVersion, err := runtime.GetRuntimeEngineVersion()
+	if err != nil {
+		return nil, err
+	}
+
 	return &StrategyMetadata{
-		Name:        runtime.Name(),
-		Schema:      schema,
-		Description: description,
+		Name:           runtime.Name(),
+		Schema:         schema,
+		Description:    description,
+		RuntimeVersion: runtimeVersion,
 	}, nil
 }

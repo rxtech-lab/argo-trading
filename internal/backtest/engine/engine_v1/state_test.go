@@ -485,8 +485,8 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				{
 					Symbol: "AAPL",
 					TradePnl: types.TradePnl{
-						RealizedPnL:   0,      // Position fully closed, system shows 0
-						TotalPnL:      0,      // Position fully closed, system shows 0
+						RealizedPnL:   0, // Position fully closed, system shows 0
+						TotalPnL:      0, // Position fully closed, system shows 0
 						UnrealizedPnL: 0,
 						MaximumLoss:   0,
 						MaximumProfit: 1248.0, // From trades table MAX(pnl)
@@ -500,9 +500,9 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TotalFees: 4.0,
 					TradeHoldingTime: types.TradeHoldingTime{
-						Min: 3600,  // First trade: 1 hour = 3600 seconds
-						Max: 7200,  // Second trade: 2 hours = 7200 seconds
-						Avg: 5400,  // Average: (3600+7200)/2 = 5400 seconds
+						Min: 3600, // First trade: 1 hour = 3600 seconds
+						Max: 7200, // Second trade: 2 hours = 7200 seconds
+						Avg: 5400, // Average: (3600+7200)/2 = 5400 seconds
 					},
 					BuyAndHoldPnl: 2000.0, // (120 - 100) * 100 based on first buy
 				},
@@ -660,7 +660,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					Symbol: "IBM",
 					TradePnl: types.TradePnl{
 						RealizedPnL:   0,
-						TotalPnL:      999.0,  // (150 - 140.01) * 100
+						TotalPnL:      999.0, // (150 - 140.01) * 100
 						UnrealizedPnL: 999.0,
 						MaximumLoss:   0,
 						MaximumProfit: 0,

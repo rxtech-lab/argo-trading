@@ -152,9 +152,9 @@ func (suite *SignalTestSuite) TestSignalWithComplexRawValue() {
 	signal := Signal{
 		Type: SignalTypeBuyLong,
 		RawValue: struct {
-			MACD       float64
-			Signal     float64
-			Histogram  float64
+			MACD      float64
+			Signal    float64
+			Histogram float64
 		}{
 			MACD:      0.5,
 			Signal:    0.3,

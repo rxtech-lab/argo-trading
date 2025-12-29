@@ -8,6 +8,7 @@ import (
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	engine_v1 "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
+	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
@@ -30,7 +31,7 @@ type Argo struct {
 	cancelFunc context.CancelFunc
 }
 
-
+// GetBacktestEngineConfigSchema returns the backtest engine config schema.
 func GetBacktestEngineConfigSchema() string {
 	schema, err := strategy.ToJSONSchema(engine_v1.BacktestEngineV1Config{
 		InitialCapital:   0,
@@ -46,12 +47,17 @@ func GetBacktestEngineConfigSchema() string {
 	return schema
 }
 
+// GetBacktestEngineVersion returns the backtest engine version.
+func GetBacktestEngineVersion() string {
+	return version.GetVersion()
+}
+
 func NewArgo(helper ArgoHelper) (*Argo, error) {
 	backtestEngine, err := engine_v1.NewBacktestEngineV1()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Argo{
 		helper:     helper,
 		engine:     backtestEngine,
@@ -145,4 +151,3 @@ func (a *Argo) Cancel() bool {
 
 	return false
 }
-

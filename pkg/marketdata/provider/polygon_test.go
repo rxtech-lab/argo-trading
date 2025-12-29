@@ -23,10 +23,10 @@ func (m *mockPolygonAPIClient) ListAggs(_ context.Context, _ *models.ListAggsPar
 
 // mockPolygonIterator implements PolygonAggsIterator for testing.
 type mockPolygonIterator struct {
-	aggs    []models.Agg
-	index   int
-	err     error
-	errOnN  int // Return error after N calls to Next() (0 means return error immediately on Err())
+	aggs   []models.Agg
+	index  int
+	err    error
+	errOnN int // Return error after N calls to Next() (0 means return error immediately on Err())
 }
 
 func (m *mockPolygonIterator) Next() bool {
