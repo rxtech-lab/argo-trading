@@ -23,4 +23,10 @@ type TradingSystem interface {
 	GetOpenOrders() ([]types.ExecuteOrder, error)
 	// GetTrades returns executed trades with optional filtering
 	GetTrades(filter types.TradeFilter) ([]types.Trade, error)
+	// GetMaxBuyQuantity returns the maximum quantity that can be bought at the given price.
+	// It takes into account the current balance and commission fees.
+	GetMaxBuyQuantity(symbol string, price float64) (float64, error)
+	// GetMaxSellQuantity returns the maximum quantity that can be sold for a symbol.
+	// This is the total long position quantity for the symbol.
+	GetMaxSellQuantity(symbol string) (float64, error)
 }

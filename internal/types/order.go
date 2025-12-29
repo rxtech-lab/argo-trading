@@ -21,7 +21,7 @@ const (
 	OrderStatusFilled    OrderStatus = "FILLED"
 	OrderStatusCancelled OrderStatus = "CANCELLED"
 	OrderStatusRejected  OrderStatus = "REJECTED"
-	OrderStatusFailed    OrderStatus = "Failed"
+	OrderStatusFailed    OrderStatus = "FAILED"
 )
 
 const (
@@ -45,6 +45,8 @@ const (
 	OrderReasonStrategy              string = "strategy"
 	OrderReasonInsufficientBuyPower  string = "insufficient_buying_power"
 	OrderReasonInsufficientSellPower string = "insufficient_selling_power"
+	OrderReasonInvalidQuantity       string = "invalid_quantity"
+	OrderReasonInvalidPrice          string = "invalid_price"
 )
 
 type Reason struct {

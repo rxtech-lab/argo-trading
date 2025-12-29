@@ -325,6 +325,238 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_Simple_Comparison() {
 				expectFailedOrder:    true,
 				expectedFailReason:   types.OrderReasonInsufficientSellPower,
 			},
+			{
+				name: "Buy order with zero quantity",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     0,
+					Price:        95.0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidQuantity,
+			},
+			{
+				name: "Buy order with negative quantity",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     -10,
+					Price:        95.0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidQuantity,
+			},
+			{
+				name: "Buy order with zero price",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     10,
+					Price:        0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidPrice,
+			},
+			{
+				name: "Buy order with negative price",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeBuy,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     10,
+					Price:        -95.0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidPrice,
+			},
+			{
+				name: "Sell order with zero quantity",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeSell,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     0,
+					Price:        95.0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidQuantity,
+			},
+			{
+				name: "Sell order with negative quantity",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeSell,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     -10,
+					Price:        95.0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidQuantity,
+			},
+			{
+				name: "Sell order with zero price",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeSell,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     10,
+					Price:        0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidPrice,
+			},
+			{
+				name: "Sell order with negative price",
+				marketData: types.MarketData{
+					Symbol: "AAPL",
+					Time:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					High:   100.0,
+					Low:    90.0,
+				},
+				order: types.ExecuteOrder{
+					Symbol:       "AAPL",
+					Side:         types.PurchaseTypeSell,
+					OrderType:    types.OrderTypeMarket,
+					Quantity:     10,
+					Price:        -95.0,
+					StrategyName: "test_strategy",
+					PositionType: types.PositionTypeLong,
+					Reason: types.Reason{
+						Reason:  "test",
+						Message: "reason",
+					},
+				},
+				decimalPrecision:     0,
+				expectError:          false,
+				executedOrderNumber:  1,
+				pendingOrderNumber:   0,
+				marketDataAfterOrder: optional.None[types.MarketData](),
+				expectFailedOrder:    true,
+				expectedFailReason:   types.OrderReasonInvalidPrice,
+			},
 		}
 
 		testRunner(tests)
@@ -571,24 +803,29 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 		expectedQuantity   float64 // Expected quantity to be sold after adjustment
 		expectFailedOrder  bool
 		expectedFailReason string
+		addInitialPosition bool // Whether to add initial position before the test
 	}{
 		{
-			name:             "Successful sell - within holdings",
-			sellQuantity:     20.0,
-			expectError:      false,
-			expectedQuantity: 20.0,
+			name:               "Successful sell - within holdings",
+			sellQuantity:       20.0,
+			expectError:        false,
+			expectedQuantity:   20.0,
+			addInitialPosition: true,
 		},
 		{
-			name:             "Successful sell - exact holdings",
-			sellQuantity:     50.0,
-			expectError:      false,
-			expectedQuantity: 50.0,
+			name:               "Successful sell - exact holdings",
+			sellQuantity:       50.0,
+			expectError:        false,
+			expectedQuantity:   50.0,
+			addInitialPosition: true,
 		},
 		{
-			name:             "Successful sell - adjusted to max holdings",
-			sellQuantity:     100.0, // More than we have
-			expectError:      false,
-			expectedQuantity: 50.0, // Should adjust to available 50.0
+			name:               "Failed sell - quantity exceeds holdings",
+			sellQuantity:       100.0, // More than we have (we have 50)
+			expectError:        false,
+			expectFailedOrder:  true,
+			expectedFailReason: types.OrderReasonInsufficientSellPower,
+			addInitialPosition: true,
 		},
 		{
 			name:               "Failed sell - no holdings",
@@ -596,6 +833,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 			expectError:        false, // No error, but order is failed
 			expectFailedOrder:  true,
 			expectedFailReason: types.OrderReasonInsufficientSellPower,
+			addInitialPosition: false,
 		},
 	}
 
@@ -607,8 +845,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
 
-			// Only add initial position for non-failed order cases
-			if !tc.expectFailedOrder {
+			// Add initial position if specified
+			if tc.addInitialPosition {
 				_, err = suite.state.Update([]types.Order{initialOrder})
 				suite.Require().NoError(err)
 			}
@@ -643,9 +881,17 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 					// Check for failed order
 					allOrders, err := suite.state.GetAllOrders()
 					suite.Require().NoError(err)
-					suite.Require().Len(allOrders, 1)
-					suite.Assert().Equal(types.OrderStatusFailed, allOrders[0].Status)
-					suite.Assert().Equal(tc.expectedFailReason, allOrders[0].Reason.Reason)
+
+					// Find the failed order among all orders
+					var failedOrder *types.Order
+					for i := range allOrders {
+						if allOrders[i].Status == types.OrderStatusFailed {
+							failedOrder = &allOrders[i]
+							break
+						}
+					}
+					suite.Require().NotNil(failedOrder, "Expected a failed order but none found")
+					suite.Assert().Equal(tc.expectedFailReason, failedOrder.Reason.Reason)
 				} else {
 					// Verify the trade was executed correctly
 					trades, err := suite.state.GetAllTrades()
@@ -661,7 +907,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Se
 						}
 					}
 
-					// Check that the trade was adjusted properly
+					// Check that the trade was executed properly
 					suite.Assert().Equal(tc.expectedQuantity, sellTrade.Order.Quantity)
 					// Check that the avg price was used
 					suite.Assert().Equal((marketData.High+marketData.Low)/2, sellTrade.Order.Price)
@@ -789,9 +1035,17 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Buy
 			if tc.expectFailedOrder {
 				allOrders, err := suite.state.GetAllOrders()
 				suite.Require().NoError(err)
-				suite.Require().Len(allOrders, 1)
-				suite.Assert().Equal(types.OrderStatusFailed, allOrders[0].Status)
-				suite.Assert().Equal(tc.expectedFailReason, allOrders[0].Reason.Reason)
+
+				// Find the failed order among all orders
+				var failedOrder *types.Order
+				for i := range allOrders {
+					if allOrders[i].Status == types.OrderStatusFailed {
+						failedOrder = &allOrders[i]
+						break
+					}
+				}
+				suite.Require().NotNil(failedOrder, "Expected a failed order but none found")
+				suite.Assert().Equal(tc.expectedFailReason, failedOrder.Reason.Reason)
 				return
 			}
 
@@ -856,23 +1110,26 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 		executionPrice     float64 // Expected execution price
 		expectFailedOrder  bool
 		expectedFailReason string
+		addInitialPosition bool // Whether to add initial position before the test
 	}{
 		{
-			name:             "Sell limit below current high - execute immediately",
-			limitPrice:       95.0,
-			sellQuantity:     20.0,
-			expectError:      false,
-			expectedQuantity: 20.0,
-			shouldExecute:    true,
-			executionPrice:   95.0, // Should use limit price
+			name:               "Sell limit below current high - execute immediately",
+			limitPrice:         95.0,
+			sellQuantity:       20.0,
+			expectError:        false,
+			expectedQuantity:   20.0,
+			shouldExecute:      true,
+			executionPrice:     95.0, // Should use limit price
+			addInitialPosition: true,
 		},
 		{
-			name:             "Sell limit above current high - order pending",
-			limitPrice:       110.0,
-			sellQuantity:     20.0,
-			expectError:      false,
-			expectedQuantity: 20.0,
-			shouldExecute:    false, // Should be pending
+			name:               "Sell limit above current high - order pending",
+			limitPrice:         110.0,
+			sellQuantity:       20.0,
+			expectError:        false,
+			expectedQuantity:   20.0,
+			shouldExecute:      false, // Should be pending
+			addInitialPosition: true,
 		},
 		{
 			name:         "Sell limit initially pending, then executed",
@@ -884,19 +1141,20 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 				High:   120.0, // Now above our limit price
 				Low:    100.0,
 			},
-			expectError:      false,
-			expectedQuantity: 20.0,
-			shouldExecute:    true,
-			executionPrice:   110.0, // Should use our limit price
+			expectError:        false,
+			expectedQuantity:   20.0,
+			shouldExecute:      true,
+			executionPrice:     110.0, // Should use our limit price
+			addInitialPosition: true,
 		},
 		{
-			name:             "Sell limit with quantity adjustment",
-			limitPrice:       95.0,
-			sellQuantity:     100.0, // More than we have
-			expectError:      false,
-			expectedQuantity: 50.0, // Should adjust to available
-			shouldExecute:    true,
-			executionPrice:   95.0,
+			name:               "Failed sell limit - quantity exceeds holdings",
+			limitPrice:         95.0,
+			sellQuantity:       100.0, // More than we have (we have 50)
+			expectError:        false,
+			expectFailedOrder:  true,
+			expectedFailReason: types.OrderReasonInsufficientSellPower,
+			addInitialPosition: true,
 		},
 		{
 			name:               "Sell limit with no holdings",
@@ -905,6 +1163,7 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			expectError:        false,
 			expectFailedOrder:  true,
 			expectedFailReason: types.OrderReasonInsufficientSellPower,
+			addInitialPosition: false,
 		},
 	}
 
@@ -916,8 +1175,8 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			err = suite.state.Initialize()
 			suite.Require().NoError(err)
 
-			// Only add initial position for non-failed order cases
-			if !tc.expectFailedOrder {
+			// Add initial position if specified
+			if tc.addInitialPosition {
 				_, err = suite.state.Update([]types.Order{initialOrder})
 				suite.Require().NoError(err)
 			}
@@ -954,9 +1213,17 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Limit_Price_Order_Sel
 			if tc.expectFailedOrder {
 				allOrders, err := suite.state.GetAllOrders()
 				suite.Require().NoError(err)
-				suite.Require().Len(allOrders, 1)
-				suite.Assert().Equal(types.OrderStatusFailed, allOrders[0].Status)
-				suite.Assert().Equal(tc.expectedFailReason, allOrders[0].Reason.Reason)
+
+				// Find the failed order among all orders
+				var failedOrder *types.Order
+				for i := range allOrders {
+					if allOrders[i].Status == types.OrderStatusFailed {
+						failedOrder = &allOrders[i]
+						break
+					}
+				}
+				suite.Require().NotNil(failedOrder, "Expected a failed order but none found")
+				suite.Assert().Equal(tc.expectedFailReason, failedOrder.Reason.Reason)
 				return
 			}
 
@@ -1704,5 +1971,171 @@ func (suite *BacktestTradingTestSuite) TestGetTrades() {
 		suite.Require().NoError(err)
 		suite.Assert().Len(trades, 1)
 		suite.Assert().Equal(50.0, trades[0].Order.Quantity)
+	})
+}
+
+func (suite *BacktestTradingTestSuite) TestGetMaxBuyQuantity() {
+	suite.Run("Valid price with sufficient balance", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		suite.trading.UpdateBalance(10000.0)
+		suite.trading.UpdateCurrentMarketData(types.MarketData{
+			Symbol: "AAPL",
+			High:   100.0,
+			Low:    90.0,
+		})
+
+		// At price 100, with balance 10000, max quantity should be 100
+		maxQty, err := suite.trading.GetMaxBuyQuantity("AAPL", 100.0)
+		suite.Require().NoError(err)
+		suite.Assert().Equal(100.0, maxQty)
+	})
+
+	suite.Run("Zero balance returns zero", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		suite.trading.UpdateBalance(0)
+
+		maxQty, err := suite.trading.GetMaxBuyQuantity("AAPL", 100.0)
+		suite.Require().NoError(err)
+		suite.Assert().Equal(0.0, maxQty)
+	})
+
+	suite.Run("Zero price returns error", func() {
+		suite.trading.UpdateBalance(10000.0)
+
+		_, err := suite.trading.GetMaxBuyQuantity("AAPL", 0)
+		suite.Assert().Error(err)
+	})
+
+	suite.Run("Negative price returns error", func() {
+		suite.trading.UpdateBalance(10000.0)
+
+		_, err := suite.trading.GetMaxBuyQuantity("AAPL", -10.0)
+		suite.Assert().Error(err)
+	})
+
+	suite.Run("Respects decimal precision", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		trading := &BacktestTrading{
+			state:            suite.state,
+			balance:          1000.0,
+			commission:       suite.commission,
+			decimalPrecision: 2,
+		}
+
+		// 1000 / 33 = 30.303..., should round down to 30.30
+		maxQty, err := trading.GetMaxBuyQuantity("AAPL", 33.0)
+		suite.Require().NoError(err)
+		suite.Assert().Equal(30.30, maxQty)
+	})
+}
+
+func (suite *BacktestTradingTestSuite) TestGetMaxSellQuantity() {
+	suite.Run("With existing position", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		// Create a position by adding a buy order
+		order := types.Order{
+			Symbol:       "AAPL",
+			Side:         types.PurchaseTypeBuy,
+			Quantity:     100,
+			Price:        90.0,
+			Timestamp:    time.Now(),
+			IsCompleted:  true,
+			StrategyName: "test_strategy",
+			PositionType: types.PositionTypeLong,
+			Reason:       types.Reason{Reason: "test", Message: "test"},
+		}
+		_, err = suite.state.Update([]types.Order{order})
+		suite.Require().NoError(err)
+
+		maxQty, err := suite.trading.GetMaxSellQuantity("AAPL")
+		suite.Require().NoError(err)
+		suite.Assert().Equal(100.0, maxQty)
+	})
+
+	suite.Run("No position returns zero", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		maxQty, err := suite.trading.GetMaxSellQuantity("AAPL")
+		suite.Require().NoError(err)
+		suite.Assert().Equal(0.0, maxQty)
+	})
+
+	suite.Run("Different symbol returns zero", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		// Create a position for AAPL
+		order := types.Order{
+			Symbol:       "AAPL",
+			Side:         types.PurchaseTypeBuy,
+			Quantity:     100,
+			Price:        90.0,
+			Timestamp:    time.Now(),
+			IsCompleted:  true,
+			StrategyName: "test_strategy",
+			PositionType: types.PositionTypeLong,
+			Reason:       types.Reason{Reason: "test", Message: "test"},
+		}
+		_, err = suite.state.Update([]types.Order{order})
+		suite.Require().NoError(err)
+
+		// Query for GOOGL should return 0
+		maxQty, err := suite.trading.GetMaxSellQuantity("GOOGL")
+		suite.Require().NoError(err)
+		suite.Assert().Equal(0.0, maxQty)
+	})
+
+	suite.Run("Respects decimal precision", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+		err = suite.state.Initialize()
+		suite.Require().NoError(err)
+
+		trading := &BacktestTrading{
+			state:            suite.state,
+			balance:          10000.0,
+			commission:       suite.commission,
+			decimalPrecision: 2,
+		}
+
+		// Create a position with a fractional quantity
+		order := types.Order{
+			Symbol:       "BTC/USD",
+			Side:         types.PurchaseTypeBuy,
+			Quantity:     1.23456789,
+			Price:        40000.0,
+			Timestamp:    time.Now(),
+			IsCompleted:  true,
+			StrategyName: "test_strategy",
+			PositionType: types.PositionTypeLong,
+			Reason:       types.Reason{Reason: "test", Message: "test"},
+		}
+		_, err = suite.state.Update([]types.Order{order})
+		suite.Require().NoError(err)
+
+		maxQty, err := trading.GetMaxSellQuantity("BTC/USD")
+		suite.Require().NoError(err)
+		suite.Assert().Equal(1.23, maxQty) // Rounded to 2 decimal places
 	})
 }
