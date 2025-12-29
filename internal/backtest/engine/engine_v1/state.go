@@ -563,7 +563,8 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 	}
 	defer rows.Close()
 
-	var stats []types.TradeStats
+	// Collect symbols from trades
+	var tradeSymbols []string
 
 	for rows.Next() {
 		var symbol string
@@ -571,16 +572,80 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 			return nil, fmt.Errorf("failed to scan symbol: %w", err)
 		}
 
-		// Calculate trade result
-		tradeResult, err := b.calculateTradeResult(symbol)
+		tradeSymbols = append(tradeSymbols, symbol)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating symbols: %w", err)
+	}
+
+	// If no trades, get symbols from market data
+	symbols := tradeSymbols
+	if len(symbols) == 0 {
+		symbols, err = ctx.DataSource.GetAllSymbols()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get symbols from market data: %w", err)
 		}
+	}
+
+	// Create a set of trade symbols for quick lookup
+	tradeSymbolSet := make(map[string]bool)
+	for _, s := range tradeSymbols {
+		tradeSymbolSet[s] = true
+	}
+
+	stats := make([]types.TradeStats, 0, len(symbols))
+
+	for _, symbol := range symbols {
+		hasTrades := tradeSymbolSet[symbol]
 
 		// Get last market data for unrealized PnL calculation and holding time
 		lastData, err := ctx.DataSource.ReadLastData(symbol)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get last market data for %s: %w", symbol, err)
+		}
+
+		// If no trades for this symbol, return zero-value stats
+		if !hasTrades {
+			stats = append(stats, types.TradeStats{
+				ID:        runID,
+				Timestamp: time.Now(),
+				Symbol:    symbol,
+				TradeResult: types.TradeResult{
+					NumberOfTrades:        0,
+					NumberOfWinningTrades: 0,
+					NumberOfLosingTrades:  0,
+					WinRate:               0,
+					MaxDrawdown:           0,
+				},
+				TotalFees: 0,
+				TradeHoldingTime: types.TradeHoldingTime{
+					Min: 0,
+					Max: 0,
+					Avg: 0,
+				},
+				TradePnl: types.TradePnl{
+					RealizedPnL:   0,
+					UnrealizedPnL: 0,
+					TotalPnL:      0,
+					MaximumLoss:   0,
+					MaximumProfit: 0,
+				},
+				BuyAndHoldPnl:  0,
+				TradesFilePath: tradesFilePath,
+				OrdersFilePath: ordersFilePath,
+				MarksFilePath:  marksFilePath,
+				StrategyPath:   strategyPath,
+				DataPath:       dataPath,
+			})
+
+			continue
+		}
+
+		// Calculate trade result
+		tradeResult, err := b.calculateTradeResult(symbol)
+		if err != nil {
+			return nil, err
 		}
 
 		// Calculate holding time (uses lastData.Time for open positions)
@@ -679,10 +744,6 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 			StrategyPath:     strategyPath,
 			DataPath:         dataPath,
 		})
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating symbols: %w", err)
 	}
 
 	return stats, nil

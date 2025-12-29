@@ -10,6 +10,33 @@ import (
 	sys "github.com/tetratelabs/wazero/sys"
 )
 
+// GetEngineVersion returns the engine version the strategy was compiled against.
+// Returns empty string if the strategy doesn't export version info (older strategies).
+func (p *tradingStrategyPlugin) GetEngineVersion(ctx context.Context) string {
+	engineversion := p.module.ExportedFunction("trading_strategy_engine_version")
+	if engineversion == nil {
+		return ""
+	}
+
+	ptrSize, err := engineversion.Call(ctx)
+	if err != nil || len(ptrSize) == 0 {
+		return ""
+	}
+
+	ptr := uint32(ptrSize[0] >> 32)
+	size := uint32(ptrSize[0])
+	if size == 0 {
+		return ""
+	}
+
+	buf, ok := p.module.Memory().Read(ptr, size)
+	if !ok {
+		return ""
+	}
+
+	return string(buf)
+}
+
 func (p *TradingStrategyPlugin) LoadFromBytes(ctx context.Context, bytes []byte, hostFunctions StrategyApi) (tradingStrategy, error) {
 	// Create a new runtime so that multiple modules will not conflict
 	r, err := p.newRuntime(ctx)
