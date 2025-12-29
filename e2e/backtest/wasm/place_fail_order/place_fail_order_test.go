@@ -8,15 +8,15 @@ import (
 	"testing"
 
 	"github.com/rxtech-lab/argo-trading/e2e/backtest/wasm/testhelper"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	v1 "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-
-	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 )
 
 // PlaceFailOrderTestSuite extends the base test suite
@@ -37,6 +37,11 @@ initial_capital: 10000
 
 // runTestWithConfig runs the backtest with a specific test case configuration
 func (s *PlaceFailOrderTestSuite) runTestWithConfig(testCase string) string {
+	// Set a compatible version for e2e tests (both engine and WASM strategy use "main" in dev)
+	originalVersion := version.Version
+	version.Version = "1.0.0"
+	defer func() { version.Version = originalVersion }()
+
 	type config struct {
 		Symbol   string `json:"symbol"`
 		TestCase string `json:"testCase"`

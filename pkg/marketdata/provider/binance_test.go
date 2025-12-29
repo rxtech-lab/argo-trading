@@ -15,17 +15,17 @@ import (
 
 // mockWriter is a simple mock implementation of MarketDataWriter for testing.
 type mockWriter struct {
-	initialized      bool
-	initializeErr    error
-	writeErr         error
-	writeErrAfterN   int // Return writeErr after N successful writes (0 means immediate error)
-	finalizeErr      error
-	closeErr         error
-	outputPath       string
-	writtenData      []types.MarketData
-	writeCallCount   int
+	initialized       bool
+	initializeErr     error
+	writeErr          error
+	writeErrAfterN    int // Return writeErr after N successful writes (0 means immediate error)
+	finalizeErr       error
+	closeErr          error
+	outputPath        string
+	writtenData       []types.MarketData
+	writeCallCount    int
 	finalizeCallCount int
-	closeCallCount   int
+	closeCallCount    int
 }
 
 func (m *mockWriter) Initialize() error {
@@ -67,9 +67,9 @@ type mockBinanceAPIClient struct {
 	klines    []*binance.Kline
 	klinesErr error
 	// For pagination testing - returns different results on subsequent calls
-	callCount       int
-	klinesPerCall   [][]*binance.Kline
-	errorsPerCall   []error
+	callCount     int
+	klinesPerCall [][]*binance.Kline
+	errorsPerCall []error
 }
 
 func (m *mockBinanceAPIClient) NewKlinesService() BinanceKlinesService {
@@ -742,7 +742,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWriteErrorOnSecondPag
 		klinesPerCall: [][]*binance.Kline{firstPage, secondPage},
 	}
 	mockW := &mockWriter{
-		writeErr:     errors.New("disk full"),
+		writeErr:       errors.New("disk full"),
 		writeErrAfterN: 500, // Fail after first 500 writes
 	}
 

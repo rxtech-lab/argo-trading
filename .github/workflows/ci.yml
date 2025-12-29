@@ -32,6 +32,18 @@ jobs:
       - name: Generate sdk and mocks
         run: make generate
 
+      - name: Check formatting
+        run: |
+          UNFORMATTED=$(go fmt ./...)
+
+          if [ -n "$UNFORMATTED" ]; then
+            echo "Error: the following files are not gofmt-ed:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+          echo "All Go files are properly formatted."
+
       - name: Run Golangci-lint
         uses: golangci/golangci-lint-action@v9
 

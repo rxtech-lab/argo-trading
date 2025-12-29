@@ -27,8 +27,6 @@ func TestArray_Get(t *testing.T) {
 	assert.Equal(t, "third", array.Get(2))
 }
 
-
-
 func TestArray_Size(t *testing.T) {
 	array := &StringArray{}
 	assert.Equal(t, 0, array.Size())
@@ -57,8 +55,6 @@ func TestArray_All_Empty(t *testing.T) {
 	all := array.All()
 	assert.Nil(t, all)
 }
-
-
 
 func TestArray_Get_OutOfBounds(t *testing.T) {
 	array := &StringArray{}

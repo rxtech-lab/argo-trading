@@ -122,7 +122,7 @@ func (suite *BacktestMarkerTestSuite) TestMarkAndGet() {
 			suite.True(mark.Signal.IsSome(), "Signal should be present")
 			signalVal, err := mark.Signal.Take()
 			suite.Require().NoError(err, "Taking signal value should not error")
-			
+
 			tcSignal, _ := tc.mark.Signal.Take()
 			suite.Equal(string(tcSignal.Type), string(signalVal.Type))
 			suite.Equal(tcSignal.Name, signalVal.Name)

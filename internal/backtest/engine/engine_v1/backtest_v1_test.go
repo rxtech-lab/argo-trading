@@ -13,6 +13,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/rxtech-lab/argo-trading/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,8 +29,18 @@ func findTimestampFolder(t *testing.T, resultsDir string) string {
 	return filepath.Join(resultsDir, entries[0].Name())
 }
 
+// setTestVersion sets the version for testing and returns via t.Cleanup.
+func setTestVersion(t *testing.T, v string) {
+	originalVersion := version.Version
+	version.Version = v
+	t.Cleanup(func() {
+		version.Version = originalVersion
+	})
+}
+
 func TestBacktestEngineV1_Run(t *testing.T) {
 	t.Run("Complete execution flow through Run function", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		// Setup mocks
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -65,6 +76,7 @@ func TestBacktestEngineV1_Run(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
 		mockDatasource.EXPECT().Initialize(gomock.Any()).DoAndReturn(func(path string) error {
@@ -123,6 +135,7 @@ endTime: "2023-01-31T23:59:59Z"
 	})
 
 	t.Run("Strategy processing on data points", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		// Setup mocks
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -162,6 +175,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		// Important: expect ProcessData to be called with exact data points in order
 		gomock.InOrder(
@@ -210,6 +224,7 @@ endTime: "2023-01-31T23:59:59Z"
 	})
 
 	t.Run("Verify results are written correctly", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		// Setup mocks
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -245,6 +260,7 @@ endTime: "2023-01-31T23:59:59Z"
 			// This simulates the strategy processing data
 			return nil
 		}).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
 		mockDatasource.EXPECT().Initialize(gomock.Any()).DoAndReturn(func(path string) error {
@@ -309,6 +325,7 @@ endTime: "2023-01-31T23:59:59Z"
 	})
 
 	t.Run("Verify stats are generated and saved", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		// Setup mocks
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -341,6 +358,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
 		mockDatasource.EXPECT().Initialize(gomock.Any()).DoAndReturn(func(path string) error {
@@ -654,6 +672,7 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 	})
 
 	t.Run("Run with SetConfigContent", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -675,6 +694,7 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
@@ -719,6 +739,7 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 	})
 
 	t.Run("Run with multiple configs from SetConfigContent", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -742,6 +763,7 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(`{"config": 1}`).Return(nil).Times(1)
 		mockStrategy.EXPECT().Initialize(`{"config": 2}`).Return(nil).Times(1)
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
@@ -993,6 +1015,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 	})
 
 	t.Run("Strategy Initialize error", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1001,6 +1024,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(errors.New("strategy init failed")).AnyTimes()
 
 		tempDir := t.TempDir()
@@ -1028,6 +1052,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 	})
 
 	t.Run("Datasource Initialize error", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1036,6 +1061,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(errors.New("datasource init failed")).AnyTimes()
@@ -1065,6 +1091,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 	})
 
 	t.Run("Datasource Count error", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1074,6 +1101,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(0, errors.New("count failed")).AnyTimes()
@@ -1103,6 +1131,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 	})
 
 	t.Run("Data read error", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1112,6 +1141,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
@@ -1147,6 +1177,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 	})
 
 	t.Run("ProcessData error", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1157,6 +1188,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(errors.New("process data failed")).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
@@ -1192,6 +1224,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 	})
 
 	t.Run("With callback", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1202,6 +1235,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
@@ -1250,6 +1284,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 // TestLifecycleCallbacks tests the lifecycle callback system
 func TestLifecycleCallbacks(t *testing.T) {
 	t.Run("All lifecycle callbacks are invoked in order", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1260,6 +1295,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
@@ -1367,6 +1403,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 	})
 
 	t.Run("OnBacktestEnd is called even on error", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1377,6 +1414,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(errors.New("processing failed")).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
