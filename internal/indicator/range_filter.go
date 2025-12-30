@@ -118,9 +118,7 @@ type RangeFilterData struct {
 func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 	// Validate and extract parameters
 	if len(params) < 3 {
-		return 0, errors.New(errors.ErrCodeMissingParameter,
-			"RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)",
-		)
+		return 0, errors.New(errors.ErrCodeMissingParameter, "RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
 	}
 
 	symbol, ok := params[0].(string)
