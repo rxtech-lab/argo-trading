@@ -1,10 +1,10 @@
 package version
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 // CheckVersionCompatibility checks if engine and runtime versions are compatible.
@@ -36,24 +36,24 @@ func CheckVersionCompatibility(engineVersion, runtimeVersion string) error {
 	// Parse engine version
 	engineSemver, err := semver.NewVersion(engineVersion)
 	if err != nil {
-		return fmt.Errorf("invalid engine version '%s': %w", engineVersion, err)
+		return errors.Wrapf(errors.ErrCodeInvalidVersion, err, "invalid engine version '%s'", engineVersion)
 	}
 
 	// Parse runtime version
 	runtimeSemver, err := semver.NewVersion(runtimeVersion)
 	if err != nil {
-		return fmt.Errorf("invalid runtime version '%s': %w", runtimeVersion, err)
+		return errors.Wrapf(errors.ErrCodeInvalidVersion, err, "invalid runtime version '%s'", runtimeVersion)
 	}
 
 	// Check major version match
 	if engineSemver.Major() != runtimeSemver.Major() {
-		return fmt.Errorf("major version mismatch: engine is %d.x.x but strategy requires %d.x.x",
+		return errors.Newf(errors.ErrCodeVersionMismatch, "major version mismatch: engine is %d.x.x but strategy requires %d.x.x",
 			engineSemver.Major(), runtimeSemver.Major())
 	}
 
 	// Check minor version match
 	if engineSemver.Minor() != runtimeSemver.Minor() {
-		return fmt.Errorf("minor version mismatch: engine is %d.%d.x but strategy requires %d.%d.x",
+		return errors.Newf(errors.ErrCodeVersionMismatch, "minor version mismatch: engine is %d.%d.x but strategy requires %d.%d.x",
 			engineSemver.Major(), engineSemver.Minor(),
 			runtimeSemver.Major(), runtimeSemver.Minor())
 	}

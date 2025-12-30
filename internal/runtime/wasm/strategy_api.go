@@ -12,6 +12,7 @@ import (
 	i "github.com/rxtech-lab/argo-trading/internal/indicator"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 	"go.uber.org/zap"
 )
@@ -159,7 +160,7 @@ func (s StrategyApiForWasm) GetCache(ctx context.Context, req *strategy.GetReque
 // GetMarkers implements strategy.StrategyApi.
 func (s StrategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*strategy.GetMarkersResponse, error) {
 	if s.runtimeContext.Marker == nil {
-		return nil, fmt.Errorf("marker is not available")
+		return nil, errors.New(errors.ErrCodeMarkerNotAvailable, "marker is not available")
 	}
 
 	marks, err := (s.runtimeContext.Marker).GetMarks()
@@ -349,12 +350,12 @@ func (s StrategyApiForWasm) GetSignal(ctx context.Context, req *strategy.GetSign
 func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest) (*emptypb.Empty, error) {
 	// Check if Marker is available
 	if s.runtimeContext.Marker == nil {
-		return nil, fmt.Errorf("marker is not available")
+		return nil, errors.New(errors.ErrCodeMarkerNotAvailable, "marker is not available")
 	}
 
 	// Convert protobuf MarketData to internal MarketData
 	if req.MarketData == nil {
-		return nil, fmt.Errorf("market data is required")
+		return nil, errors.New(errors.ErrCodeMarketDataRequired, "market data is required")
 	}
 
 	marketData := types.MarketData{
@@ -395,7 +396,7 @@ func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest)
 	// Mark the signal
 	err := s.runtimeContext.Marker.Mark(marketData, mark)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mark signal: %w", err)
+		return nil, errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to mark signal", err)
 	}
 
 	return &emptypb.Empty{}, nil

@@ -2,12 +2,12 @@ package wasm
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	timestamppb "github.com/knqyf263/go-plugin/types/known/timestamppb"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
@@ -23,7 +23,7 @@ type StrategyWasmRuntime struct {
 func NewStrategyWasmRuntime(wasmFilePath string) (runtime.StrategyRuntime, error) {
 	// check if file exists
 	if _, err := os.Stat(wasmFilePath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("file does not exist: %s", wasmFilePath)
+		return nil, errors.Newf(errors.ErrCodeDataNotFound, "file does not exist: %s", wasmFilePath)
 	}
 
 	return &StrategyWasmRuntime{
@@ -44,7 +44,7 @@ func NewStrategyWasmRuntimeFromBytes(wasmBytes []byte) (runtime.StrategyRuntime,
 // GetDescription implements runtime.StrategyRuntime.
 func (s *StrategyWasmRuntime) GetDescription() (string, error) {
 	if s.strategy == nil {
-		return "", fmt.Errorf("strategy is not initialized, call InitializeApi first")
+		return "", errors.New(errors.ErrCodeStrategyNotLoaded, "strategy is not initialized, call InitializeApi first")
 	}
 
 	description, err := s.strategy.GetDescription(context.Background(), &strategy.GetDescriptionRequest{})
@@ -57,7 +57,7 @@ func (s *StrategyWasmRuntime) GetDescription() (string, error) {
 
 func (s *StrategyWasmRuntime) Initialize(config string) error {
 	if s.strategy == nil {
-		return fmt.Errorf("strategy is not initialized, call InitializeApi first")
+		return errors.New(errors.ErrCodeStrategyNotLoaded, "strategy is not initialized, call InitializeApi first")
 	}
 
 	_, err := s.strategy.Initialize(context.Background(), &strategy.InitializeRequest{
@@ -85,7 +85,7 @@ func (s *StrategyWasmRuntime) InitializeApi(api strategy.StrategyApi) error {
 
 func (s *StrategyWasmRuntime) ProcessData(data types.MarketData) error {
 	if s.strategy == nil {
-		return fmt.Errorf("strategy is not initialized, call InitializeApi first")
+		return errors.New(errors.ErrCodeStrategyNotLoaded, "strategy is not initialized, call InitializeApi first")
 	}
 
 	_, err := s.strategy.ProcessData(context.Background(), &strategy.ProcessDataRequest{
@@ -113,7 +113,7 @@ func (s *StrategyWasmRuntime) GetConfigSchema() (string, error) {
 	}
 
 	if plugin == nil {
-		return "", fmt.Errorf("strategy is not initialized")
+		return "", errors.New(errors.ErrCodeStrategyNotLoaded, "strategy is not initialized")
 	}
 
 	schema, err := plugin.GetConfigSchema(context.Background(), &strategy.GetConfigSchemaRequest{})
@@ -146,7 +146,7 @@ type engineVersionGetter interface {
 // Returns empty string if the strategy doesn't export version info (older strategies).
 func (s *StrategyWasmRuntime) GetRuntimeEngineVersion() (string, error) {
 	if s.strategy == nil {
-		return "", fmt.Errorf("strategy is not initialized, call InitializeApi first")
+		return "", errors.New(errors.ErrCodeStrategyNotLoaded, "strategy is not initialized, call InitializeApi first")
 	}
 
 	// Try to get version from strategy (compiled-in version)
@@ -168,12 +168,12 @@ func (s *StrategyWasmRuntime) loadPlugin(ctx context.Context, api strategy.Strat
 	// check if both wasmFilePath and wasmBytes are set
 	// return error if both are set
 	if len(s.wasmFilePath) > 0 && len(s.wasmBytes) > 0 {
-		return nil, fmt.Errorf("both wasmFilePath and wasmBytes are set")
+		return nil, errors.New(errors.ErrCodeInvalidConfiguration, "both wasmFilePath and wasmBytes are set")
 	}
 
 	// Check if at least one of wasmFilePath or wasmBytes is set
 	if len(s.wasmFilePath) == 0 && len(s.wasmBytes) == 0 {
-		return nil, fmt.Errorf("either wasmFilePath or wasmBytes must be set")
+		return nil, errors.New(errors.ErrCodeInvalidConfiguration, "either wasmFilePath or wasmBytes must be set")
 	}
 
 	if len(s.wasmFilePath) > 0 {
