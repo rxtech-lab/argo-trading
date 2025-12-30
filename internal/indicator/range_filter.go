@@ -8,6 +8,7 @@ import (
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 // RangeFilter represents the Range Filter indicator.
@@ -33,25 +34,25 @@ func (rf *RangeFilter) Name() types.IndicatorType {
 // Config configures the Range Filter indicator. Expected parameters: period (int), multiplier (float64).
 func (rf *RangeFilter) Config(params ...any) error {
 	if len(params) != 2 {
-		return fmt.Errorf("Config expects 2 parameters: period (int), multiplier (float64)")
+		return errors.New(errors.ErrCodeMissingParameter, "Config expects 2 parameters: period (int), multiplier (float64)")
 	}
 
 	period, ok := params[0].(int)
 	if !ok {
-		return fmt.Errorf("invalid type for period parameter, expected int")
+		return errors.New(errors.ErrCodeInvalidType, "invalid type for period parameter, expected int")
 	}
 
 	if period <= 0 {
-		return fmt.Errorf("period must be a positive integer, got %d", period)
+		return errors.Newf(errors.ErrCodeInvalidPeriod, "period must be a positive integer, got %d", period)
 	}
 
 	multiplier, ok := params[1].(float64)
 	if !ok {
-		return fmt.Errorf("invalid type for multiplier parameter, expected float64")
+		return errors.New(errors.ErrCodeInvalidType, "invalid type for multiplier parameter, expected float64")
 	}
 
 	if multiplier <= 0 {
-		return fmt.Errorf("multiplier must be a positive number, got %f", multiplier)
+		return errors.Newf(errors.ErrCodeInvalidMultiplier, "multiplier must be a positive number, got %f", multiplier)
 	}
 
 	rf.period = period
@@ -117,24 +118,24 @@ type RangeFilterData struct {
 func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 	// Validate and extract parameters
 	if len(params) < 3 {
-		return 0, fmt.Errorf(
+		return 0, errors.New(errors.ErrCodeMissingParameter,
 			"RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)",
 		)
 	}
 
 	symbol, ok := params[0].(string)
 	if !ok {
-		return 0, fmt.Errorf("first parameter must be of type string (symbol)")
+		return 0, errors.New(errors.ErrCodeInvalidType, "first parameter must be of type string (symbol)")
 	}
 
 	currentTime, ok := params[1].(time.Time)
 	if !ok {
-		return 0, fmt.Errorf("second parameter must be of type time.Time")
+		return 0, errors.New(errors.ErrCodeInvalidType, "second parameter must be of type time.Time")
 	}
 
 	ctx, ok := params[2].(IndicatorContext)
 	if !ok {
-		return 0, fmt.Errorf("third parameter must be of type IndicatorContext")
+		return 0, errors.New(errors.ErrCodeInvalidType, "third parameter must be of type IndicatorContext")
 	}
 
 	// Check if we have a custom period parameter
@@ -159,11 +160,11 @@ func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 		// Get historical data points
 		historicalData, err := ctx.DataSource.GetPreviousNumberOfDataPoints(currentTime, symbol, rf.period)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get historical data: %w", err)
+			return 0, errors.Wrap(errors.ErrCodeHistoricalDataFailed, "failed to get historical data", err)
 		}
 
 		if len(historicalData) == 0 {
-			return 0, fmt.Errorf("no historical data available for symbol %s", symbol)
+			return 0, errors.Newf(errors.ErrCodeNoDataFound, "no historical data available for symbol %s", symbol)
 		}
 
 		// Use the last data point
@@ -172,14 +173,14 @@ func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 		// Get the latest data if no specific time provided
 		marketData, err = ctx.DataSource.ReadLastData(symbol)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get latest market data: %w", err)
+			return 0, errors.Wrap(errors.ErrCodeDataNotFound, "failed to get latest market data", err)
 		}
 	}
 
 	// Use the shared calculation function
 	filterData, err := rf.calculateFilter(marketData, ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to calculate Range Filter: %w", err)
+		return 0, errors.Wrap(errors.ErrCodeIndicatorCalculation, "failed to calculate Range Filter", err)
 	}
 
 	// Return the filter value
@@ -323,24 +324,24 @@ func (rf *RangeFilter) calculateEMAs(marketData types.MarketData, ctx IndicatorC
 	// Get EMA indicators from registry
 	shortEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeEMA)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
+		return 0, 0, errors.Wrap(errors.ErrCodeIndicatorNotFound, "failed to get EMA indicator from registry", err)
 	}
 
 	// Use type assertion to get the EMA indicator
 	shortEMA, ok := shortEMAIndicator.(*EMA)
 	if !ok {
-		return 0, 0, fmt.Errorf("indicator is not an EMA indicator")
+		return 0, 0, errors.New(errors.ErrCodeInvalidType, "indicator is not an EMA indicator")
 	}
 
 	// Clone for long EMA
 	longEMAIndicator, err := ctx.IndicatorRegistry.GetIndicator(types.IndicatorTypeEMA)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get EMA indicator from registry: %w", err)
+		return 0, 0, errors.Wrap(errors.ErrCodeIndicatorNotFound, "failed to get EMA indicator from registry", err)
 	}
 
 	longEMA, ok := longEMAIndicator.(*EMA)
 	if !ok {
-		return 0, 0, fmt.Errorf("indicator is not an EMA indicator")
+		return 0, 0, errors.New(errors.ErrCodeInvalidType, "indicator is not an EMA indicator")
 	}
 
 	// Calculate both EMAs using RawValue with the period parameter
@@ -348,7 +349,7 @@ func (rf *RangeFilter) calculateEMAs(marketData types.MarketData, ctx IndicatorC
 	shortEMAValue, err := shortEMA.RawValue(marketData.Symbol, marketData.Time, ctx, shortEMAPeriod)
 
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to calculate short EMA (period %d): %w", shortEMAPeriod, err)
+		return 0, 0, errors.Wrapf(errors.ErrCodeIndicatorCalculation, err, "failed to calculate short EMA (period %d)", shortEMAPeriod)
 	}
 
 	longEMAPeriod := rf.period*2 - 1
@@ -359,7 +360,7 @@ func (rf *RangeFilter) calculateEMAs(marketData types.MarketData, ctx IndicatorC
 
 	longEMAValue, err := longEMA.RawValue(marketData.Symbol, marketData.Time, ctx, longEMAPeriod)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to calculate long EMA (period %d): %w", longEMAPeriod, err)
+		return 0, 0, errors.Wrapf(errors.ErrCodeIndicatorCalculation, err, "failed to calculate long EMA (period %d)", longEMAPeriod)
 	}
 
 	return shortEMAValue, longEMAValue, nil
