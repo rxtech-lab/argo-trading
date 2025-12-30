@@ -27,6 +27,7 @@ const (
 	ErrCodeInvalidLength         ErrorCode = 116
 	ErrCodeInvalidFilterPeriod   ErrorCode = 117
 	ErrCodeInvalidFilterType     ErrorCode = 118
+	ErrCodeMarketDataRequired    ErrorCode = 119
 
 	// Data/Resource errors (200-299)
 	ErrCodeDataNotFound          ErrorCode = 200
@@ -34,6 +35,7 @@ const (
 	ErrCodeQueryFailed           ErrorCode = 202
 	ErrCodeHistoricalDataFailed  ErrorCode = 203
 	ErrCodeNoDataFound           ErrorCode = 204
+	ErrCodeMarkerNotAvailable    ErrorCode = 205
 
 	// Indicator errors (300-399)
 	ErrCodeIndicatorNotFound      ErrorCode = 300
@@ -62,8 +64,6 @@ const (
 	ErrCodeBacktestNoDataPaths   ErrorCode = 606
 	ErrCodeBacktestNoResultsDir  ErrorCode = 607
 	ErrCodeBacktestNoDatasource  ErrorCode = 608
-	ErrCodeMarkerNotAvailable    ErrorCode = 609
-	ErrCodeMarketDataRequired    ErrorCode = 610
 
 	// Market data errors (700-799)
 	ErrCodeMarketDataFetchFailed ErrorCode = 700

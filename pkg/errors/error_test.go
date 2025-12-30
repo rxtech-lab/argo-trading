@@ -107,7 +107,7 @@ func (suite *ErrorTestSuite) TestAsError() {
 	suite.Equal(ErrCodeInvalidParameter, argoErr.Code)
 }
 
-func (suite *ErrorTestSuite) TestErrorCodesAreUnique() {
+func (suite *ErrorTestSuite) TestErrorCodeValues() {
 	// Verify some key error codes have expected values
 	suite.Equal(ErrorCode(1), ErrCodeUnknown)
 	suite.Equal(ErrorCode(100), ErrCodeInvalidParameter)

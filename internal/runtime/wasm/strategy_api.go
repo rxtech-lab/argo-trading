@@ -396,7 +396,7 @@ func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest)
 	// Mark the signal
 	err := s.runtimeContext.Marker.Mark(marketData, mark)
 	if err != nil {
-		return nil, errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to mark signal", err)
+		return nil, errors.Wrap(errors.ErrCodeCallbackFailed, "failed to mark signal", err)
 	}
 
 	return &emptypb.Empty{}, nil

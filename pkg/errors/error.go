@@ -1,3 +1,29 @@
+// Package errors provides structured error handling with typed error codes.
+//
+// Error codes are organized into categories:
+//   - General errors (1-99): Unknown and general errors
+//   - Validation errors (100-199): Invalid parameters, missing data, type mismatches
+//   - Data/Resource errors (200-299): Data not found, query failures, unavailable resources
+//   - Indicator errors (300-399): Technical indicator calculation and lookup errors
+//   - Strategy errors (400-499): Strategy loading, configuration, and runtime errors
+//   - Trading errors (500-599): Order execution and position management errors
+//   - Backtest errors (600-699): Backtesting engine and state errors
+//   - Market data errors (700-799): Market data fetching and parsing errors
+//   - Callback errors (800-899): Callback execution failures
+//
+// Usage:
+//
+//	// Create a new error
+//	err := errors.New(errors.ErrCodeInvalidParameter, "invalid parameter value")
+//
+//	// Create a formatted error
+//	err := errors.Newf(errors.ErrCodeDataNotFound, "data not found for symbol %s", symbol)
+//
+//	// Wrap an existing error
+//	err := errors.Wrap(errors.ErrCodeQueryFailed, "failed to execute query", originalErr)
+//
+//	// Check error code
+//	if errors.HasCode(err, errors.ErrCodeDataNotFound) { ... }
 package errors
 
 import (
