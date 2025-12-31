@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 // RSI represents the Relative Strength Index indicator.
@@ -31,16 +32,16 @@ func (r *RSI) Name() types.IndicatorType {
 // Config configures the RSI indicator. Expected parameters: period (int).
 func (r *RSI) Config(params ...any) error {
 	if len(params) < 1 {
-		return fmt.Errorf("Config expects at least 1 parameter: period (int)")
+		return errors.New(errors.ErrCodeMissingParameter, "Config expects at least 1 parameter: period (int)")
 	}
 
 	period, ok := params[0].(int)
 	if !ok {
-		return fmt.Errorf("invalid type for period parameter, expected int")
+		return errors.New(errors.ErrCodeInvalidType, "invalid type for period parameter, expected int")
 	}
 
 	if period <= 0 {
-		return fmt.Errorf("period must be a positive integer, got %d", period)
+		return errors.Newf(errors.ErrCodeInvalidPeriod, "period must be a positive integer, got %d", period)
 	}
 
 	r.period = period
@@ -49,7 +50,7 @@ func (r *RSI) Config(params ...any) error {
 	if len(params) == 2 {
 		threshold, ok := params[1].(float64)
 		if !ok {
-			return fmt.Errorf("invalid type for threshold parameter, expected float64")
+			return errors.New(errors.ErrCodeInvalidType, "invalid type for threshold parameter, expected float64")
 		}
 
 		r.rsiLowerThreshold = threshold
@@ -58,7 +59,7 @@ func (r *RSI) Config(params ...any) error {
 	if len(params) == 3 {
 		threshold, ok := params[2].(float64)
 		if !ok {
-			return fmt.Errorf("invalid type for threshold parameter, expected float64")
+			return errors.New(errors.ErrCodeInvalidType, "invalid type for threshold parameter, expected float64")
 		}
 
 		r.rsiUpperThreshold = threshold
@@ -101,31 +102,31 @@ func (r *RSI) GetSignal(marketData types.MarketData, ctx IndicatorContext) (type
 // RawValue implements the Indicator interface.
 func (r *RSI) RawValue(params ...any) (float64, error) {
 	if len(params) < 3 {
-		return 0, fmt.Errorf("RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
+		return 0, errors.New(errors.ErrCodeMissingParameter, "RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
 	}
 
 	symbol, ok := params[0].(string)
 	if !ok {
-		return 0, fmt.Errorf("first parameter must be of type string (symbol)")
+		return 0, errors.New(errors.ErrCodeInvalidType, "first parameter must be of type string (symbol)")
 	}
 
 	currentTime, ok := params[1].(time.Time)
 	if !ok {
-		return 0, fmt.Errorf("second parameter must be of type time.Time")
+		return 0, errors.New(errors.ErrCodeInvalidType, "second parameter must be of type time.Time")
 	}
 
 	ctx, ok := params[2].(IndicatorContext)
 	if !ok {
-		return 0, fmt.Errorf("third parameter must be of type IndicatorContext")
+		return 0, errors.New(errors.ErrCodeInvalidType, "third parameter must be of type IndicatorContext")
 	}
 
 	historicalData, err := ctx.DataSource.GetPreviousNumberOfDataPoints(currentTime, symbol, r.period+1)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get historical data for symbol %s: %w", symbol, err)
+		return 0, errors.Wrapf(errors.ErrCodeHistoricalDataFailed, err, "failed to get historical data for symbol %s", symbol)
 	}
 
 	if len(historicalData) < r.period+1 {
-		return 0, fmt.Errorf("insufficient historical data for RSI calculation for symbol %s", symbol)
+		return 0, errors.Newf(errors.ErrCodeInsufficientData, "insufficient historical data for RSI calculation for symbol %s", symbol)
 	}
 
 	// Calculate price changes

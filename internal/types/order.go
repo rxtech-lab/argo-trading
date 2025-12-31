@@ -1,11 +1,11 @@
 package types
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/moznion/go-optional"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 type PurchaseType string
@@ -103,14 +103,14 @@ func (eo *ExecuteOrder) Validate() error {
 
 	err := validate.Struct(eo)
 	if err != nil {
-		return fmt.Errorf("invalid execute order: %w", err)
+		return errors.Wrap(errors.ErrCodeInvalidExecuteOrder, "invalid execute order", err)
 	}
 
 	// Validate take profit if present
 	if eo.TakeProfit.IsSome() {
 		tp := eo.TakeProfit.Unwrap()
 		if err := validate.Struct(tp); err != nil {
-			return fmt.Errorf("invalid take profit: %w", err)
+			return errors.Wrap(errors.ErrCodeInvalidTakeProfit, "invalid take profit", err)
 		}
 	}
 
@@ -118,7 +118,7 @@ func (eo *ExecuteOrder) Validate() error {
 	if eo.StopLoss.IsSome() {
 		sl := eo.StopLoss.Unwrap()
 		if err := validate.Struct(sl); err != nil {
-			return fmt.Errorf("invalid stop loss: %w", err)
+			return errors.Wrap(errors.ErrCodeInvalidStopLoss, "invalid stop loss", err)
 		}
 	}
 
@@ -129,7 +129,7 @@ func (eo *ExecuteOrder) Validate() error {
 func (o *Order) Validate() error {
 	validate := validator.New()
 	if err := validate.Struct(o); err != nil {
-		return fmt.Errorf("invalid order: %w", err)
+		return errors.Wrap(errors.ErrCodeInvalidOrder, "invalid order", err)
 	}
 
 	return nil

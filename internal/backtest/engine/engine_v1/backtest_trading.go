@@ -11,6 +11,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/utils"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 // BacktestTrading is a trading system that is used to backtest a trading strategy.
@@ -62,7 +63,7 @@ func (b *BacktestTrading) GetOrderStatus(orderID string) (types.OrderStatus, err
 	}
 
 	if order.IsNone() {
-		return types.OrderStatusFailed, fmt.Errorf("order not found")
+		return types.OrderStatusFailed, errors.New(errors.ErrCodeDataNotFound, "order not found")
 	}
 
 	value, err := order.Take()
@@ -154,7 +155,7 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	// Round the quantity to respect configured decimal precision
 	order.Quantity = utils.RoundToDecimalPrecision(order.Quantity, b.decimalPrecision)
 	if order.Quantity <= 0 {
-		return fmt.Errorf("order quantity is too small or zero after rounding to configured precision")
+		return errors.New(errors.ErrCodeInvalidParameter, "order quantity is too small or zero after rounding to configured precision")
 	}
 
 	// Check if the symbol matches current market data symbol
@@ -169,7 +170,7 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 	if order.OrderType == types.OrderTypeLimit {
 		// Check if the order's price is valid (greater than zero)
 		if order.Price <= 0 {
-			return fmt.Errorf("limit order price must be greater than zero: %f", order.Price)
+			return errors.Newf(errors.ErrCodeInvalidParameter, "limit order price must be greater than zero: %f", order.Price)
 		}
 
 		// For buy orders, check if quantity * price exceeds buying power
@@ -229,7 +230,7 @@ func (b *BacktestTrading) PlaceOrder(order types.ExecuteOrder) error {
 		avgPrice := (b.marketData.High + b.marketData.Low) / 2
 
 		if avgPrice <= 0 {
-			return fmt.Errorf("invalid market data: average price is zero or negative")
+			return errors.New(errors.ErrCodeInvalidParameter, "invalid market data: average price is zero or negative")
 		}
 
 		// Set the order price to the average price
@@ -447,7 +448,7 @@ func NewBacktestTrading(state *BacktestState, initialBalance float64, commission
 // Returns the maximum quantity that can be bought for a symbol at the given price.
 func (b *BacktestTrading) GetMaxBuyQuantity(symbol string, price float64) (float64, error) {
 	if price <= 0 {
-		return 0, fmt.Errorf("price must be greater than zero")
+		return 0, errors.New(errors.ErrCodeInvalidParameter, "price must be greater than zero")
 	}
 
 	if b.balance <= 0 {
@@ -576,7 +577,7 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 	// Validate the order (quantity, buying power, etc.)
 	order.Quantity = utils.RoundToDecimalPrecision(order.Quantity, b.decimalPrecision)
 	if order.Quantity <= 0 {
-		return fmt.Errorf("order quantity is too small or zero after rounding to configured precision")
+		return errors.New(errors.ErrCodeInvalidParameter, "order quantity is too small or zero after rounding to configured precision")
 	}
 
 	// Determine execution price based on order type and market data
@@ -606,7 +607,7 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 	}
 
 	if executePrice <= 0 {
-		return fmt.Errorf("execution price is invalid: %f", executePrice)
+		return errors.Newf(errors.ErrCodeInvalidParameter, "execution price is invalid: %f", executePrice)
 	}
 
 	// Check buying/selling power again with final execution price

@@ -1,11 +1,11 @@
 package indicator
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 // MA indicator implements Simple Moving Average calculation.
@@ -28,7 +28,7 @@ func (m *MA) Name() types.IndicatorType {
 // Config configures the MA indicator. Expected parameters: period (int).
 func (m *MA) Config(params ...any) error {
 	if len(params) != 1 {
-		return fmt.Errorf("Config expects 1 parameter: period (int)")
+		return errors.New(errors.ErrCodeMissingParameter, "Config expects 1 parameter: period (int)")
 	}
 
 	period, ok := params[0].(int)
@@ -36,14 +36,14 @@ func (m *MA) Config(params ...any) error {
 		// Try to convert to float first
 		periodFloat, ok := params[0].(float64)
 		if !ok {
-			return fmt.Errorf("invalid type for period parameter, expected int or float")
+			return errors.New(errors.ErrCodeInvalidType, "invalid type for period parameter, expected int or float")
 		}
 
 		period = int(periodFloat)
 	}
 
 	if period <= 0 {
-		return fmt.Errorf("period must be a positive integer, got %d", period)
+		return errors.Newf(errors.ErrCodeInvalidPeriod, "period must be a positive integer, got %d", period)
 	}
 
 	m.period = period
@@ -56,7 +56,7 @@ func (m *MA) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types
 	// Calculate MA
 	maValue, err := m.RawValue(marketData.Symbol, marketData.Time, ctx, m.period)
 	if err != nil {
-		return types.Signal{}, fmt.Errorf("failed to calculate MA: %w", err)
+		return types.Signal{}, errors.Wrap(errors.ErrCodeIndicatorCalculation, "failed to calculate MA", err)
 	}
 
 	// Determine signal type (basic example - in a real application you might want different logic)
@@ -84,22 +84,22 @@ func (m *MA) GetSignal(marketData types.MarketData, ctx IndicatorContext) (types
 func (m *MA) RawValue(params ...any) (float64, error) {
 	// Ensure correct number and types of parameters
 	if len(params) < 3 {
-		return 0, fmt.Errorf("RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
+		return 0, errors.New(errors.ErrCodeMissingParameter, "RawValue requires at least 3 parameters: symbol (string), currentTime (time.Time), ctx (IndicatorContext)")
 	}
 
 	symbol, ok := params[0].(string)
 	if !ok {
-		return 0, fmt.Errorf("invalid type for symbol parameter, expected string")
+		return 0, errors.New(errors.ErrCodeInvalidType, "invalid type for symbol parameter, expected string")
 	}
 
 	currentTime, ok := params[1].(time.Time)
 	if !ok {
-		return 0, fmt.Errorf("invalid type for currentTime parameter, expected time.Time")
+		return 0, errors.New(errors.ErrCodeInvalidType, "invalid type for currentTime parameter, expected time.Time")
 	}
 
 	ctx, ok := params[2].(IndicatorContext)
 	if !ok {
-		return 0, fmt.Errorf("invalid type for ctx parameter, expected IndicatorContext")
+		return 0, errors.New(errors.ErrCodeInvalidType, "invalid type for ctx parameter, expected IndicatorContext")
 	}
 
 	// Default to the configured period if not specified
@@ -114,28 +114,28 @@ func (m *MA) RawValue(params ...any) (float64, error) {
 			if !p.IsNone() {
 				periodValue, err := p.Take()
 				if err != nil {
-					return 0, fmt.Errorf("failed to get period value: %w", err)
+					return 0, errors.Wrap(errors.ErrCodeInvalidParameter, "failed to get period value", err)
 				}
 
 				period = periodValue
 			}
 		default:
-			return 0, fmt.Errorf("invalid type for period parameter, expected int or optional.Option[int]")
+			return 0, errors.New(errors.ErrCodeInvalidType, "invalid type for period parameter, expected int or optional.Option[int]")
 		}
 	}
 
 	if period <= 0 {
-		return 0, fmt.Errorf("period must be a positive integer, got %d", period)
+		return 0, errors.Newf(errors.ErrCodeInvalidPeriod, "period must be a positive integer, got %d", period)
 	}
 
 	// Get historical data
 	historicalData, err := ctx.DataSource.GetPreviousNumberOfDataPoints(currentTime, symbol, period)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get historical data: %w", err)
+		return 0, errors.Wrap(errors.ErrCodeHistoricalDataFailed, "failed to get historical data", err)
 	}
 
 	if len(historicalData) == 0 {
-		return 0, fmt.Errorf("no historical data available for symbol %s", symbol)
+		return 0, errors.Newf(errors.ErrCodeNoDataFound, "no historical data available for symbol %s", symbol)
 	}
 
 	// Calculate MA
