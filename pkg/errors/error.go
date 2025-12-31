@@ -38,20 +38,6 @@ type Error struct {
 	Cause   error
 }
 
-// Error implements the error interface.
-func (e *Error) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf("[%d] %s: %v", e.Code, e.Message, e.Cause)
-	}
-
-	return fmt.Sprintf("[%d] %s", e.Code, e.Message)
-}
-
-// Unwrap returns the underlying error cause.
-func (e *Error) Unwrap() error {
-	return e.Cause
-}
-
 // New creates a new Error with the given code and message.
 func New(code ErrorCode, message string) *Error {
 	return &Error{
@@ -86,6 +72,20 @@ func Wrapf(code ErrorCode, cause error, format string, args ...any) *Error {
 		Message: fmt.Sprintf(format, args...),
 		Cause:   cause,
 	}
+}
+
+// Error implements the error interface.
+func (e *Error) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("[%d] %s: %v", e.Code, e.Message, e.Cause)
+	}
+
+	return fmt.Sprintf("[%d] %s", e.Code, e.Message)
+}
+
+// Unwrap returns the underlying error cause.
+func (e *Error) Unwrap() error {
+	return e.Cause
 }
 
 // Is reports whether any error in err's chain matches target.
