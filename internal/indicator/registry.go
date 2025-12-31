@@ -1,10 +1,10 @@
 package indicator
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 // IndicatorRegistry manages all available indicators.
@@ -36,7 +36,7 @@ func (r *IndicatorRegistryV1) RegisterIndicator(indicator Indicator) error {
 
 	name := indicator.Name()
 	if _, exists := r.indicators[name]; exists {
-		return fmt.Errorf("RegisterIndicator: indicator with name %s already registered", name)
+		return errors.Newf(errors.ErrCodeIndicatorAlreadyExists, "RegisterIndicator: indicator with name %s already registered", name)
 	}
 
 	r.indicators[name] = indicator
@@ -51,7 +51,7 @@ func (r *IndicatorRegistryV1) GetIndicator(name types.IndicatorType) (Indicator,
 
 	indicator, exists := r.indicators[name]
 	if !exists {
-		return nil, fmt.Errorf("GetIndicator: indicator with name %s not found", name)
+		return nil, errors.Newf(errors.ErrCodeIndicatorNotFound, "GetIndicator: indicator with name %s not found", name)
 	}
 
 	return indicator, nil
@@ -76,7 +76,7 @@ func (r *IndicatorRegistryV1) RemoveIndicator(name types.IndicatorType) error {
 	defer r.mu.Unlock()
 
 	if _, exists := r.indicators[name]; !exists {
-		return fmt.Errorf("RemoveIndicator: indicator with name %s not found", name)
+		return errors.Newf(errors.ErrCodeIndicatorNotFound, "RemoveIndicator: indicator with name %s not found", name)
 	}
 
 	delete(r.indicators, name)

@@ -8,6 +8,7 @@ import (
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
 
 type InsufficientDataError struct {
@@ -42,34 +43,34 @@ func (bb *BollingerBands) Name() types.IndicatorType {
 // Config configures the Bollinger Bands indicator. Expected parameters: period (int), stdDev (float64), lookback (time.Duration).
 func (bb *BollingerBands) Config(params ...any) error {
 	if len(params) != 3 {
-		return fmt.Errorf("Config expects 3 parameters: period (int), stdDev (float64), lookback (time.Duration)")
+		return errors.New(errors.ErrCodeMissingParameter, "Config expects 3 parameters: period (int), stdDev (float64), lookback (time.Duration)")
 	}
 
 	period, ok := params[0].(int)
 	if !ok {
-		return fmt.Errorf("invalid type for period parameter, expected int")
+		return errors.New(errors.ErrCodeInvalidType, "invalid type for period parameter, expected int")
 	}
 
 	if period <= 0 {
-		return fmt.Errorf("period must be a positive integer, got %d", period)
+		return errors.Newf(errors.ErrCodeInvalidPeriod, "period must be a positive integer, got %d", period)
 	}
 
 	stdDev, ok := params[1].(float64)
 	if !ok {
-		return fmt.Errorf("invalid type for stdDev parameter, expected float64")
+		return errors.New(errors.ErrCodeInvalidType, "invalid type for stdDev parameter, expected float64")
 	}
 
 	if stdDev <= 0 {
-		return fmt.Errorf("stdDev must be a positive number, got %f", stdDev)
+		return errors.Newf(errors.ErrCodeInvalidStdDevPeriod, "stdDev must be a positive number, got %f", stdDev)
 	}
 
 	lookback, ok := params[2].(time.Duration)
 	if !ok {
-		return fmt.Errorf("invalid type for lookback parameter, expected time.Duration")
+		return errors.New(errors.ErrCodeInvalidType, "invalid type for lookback parameter, expected time.Duration")
 	}
 
 	if lookback <= 0 {
-		return fmt.Errorf("lookback must be a positive duration, got %v", lookback)
+		return errors.Newf(errors.ErrCodeInvalidPeriod, "lookback must be a positive duration, got %v", lookback)
 	}
 
 	bb.period = period
@@ -89,17 +90,17 @@ func (bb *BollingerBands) RawValue(params ...any) (float64, error) {
 	// 3. Calculate the Bollinger Bands using the existing helper function.
 	// 4. Return the middle band value.
 	if len(params) < 2 {
-		return 0, fmt.Errorf("RawValue requires at least 2 parameters: types.MarketData and IndicatorContext")
+		return 0, errors.New(errors.ErrCodeMissingParameter, "RawValue requires at least 2 parameters: types.MarketData and IndicatorContext")
 	}
 
 	marketData, ok := params[0].(types.MarketData)
 	if !ok {
-		return 0, fmt.Errorf("first parameter must be of type types.MarketData")
+		return 0, errors.New(errors.ErrCodeInvalidType, "first parameter must be of type types.MarketData")
 	}
 
 	ctx, ok := params[1].(IndicatorContext)
 	if !ok {
-		return 0, fmt.Errorf("second parameter must be of type IndicatorContext")
+		return 0, errors.New(errors.ErrCodeInvalidType, "second parameter must be of type IndicatorContext")
 	}
 
 	// Get historical data for the lookback period
@@ -108,7 +109,7 @@ func (bb *BollingerBands) RawValue(params ...any) (float64, error) {
 
 	historicalData, err := ctx.DataSource.GetRange(startTime, endTime, optional.None[datasource.Interval]())
 	if err != nil {
-		return 0, fmt.Errorf("failed to get historical data: %w", err)
+		return 0, errors.Wrap(errors.ErrCodeHistoricalDataFailed, "failed to get historical data", err)
 	}
 
 	// Calculate Bollinger Bands

@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/trading"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/version"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -93,11 +93,11 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 	// initialize the state
 	b.state, err = NewBacktestState(b.log)
 	if err != nil {
-		return fmt.Errorf("failed to create backtest state: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create backtest state", err)
 	}
 
 	if err := b.state.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize state: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize state", err)
 	}
 
 	b.balance = b.config.InitialCapital
@@ -141,10 +141,10 @@ func (b *BacktestEngineV1) LoadStrategyFromFile(strategyPath string) error {
 	case ".wasm":
 		strategy, err = wasm.NewStrategyWasmRuntime(strategyPath)
 		if err != nil {
-			return fmt.Errorf("failed to create strategy runtime: %w", err)
+			return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to create strategy runtime", err)
 		}
 	default:
-		return fmt.Errorf("unsupported strategy type: %s", extension)
+		return errors.Newf(errors.ErrCodeUnsupportedStrategy, "unsupported strategy type: %s", extension)
 	}
 
 	b.strategies = append(b.strategies, strategy)
@@ -165,10 +165,10 @@ func (b *BacktestEngineV1) LoadStrategyFromBytes(strategyBytes []byte, strategyT
 	case engine.StrategyTypeWASM:
 		strategy, err = wasm.NewStrategyWasmRuntimeFromBytes(strategyBytes)
 		if err != nil {
-			return fmt.Errorf("failed to create strategy runtime: %w", err)
+			return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to create strategy runtime", err)
 		}
 	default:
-		return fmt.Errorf("unsupported strategy type: %s", strategyType)
+		return errors.Newf(errors.ErrCodeUnsupportedStrategy, "unsupported strategy type: %s", strategyType)
 	}
 
 	b.strategies = append(b.strategies, strategy)
@@ -359,7 +359,7 @@ func (b *BacktestEngineV1) Run(ctx context.Context, callbacks engine.LifecycleCa
 	// Invoke OnBacktestStart callback
 	if callbacks.OnBacktestStart != nil {
 		if err := (*callbacks.OnBacktestStart)(len(b.strategies), len(configs), len(b.dataPaths)); err != nil {
-			runErr = fmt.Errorf("OnBacktestStart callback failed: %w", err)
+			runErr = errors.Wrap(errors.ErrCodeCallbackFailed, "OnBacktestStart callback failed", err)
 
 			return runErr
 		}
@@ -372,7 +372,7 @@ func (b *BacktestEngineV1) Run(ctx context.Context, callbacks engine.LifecycleCa
 		// Invoke OnStrategyStart callback
 		if callbacks.OnStrategyStart != nil {
 			if err := (*callbacks.OnStrategyStart)(strategyIdx, strategy.Name(), len(b.strategies)); err != nil {
-				runErr = fmt.Errorf("OnStrategyStart callback failed: %w", err)
+				runErr = errors.Wrap(errors.ErrCodeCallbackFailed, "OnStrategyStart callback failed", err)
 
 				return runErr
 			}
@@ -419,7 +419,7 @@ func (b *BacktestEngineV1) GetConfigSchema() (string, error) {
 
 	schema, err := config.GenerateSchemaJSON()
 	if err != nil {
-		return "", fmt.Errorf("failed to generate schema: %w", err)
+		return "", errors.Wrap(errors.ErrCodeBacktestConfigError, "failed to generate schema", err)
 	}
 
 	return schema, nil
@@ -429,18 +429,18 @@ func (b *BacktestEngineV1) GetConfigSchema() (string, error) {
 func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	// Initialize the state
 	if b.state == nil {
-		return fmt.Errorf("backtest state is nil")
+		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
 	var err error
 
 	b.marker, err = NewBacktestMarker(b.log)
 	if err != nil {
-		return fmt.Errorf("failed to create backtest marker: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create backtest marker", err)
 	}
 
 	if err := b.state.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize state: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize state", err)
 	}
 
 	strategyContext := runtime.RuntimeContext{
@@ -455,23 +455,23 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	// need to initialize the strategy api first since there is no wasm plugin available before this line
 	err = params.strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
 	if err != nil {
-		return fmt.Errorf("failed to initialize strategy api: %w", err)
+		return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to initialize strategy api", err)
 	}
 
 	// Check version compatibility between engine and strategy
 	strategyRuntimeVersion, err := params.strategy.GetRuntimeEngineVersion()
 	if err != nil {
-		return fmt.Errorf("failed to get strategy runtime version: %w", err)
+		return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to get strategy runtime version", err)
 	}
 
 	if err := version.CheckVersionCompatibility(version.Version, strategyRuntimeVersion); err != nil {
-		return fmt.Errorf("version mismatch: engine version %s is incompatible with strategy compiled for version %s: %w",
-			version.Version, strategyRuntimeVersion, err)
+		return errors.Wrapf(errors.ErrCodeVersionMismatch, err, "version mismatch: engine version %s is incompatible with strategy compiled for version %s",
+			version.Version, strategyRuntimeVersion)
 	}
 
 	err = params.strategy.Initialize(params.configContent)
 	if err != nil {
-		return fmt.Errorf("failed to initialize strategy: %w", err)
+		return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to initialize strategy", err)
 	}
 
 	b.log.Debug("Running strategy",
@@ -483,19 +483,19 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 
 	// Initialize the data source with the given data path
 	if err := b.datasource.Initialize(params.dataPath); err != nil {
-		return fmt.Errorf("failed to initialize data source: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestDataPathError, "failed to initialize data source", err)
 	}
 
 	// create a progress bar
 	count, err := b.datasource.Count(b.config.StartTime, b.config.EndTime)
 	if err != nil {
-		return fmt.Errorf("failed to get data count: %w", err)
+		return errors.Wrap(errors.ErrCodeQueryFailed, "failed to get data count", err)
 	}
 
 	// Invoke OnRunStart callback
 	if params.callbacks.OnRunStart != nil {
 		if err := (*params.callbacks.OnRunStart)(params.runID, params.configIdx, params.configName, params.dataIdx, params.dataPath, count); err != nil {
-			return fmt.Errorf("OnRunStart callback failed: %w", err)
+			return errors.Wrap(errors.ErrCodeCallbackFailed, "OnRunStart callback failed", err)
 		}
 	}
 
@@ -509,11 +509,11 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 
 	// Get stats
 	if b.state == nil {
-		return fmt.Errorf("backtest state is nil")
+		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
 	if err := b.writeResults(strategyContext, params.runID, params.resultFolderPath, params.strategyPath, params.dataPath); err != nil {
-		return fmt.Errorf("failed to write results: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write results", err)
 	}
 
 	// Invoke OnRunEnd callback
@@ -523,7 +523,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 
 	// Cleanup state
 	if err := b.cleanUpRun(); err != nil {
-		return fmt.Errorf("failed to cleanup run: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup run", err)
 	}
 
 	return nil
@@ -548,7 +548,7 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		}
 
 		if err != nil {
-			return fmt.Errorf("failed to read data: %w", err)
+			return errors.Wrap(errors.ErrCodeDataNotFound, "failed to read data", err)
 		}
 		// run the strategy
 		if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
@@ -557,7 +557,7 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 
 		err = params.strategy.ProcessData(data)
 		if err != nil {
-			return fmt.Errorf("failed to process data: %w", err)
+			return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to process data", err)
 		}
 		// Update progress bar
 		currentCount++
@@ -575,7 +575,7 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 
 func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, runID string, resultFolderPath string, strategyPath string, dataPath string) error {
 	if b.state == nil {
-		return fmt.Errorf("backtest state is nil")
+		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
 	// Calculate file paths
@@ -586,27 +586,27 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 
 	stats, err := b.state.GetStats(strategyContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath, dataPath)
 	if err != nil {
-		return fmt.Errorf("failed to get stats: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to get stats", err)
 	}
 
 	// Write stats to file
 	if err := types.WriteTradeStats(filepath.Join(resultFolderPath, "stats.yaml"), stats); err != nil {
-		return fmt.Errorf("failed to write stats: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write stats", err)
 	}
 
 	// Write state to disk
 	if b.state == nil {
-		return fmt.Errorf("backtest state is nil")
+		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
 	if err := b.state.Write(stateDBPath); err != nil {
-		return fmt.Errorf("failed to write state: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write state", err)
 	}
 
 	// write the marker to disk
 	if marker, ok := b.marker.(*BacktestMarker); ok {
 		if err := marker.Write(resultFolderPath); err != nil {
-			return fmt.Errorf("failed to write marker: %w", err)
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write marker", err)
 		}
 	}
 
@@ -615,11 +615,11 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 
 func (b *BacktestEngineV1) cleanUpRun() error {
 	if b.state == nil {
-		return fmt.Errorf("backtest state is nil")
+		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
 	if err := b.state.Cleanup(); err != nil {
-		return fmt.Errorf("failed to cleanup state: %w", err)
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup state", err)
 	}
 
 	// Cleanup the cache
@@ -633,7 +633,7 @@ func (b *BacktestEngineV1) cleanUpRun() error {
 	// Cleanup the marker
 	if marker, ok := b.marker.(*BacktestMarker); ok {
 		if err := marker.Cleanup(); err != nil {
-			return fmt.Errorf("failed to cleanup marker: %w", err)
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup marker", err)
 		}
 	}
 
@@ -644,31 +644,31 @@ func (b *BacktestEngineV1) preRunCheck() error {
 	if len(b.strategies) == 0 {
 		b.log.Error("No strategies loaded")
 
-		return errors.New("no strategies loaded")
+		return errors.New(errors.ErrCodeBacktestNoStrategies, "no strategies loaded")
 	}
 
 	if len(b.strategyConfigPaths) == 0 && len(b.strategyConfigs) == 0 {
 		b.log.Error("No strategy configs loaded")
 
-		return errors.New("no strategy configs loaded")
+		return errors.New(errors.ErrCodeBacktestNoConfigs, "no strategy configs loaded")
 	}
 
 	if len(b.dataPaths) == 0 {
 		b.log.Error("No data paths loaded")
 
-		return errors.New("no data paths loaded")
+		return errors.New(errors.ErrCodeBacktestNoDataPaths, "no data paths loaded")
 	}
 
 	if b.resultsFolder == "" {
 		b.log.Error("No results folder set")
 
-		return errors.New("no results folder set")
+		return errors.New(errors.ErrCodeBacktestNoResultsDir, "no results folder set")
 	}
 
 	if b.datasource == nil {
 		b.log.Error("No datasource set")
 
-		return errors.New("no datasource set")
+		return errors.New(errors.ErrCodeBacktestNoDatasource, "no datasource set")
 	}
 
 	return nil
