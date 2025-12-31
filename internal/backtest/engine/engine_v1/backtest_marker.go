@@ -145,7 +145,7 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 
 		var signalSymbol sql.NullString
 
-		var color string
+		var color types.MarkColor
 
 		var shapeStr string
 

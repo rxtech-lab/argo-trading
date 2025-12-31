@@ -581,7 +581,7 @@ func (suite *StrategyApiTestSuite) TestMark() {
 			suite.Equal(expectedMarketData.Volume, md.Volume)
 
 			// Verify the mark
-			suite.Equal("red", mark.Color)
+			suite.Equal(types.MarkColor("red"), mark.Color)
 			suite.Equal(types.MarkShapeCircle, mark.Shape)
 			suite.Equal("Test mark title", mark.Title)
 			suite.Equal("Test mark message", mark.Message)
