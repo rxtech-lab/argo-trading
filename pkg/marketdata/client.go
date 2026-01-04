@@ -87,6 +87,40 @@ func NewClient(config ClientConfig, onProgress provider.OnDownloadProgress) (*Cl
 	}, nil
 }
 
+// NewClientFromPolygonConfig creates a new client from a PolygonDownloadConfig.
+func NewClientFromPolygonConfig(config *PolygonDownloadConfig, onProgress provider.OnDownloadProgress) (*Client, DownloadParams, error) {
+	clientConfig := config.ToClientConfig()
+
+	client, err := NewClient(clientConfig, onProgress)
+	if err != nil {
+		return nil, DownloadParams{}, err
+	}
+
+	params, err := config.ToDownloadParams()
+	if err != nil {
+		return nil, DownloadParams{}, err
+	}
+
+	return client, params, nil
+}
+
+// NewClientFromBinanceConfig creates a new client from a BinanceDownloadConfig.
+func NewClientFromBinanceConfig(config *BinanceDownloadConfig, onProgress provider.OnDownloadProgress) (*Client, DownloadParams, error) {
+	clientConfig := config.ToClientConfig()
+
+	client, err := NewClient(clientConfig, onProgress)
+	if err != nil {
+		return nil, DownloadParams{}, err
+	}
+
+	params, err := config.ToDownloadParams()
+	if err != nil {
+		return nil, DownloadParams{}, err
+	}
+
+	return client, params, nil
+}
+
 // Download initiates a market data download with the given parameters.
 // The context can be used to cancel the download operation.
 func (c *Client) Download(ctx context.Context, params DownloadParams) error {

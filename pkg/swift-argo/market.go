@@ -2,43 +2,59 @@ package swiftargo
 
 import (
 	"context"
+	"fmt"
 	"sync"
-	"time"
 
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata"
 )
 
+// MarketDownloader handles market data downloads for Swift consumers.
 type MarketDownloader struct {
-	helper        MarketDownloaderHelper
-	provider      string
-	writer        string
-	dataFolder    string
-	polygonApiKey string
+	helper MarketDownloaderHelper
 
 	// Cancellation support
 	mu         sync.Mutex
 	cancelFunc context.CancelFunc
 }
 
+// MarketDownloaderHelper is the callback interface for download progress.
 type MarketDownloaderHelper interface {
 	OnDownloadProgress(current, total float64, message string)
 }
 
-func NewMarketDownloader(helper MarketDownloaderHelper, provider string, writer string, dataFolder string, polygonApiKey string) *MarketDownloader {
+// GetSupportedDownloadClients returns a StringCollection of all supported download client names.
+// This follows the gomobile pattern where slices cannot be returned directly.
+func GetSupportedDownloadClients() StringCollection {
+	providers := marketdata.GetSupportedProviders()
+
+	return &StringArray{items: providers}
+}
+
+// GetDownloadClientSchema returns the JSON schema for a specific download client.
+// The providerName should be one of the values returned by GetSupportedDownloadClients().
+// Returns empty string if the provider is not found.
+func GetDownloadClientSchema(providerName string) string {
+	schema, err := marketdata.GetDownloadConfigSchema(providerName)
+	if err != nil {
+		return ""
+	}
+
+	return schema
+}
+
+// NewMarketDownloader creates a new MarketDownloader with the given helper for progress callbacks.
+func NewMarketDownloader(helper MarketDownloaderHelper) *MarketDownloader {
 	return &MarketDownloader{
-		helper:        helper,
-		provider:      provider,
-		writer:        writer,
-		dataFolder:    dataFolder,
-		polygonApiKey: polygonApiKey,
-		mu:            sync.Mutex{},
-		cancelFunc:    nil,
+		helper:     helper,
+		mu:         sync.Mutex{},
+		cancelFunc: nil,
 	}
 }
 
-// Download downloads market data. This method is blocking.
-// Can be cancelled by calling Cancel() from another goroutine.
-func (m *MarketDownloader) Download(ticker string, from, to string, interval string) error {
+// DownloadWithConfig downloads market data using a JSON configuration.
+// The configJSON must conform to the schema returned by GetDownloadClientSchema() for the given provider.
+// This method is blocking. Can be cancelled by calling Cancel() from another goroutine.
+func (m *MarketDownloader) DownloadWithConfig(providerName string, configJSON string) error {
 	// Create cancellable context
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -54,42 +70,44 @@ func (m *MarketDownloader) Download(ticker string, from, to string, interval str
 		m.mu.Unlock()
 	}()
 
-	client, err := marketdata.NewClient(marketdata.ClientConfig{
-		ProviderType:  marketdata.ProviderType(m.provider),
-		WriterType:    marketdata.WriterType(m.writer),
-		DataPath:      m.dataFolder,
-		PolygonApiKey: m.polygonApiKey,
-	}, func(current, total float64, message string) {
-		m.helper.OnDownloadProgress(current, total, message)
-	})
-	if err != nil {
-		return err
+	// Create progress callback
+	onProgress := func(current, total float64, message string) {
+		if m.helper != nil {
+			m.helper.OnDownloadProgress(current, total, message)
+		}
 	}
 
-	fromTime, err := time.Parse(time.RFC3339, from)
-	if err != nil {
-		return err
+	// Parse config and create client based on provider type
+	switch marketdata.ProviderType(providerName) {
+	case marketdata.ProviderPolygon:
+		config, err := marketdata.ParsePolygonConfig(configJSON)
+		if err != nil {
+			return fmt.Errorf("failed to parse polygon config: %w", err)
+		}
+
+		client, params, err := marketdata.NewClientFromPolygonConfig(config, onProgress)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		return client.Download(ctx, params)
+
+	case marketdata.ProviderBinance:
+		config, err := marketdata.ParseBinanceConfig(configJSON)
+		if err != nil {
+			return fmt.Errorf("failed to parse binance config: %w", err)
+		}
+
+		client, params, err := marketdata.NewClientFromBinanceConfig(config, onProgress)
+		if err != nil {
+			return fmt.Errorf("failed to create client: %w", err)
+		}
+
+		return client.Download(ctx, params)
+
+	default:
+		return fmt.Errorf("unsupported provider: %s", providerName)
 	}
-
-	toTime, err := time.Parse(time.RFC3339, to)
-	if err != nil {
-		return err
-	}
-
-	timespan := marketdata.Timespan(interval)
-
-	err = client.Download(ctx, marketdata.DownloadParams{
-		Ticker:     ticker,
-		StartDate:  fromTime,
-		EndDate:    toTime,
-		Timespan:   timespan.Timespan(),
-		Multiplier: timespan.Multiplier(),
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // Cancel cancels any in-progress download.
