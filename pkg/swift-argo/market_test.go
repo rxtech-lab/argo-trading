@@ -65,3 +65,30 @@ func TestNewMarketDownloader(t *testing.T) {
 	assert.Equal(t, "/tmp/data", downloader.dataFolder)
 	assert.Equal(t, "api-key-123", downloader.polygonApiKey)
 }
+
+func TestMarketDownloader_Download_InvalidFromDate(t *testing.T) {
+	helper := &mockDownloaderHelper{}
+	downloader := NewMarketDownloader(helper, "polygon", "duckdb", "/tmp", "test-key")
+
+	// Invalid "from" date should return an error
+	err := downloader.Download("AAPL", "invalid-date", "2024-01-01T00:00:00Z", "1d")
+	assert.Error(t, err)
+}
+
+func TestMarketDownloader_Download_InvalidToDate(t *testing.T) {
+	helper := &mockDownloaderHelper{}
+	downloader := NewMarketDownloader(helper, "polygon", "duckdb", "/tmp", "test-key")
+
+	// Invalid "to" date should return an error
+	err := downloader.Download("AAPL", "2024-01-01T00:00:00Z", "invalid-date", "1d")
+	assert.Error(t, err)
+}
+
+func TestMarketDownloader_Download_InvalidProvider(t *testing.T) {
+	helper := &mockDownloaderHelper{}
+	downloader := NewMarketDownloader(helper, "invalid-provider", "duckdb", "/tmp", "test-key")
+
+	// Invalid provider should return an error when trying to create client
+	err := downloader.Download("AAPL", "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", "1d")
+	assert.Error(t, err)
+}

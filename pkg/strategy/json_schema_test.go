@@ -25,3 +25,39 @@ func (suite *JsonSchemaTestSuite) TestToJSONSchema() {
 	suite.NoError(err)
 	suite.NotEmpty(schema)
 }
+
+func (suite *JsonSchemaTestSuite) TestToJSONSchema_EmptyStruct() {
+	type EmptyConfig struct{}
+
+	schema, err := ToJSONSchema(EmptyConfig{})
+	suite.NoError(err)
+	suite.NotEmpty(schema)
+	suite.Contains(schema, "empty-config")
+}
+
+func (suite *JsonSchemaTestSuite) TestToJSONSchema_NestedStruct() {
+	type InnerConfig struct {
+		Value float64 `json:"value"`
+	}
+	type OuterConfig struct {
+		Name   string      `json:"name"`
+		Inner  InnerConfig `json:"inner"`
+	}
+
+	schema, err := ToJSONSchema(OuterConfig{})
+	suite.NoError(err)
+	suite.NotEmpty(schema)
+	suite.Contains(schema, "name")
+	suite.Contains(schema, "inner")
+}
+
+func (suite *JsonSchemaTestSuite) TestToJSONSchema_WithSlice() {
+	type ConfigWithSlice struct {
+		Items []string `json:"items"`
+	}
+
+	schema, err := ToJSONSchema(ConfigWithSlice{})
+	suite.NoError(err)
+	suite.NotEmpty(schema)
+	suite.Contains(schema, "items")
+}
