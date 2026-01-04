@@ -40,8 +40,8 @@ func (suite *JsonSchemaTestSuite) TestToJSONSchema_NestedStruct() {
 		Value float64 `json:"value"`
 	}
 	type OuterConfig struct {
-		Name   string      `json:"name"`
-		Inner  InnerConfig `json:"inner"`
+		Name  string      `json:"name"`
+		Inner InnerConfig `json:"inner"`
 	}
 
 	schema, err := ToJSONSchema(OuterConfig{})

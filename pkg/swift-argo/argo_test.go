@@ -20,14 +20,27 @@ func TestGetBacktestEngineVersion(t *testing.T) {
 
 // mockArgoHelper implements ArgoHelper for testing.
 type mockArgoHelper struct {
-	mu                  sync.Mutex
-	backtestStartCalls  []struct{ totalStrategies, totalConfigs, totalDataFiles int }
-	backtestEndCalls    []error
-	strategyStartCalls  []struct{ strategyIndex int; strategyName string; totalStrategies int }
-	strategyEndCalls    []struct{ strategyIndex int; strategyName string }
-	runStartCalls       []struct{ runID, configName, dataFilePath string; configIndex, dataFileIndex, totalDataPoints int }
-	runEndCalls         []struct{ configIndex, dataFileIndex int; configName, dataFilePath, resultFolderPath string }
-	processDataCalls    []struct{ current, total int }
+	mu                 sync.Mutex
+	backtestStartCalls []struct{ totalStrategies, totalConfigs, totalDataFiles int }
+	backtestEndCalls   []error
+	strategyStartCalls []struct {
+		strategyIndex   int
+		strategyName    string
+		totalStrategies int
+	}
+	strategyEndCalls []struct {
+		strategyIndex int
+		strategyName  string
+	}
+	runStartCalls []struct {
+		runID, configName, dataFilePath             string
+		configIndex, dataFileIndex, totalDataPoints int
+	}
+	runEndCalls []struct {
+		configIndex, dataFileIndex                 int
+		configName, dataFilePath, resultFolderPath string
+	}
+	processDataCalls []struct{ current, total int }
 }
 
 func (m *mockArgoHelper) OnBacktestStart(totalStrategies int, totalConfigs int, totalDataFiles int) error {
@@ -46,27 +59,40 @@ func (m *mockArgoHelper) OnBacktestEnd(err error) {
 func (m *mockArgoHelper) OnStrategyStart(strategyIndex int, strategyName string, totalStrategies int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strategyStartCalls = append(m.strategyStartCalls, struct{ strategyIndex int; strategyName string; totalStrategies int }{strategyIndex, strategyName, totalStrategies})
+	m.strategyStartCalls = append(m.strategyStartCalls, struct {
+		strategyIndex   int
+		strategyName    string
+		totalStrategies int
+	}{strategyIndex, strategyName, totalStrategies})
 	return nil
 }
 
 func (m *mockArgoHelper) OnStrategyEnd(strategyIndex int, strategyName string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strategyEndCalls = append(m.strategyEndCalls, struct{ strategyIndex int; strategyName string }{strategyIndex, strategyName})
+	m.strategyEndCalls = append(m.strategyEndCalls, struct {
+		strategyIndex int
+		strategyName  string
+	}{strategyIndex, strategyName})
 }
 
 func (m *mockArgoHelper) OnRunStart(runID string, configIndex int, configName string, dataFileIndex int, dataFilePath string, totalDataPoints int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.runStartCalls = append(m.runStartCalls, struct{ runID, configName, dataFilePath string; configIndex, dataFileIndex, totalDataPoints int }{runID, configName, dataFilePath, configIndex, dataFileIndex, totalDataPoints})
+	m.runStartCalls = append(m.runStartCalls, struct {
+		runID, configName, dataFilePath             string
+		configIndex, dataFileIndex, totalDataPoints int
+	}{runID, configName, dataFilePath, configIndex, dataFileIndex, totalDataPoints})
 	return nil
 }
 
 func (m *mockArgoHelper) OnRunEnd(configIndex int, configName string, dataFileIndex int, dataFilePath string, resultFolderPath string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.runEndCalls = append(m.runEndCalls, struct{ configIndex, dataFileIndex int; configName, dataFilePath, resultFolderPath string }{configIndex, dataFileIndex, configName, dataFilePath, resultFolderPath})
+	m.runEndCalls = append(m.runEndCalls, struct {
+		configIndex, dataFileIndex                 int
+		configName, dataFilePath, resultFolderPath string
+	}{configIndex, dataFileIndex, configName, dataFilePath, resultFolderPath})
 }
 
 func (m *mockArgoHelper) OnProcessData(current int, total int) error {
