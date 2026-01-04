@@ -189,19 +189,70 @@ enum SignalType {
 }
 
 enum IndicatorType {
+  // RSI (Relative Strength Index)
+  // Config: [period, rsiLowerThreshold?, rsiUpperThreshold?] - e.g., "[14]" or "[14, 30, 70]"
+  // Defaults: period=14, rsiLowerThreshold=30, rsiUpperThreshold=70
+  // RawValue: {"rsi": float64} - RSI value (0-100 scale)
   INDICATOR_RSI = 0;
+
+  // MACD (Moving Average Convergence Divergence)
+  // Config: [fastPeriod, slowPeriod, signalPeriod] - e.g., "[12, 26, 9]"
+  // Defaults: fastPeriod=12, slowPeriod=26, signalPeriod=9
+  // RawValue: {"macd": float64} - MACD line value
   INDICATOR_MACD = 1;
+
+  // Bollinger Bands
+  // Config: [period, stdDev, lookback] - e.g., "[20, 2.0, \"24h\"]"
+  // Defaults: period=20, stdDev=2.0, lookback="24h"
+  // RawValue: {"upper": float64, "middle": float64, "lower": float64}
   INDICATOR_BOLLINGER_BANDS = 2;
+
+  // Stochastic Oscillator (NOT IMPLEMENTED)
   INDICATOR_STOCHASTIC_OSCILLATOR = 3;
+
+  // Williams %R (NOT IMPLEMENTED)
   INDICATOR_WILLIAMS_R = 4;
+
+  // ADX - Average Directional Index (NOT IMPLEMENTED)
   INDICATOR_ADX = 5;
+
+  // CCI - Commodity Channel Index (NOT IMPLEMENTED)
   INDICATOR_CCI = 6;
+
+  // AO - Awesome Oscillator (NOT IMPLEMENTED)
   INDICATOR_AO = 7;
+
+  // Trend Strength (NOT IMPLEMENTED)
   INDICATOR_TREND_STRENGTH = 8;
+
+  // Range Filter
+  // Config: [period, multiplier] - e.g., "[100, 3.0]"
+  // Defaults: period=100, multiplier=3.0
+  // RawValue: {"filter": float64, "smooth_range": float64, "upward_count": float64, "downward_count": float64}
   INDICATOR_RANGE_FILTER = 9;
+
+  // EMA (Exponential Moving Average)
+  // Config: [period] - e.g., "[20]"
+  // Defaults: period=20
+  // RawValue: {"ema": float64} - EMA value
   INDICATOR_EMA = 10;
+
+  // Waddah Attar Explosion
+  // Config: [fastPeriod, slowPeriod, signalPeriod, atrPeriod, multiplier] - e.g., "[20, 40, 9, 14, 150.0]"
+  // Defaults: fastPeriod=20, slowPeriod=40, signalPeriod=9, atrPeriod=14, multiplier=150.0
+  // RawValue: {"macd": float64, "signal": float64, "histogram": float64, "atr": float64, "trend": float64, "explosion": float64}
   INDICATOR_WADDAH_ATTAR = 11;
+
+  // ATR (Average True Range)
+  // Config: [period] - e.g., "[14]"
+  // Defaults: period=14
+  // RawValue: {"atr": float64} - ATR value (volatility measure)
   INDICATOR_ATR = 12;
+
+  // MA (Simple Moving Average)
+  // Config: [period] - e.g., "[20]"
+  // Defaults: period=20
+  // RawValue: {"ma": float64} - MA value
   INDICATOR_MA = 13;
 }
 
