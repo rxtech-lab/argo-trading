@@ -49,7 +49,7 @@ func (suite *MarkTestSuite) TestMarkStruct() {
 	}
 
 	suite.Equal("md-123", mark.MarketDataId)
-	suite.Equal("#FF0000", mark.Color)
+	suite.Equal(MarkColor("#FF0000"), mark.Color)
 	suite.Equal(MarkShapeCircle, mark.Shape)
 	suite.Equal("Buy Signal", mark.Title)
 	suite.Equal("RSI indicates oversold condition", mark.Message)
@@ -102,14 +102,13 @@ func (suite *MarkTestSuite) TestMarkShapes() {
 }
 
 func (suite *MarkTestSuite) TestMarkColors() {
-	colors := []string{
-		"#FF0000", // red
-		"#00FF00", // green
-		"#0000FF", // blue
-		"#FFFF00", // yellow
-		"rgb(255, 0, 0)",
-		"rgba(255, 0, 0, 0.5)",
-		"red",
+	colors := []MarkColor{
+		MarkColorRed,
+		MarkColorGreen,
+		MarkColorBlue,
+		MarkColorYellow,
+		MarkColorPurple,
+		MarkColorOrange,
 	}
 
 	for _, color := range colors {

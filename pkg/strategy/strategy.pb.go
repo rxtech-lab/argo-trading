@@ -1506,6 +1506,9 @@ type Mark struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// color of the mark.
+	// Supported color strings are: red, green, blue, yellow, purple, orange
+	// or hex color like #FF0000
 	Color      string     `protobuf:"bytes,1,opt,name=color,proto3" json:"color,omitempty"`
 	Shape      MarkShape  `protobuf:"varint,2,opt,name=shape,proto3,enum=strategy.MarkShape" json:"shape,omitempty"`
 	Title      string     `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
