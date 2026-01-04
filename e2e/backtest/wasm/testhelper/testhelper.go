@@ -439,7 +439,7 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 		// Create mark with the new fields
 		mark := types.Mark{
 			MarketDataId: marketDataId,
-			Color:        color,
+			Color:        types.MarkColor(color),
 			Shape:        types.MarkShape(shapeStr),
 			Title:        title,
 			Message:      message,

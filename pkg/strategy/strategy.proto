@@ -384,7 +384,11 @@ enum MarkShape {
   MARK_SHAPE_TRIANGLE = 2;
 }
 
+
 message Mark {
+  // color of the mark.
+  // Supported color strings are: red, green, blue, yellow, purple, orange
+  // or hex color like #FF0000
   string color = 1;
   MarkShape shape = 2;
   string title = 3;
