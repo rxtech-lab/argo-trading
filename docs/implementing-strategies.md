@@ -1,3 +1,8 @@
+---
+title: Implementing Trading Strategies
+description: Guide to implementing trading strategies in the Argo Trading framework using WebAssembly plugins
+---
+
 # Implementing Trading Strategies
 
 This guide explains how to implement trading strategies in the Argo Trading framework. Strategies are compiled to WebAssembly (WASM) and run in an isolated plugin architecture.
@@ -220,20 +225,22 @@ The framework provides built-in technical indicators. First configure them in `I
 
 ### Available Indicators
 
-| Indicator | Type Constant | Description |
-|-----------|---------------|-------------|
-| RSI | `INDICATOR_RSI` | Relative Strength Index |
-| MACD | `INDICATOR_MACD` | Moving Average Convergence Divergence |
-| Bollinger Bands | `INDICATOR_BOLLINGER_BANDS` | Volatility bands |
-| EMA | `INDICATOR_EMA` | Exponential Moving Average |
-| MA | `INDICATOR_MA` | Simple Moving Average |
-| ATR | `INDICATOR_ATR` | Average True Range |
-| ADX | `INDICATOR_ADX` | Average Directional Index |
-| CCI | `INDICATOR_CCI` | Commodity Channel Index |
-| Stochastic | `INDICATOR_STOCHASTIC_OSCILLATOR` | Stochastic Oscillator |
-| Williams %R | `INDICATOR_WILLIAMS_R` | Williams Percent Range |
-| Range Filter | `INDICATOR_RANGE_FILTER` | Range Filter |
-| Waddah Attar | `INDICATOR_WADDAH_ATTAR` | Waddah Attar Explosion |
+| Indicator | Type Constant | Description | Docs |
+|-----------|---------------|-------------|------|
+| RSI | `INDICATOR_RSI` | Relative Strength Index | [Reference](indicators/rsi.md) |
+| MACD | `INDICATOR_MACD` | Moving Average Convergence Divergence | [Reference](indicators/macd.md) |
+| Bollinger Bands | `INDICATOR_BOLLINGER_BANDS` | Volatility bands | [Reference](indicators/bollinger-bands.md) |
+| EMA | `INDICATOR_EMA` | Exponential Moving Average | [Reference](indicators/ema.md) |
+| MA | `INDICATOR_MA` | Simple Moving Average | [Reference](indicators/ma.md) |
+| ATR | `INDICATOR_ATR` | Average True Range | [Reference](indicators/atr.md) |
+| ADX | `INDICATOR_ADX` | Average Directional Index | Not implemented |
+| CCI | `INDICATOR_CCI` | Commodity Channel Index | Not implemented |
+| Stochastic | `INDICATOR_STOCHASTIC_OSCILLATOR` | Stochastic Oscillator | Not implemented |
+| Williams %R | `INDICATOR_WILLIAMS_R` | Williams Percent Range | Not implemented |
+| Range Filter | `INDICATOR_RANGE_FILTER` | Range Filter | [Reference](indicators/range-filter.md) |
+| Waddah Attar | `INDICATOR_WADDAH_ATTAR` | Waddah Attar Explosion | [Reference](indicators/waddah-attar.md) |
+
+> **Indicator Reference**: See [docs/indicators/](indicators/) for detailed documentation on each indicator including configuration parameters, raw value outputs, signal generation logic, and usage examples.
 
 ### Configuring Indicators
 
@@ -737,4 +744,5 @@ func (s *RSIStrategy) GetDescription(_ context.Context, _ *strategy.GetDescripti
 
 - [Example Strategies](../examples/strategy/)
 - [API Reference](../pkg/strategy/strategy.proto)
+- [Indicator Reference](./indicators/) - Detailed documentation for all indicators
 - [Release Process](./release-process.md)
