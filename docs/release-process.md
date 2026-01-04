@@ -1,3 +1,8 @@
+---
+title: Release Process
+description: How releases are created for the Argo Trading framework using GitHub Actions
+---
+
 # Release Process
 
 This document describes how releases are created for the Argo Trading framework.

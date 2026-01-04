@@ -147,20 +147,58 @@ func (x SignalType) Enum() *SignalType {
 type IndicatorType int32
 
 const (
-	IndicatorType_INDICATOR_RSI                   IndicatorType = 0
-	IndicatorType_INDICATOR_MACD                  IndicatorType = 1
-	IndicatorType_INDICATOR_BOLLINGER_BANDS       IndicatorType = 2
+	// RSI (Relative Strength Index)
+	// Config: [period, rsiLowerThreshold?, rsiUpperThreshold?] - e.g., "[14]" or "[14, 30, 70]"
+	// Defaults: period=14, rsiLowerThreshold=30, rsiUpperThreshold=70
+	// RawValue: {"rsi": float64} - RSI value (0-100 scale)
+	IndicatorType_INDICATOR_RSI IndicatorType = 0
+	// MACD (Moving Average Convergence Divergence)
+	// Config: [fastPeriod, slowPeriod, signalPeriod] - e.g., "[12, 26, 9]"
+	// Defaults: fastPeriod=12, slowPeriod=26, signalPeriod=9
+	// RawValue: {"macd": float64} - MACD line value
+	IndicatorType_INDICATOR_MACD IndicatorType = 1
+	// Bollinger Bands
+	// Config: [period, stdDev, lookback] - e.g., "[20, 2.0, \"24h\"]"
+	// Defaults: period=20, stdDev=2.0, lookback="24h"
+	// RawValue: {"upper": float64, "middle": float64, "lower": float64}
+	IndicatorType_INDICATOR_BOLLINGER_BANDS IndicatorType = 2
+	// Stochastic Oscillator (NOT IMPLEMENTED)
 	IndicatorType_INDICATOR_STOCHASTIC_OSCILLATOR IndicatorType = 3
-	IndicatorType_INDICATOR_WILLIAMS_R            IndicatorType = 4
-	IndicatorType_INDICATOR_ADX                   IndicatorType = 5
-	IndicatorType_INDICATOR_CCI                   IndicatorType = 6
-	IndicatorType_INDICATOR_AO                    IndicatorType = 7
-	IndicatorType_INDICATOR_TREND_STRENGTH        IndicatorType = 8
-	IndicatorType_INDICATOR_RANGE_FILTER          IndicatorType = 9
-	IndicatorType_INDICATOR_EMA                   IndicatorType = 10
-	IndicatorType_INDICATOR_WADDAH_ATTAR          IndicatorType = 11
-	IndicatorType_INDICATOR_ATR                   IndicatorType = 12
-	IndicatorType_INDICATOR_MA                    IndicatorType = 13
+	// Williams %R (NOT IMPLEMENTED)
+	IndicatorType_INDICATOR_WILLIAMS_R IndicatorType = 4
+	// ADX - Average Directional Index (NOT IMPLEMENTED)
+	IndicatorType_INDICATOR_ADX IndicatorType = 5
+	// CCI - Commodity Channel Index (NOT IMPLEMENTED)
+	IndicatorType_INDICATOR_CCI IndicatorType = 6
+	// AO - Awesome Oscillator (NOT IMPLEMENTED)
+	IndicatorType_INDICATOR_AO IndicatorType = 7
+	// Trend Strength (NOT IMPLEMENTED)
+	IndicatorType_INDICATOR_TREND_STRENGTH IndicatorType = 8
+	// Range Filter
+	// Config: [period, multiplier] - e.g., "[100, 3.0]"
+	// Defaults: period=100, multiplier=3.0
+	// RawValue: {"filter": float64, "smooth_range": float64, "upward_count": float64, "downward_count": float64}
+	IndicatorType_INDICATOR_RANGE_FILTER IndicatorType = 9
+	// EMA (Exponential Moving Average)
+	// Config: [period] - e.g., "[20]"
+	// Defaults: period=20
+	// RawValue: {"ema": float64} - EMA value
+	IndicatorType_INDICATOR_EMA IndicatorType = 10
+	// Waddah Attar Explosion
+	// Config: [fastPeriod, slowPeriod, signalPeriod, atrPeriod, multiplier] - e.g., "[20, 40, 9, 14, 150.0]"
+	// Defaults: fastPeriod=20, slowPeriod=40, signalPeriod=9, atrPeriod=14, multiplier=150.0
+	// RawValue: {"macd": float64, "signal": float64, "histogram": float64, "atr": float64, "trend": float64, "explosion": float64}
+	IndicatorType_INDICATOR_WADDAH_ATTAR IndicatorType = 11
+	// ATR (Average True Range)
+	// Config: [period] - e.g., "[14]"
+	// Defaults: period=14
+	// RawValue: {"atr": float64} - ATR value (volatility measure)
+	IndicatorType_INDICATOR_ATR IndicatorType = 12
+	// MA (Simple Moving Average)
+	// Config: [period] - e.g., "[20]"
+	// Defaults: period=20
+	// RawValue: {"ma": float64} - MA value
+	IndicatorType_INDICATOR_MA IndicatorType = 13
 )
 
 // Enum value maps for IndicatorType.
