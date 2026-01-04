@@ -2,3 +2,17 @@
 ignore:
   - "*.pb.go"
   - "main.go"
+  - "**/e2e/**"
+  - "mocks/**"
+  - "examples/**"
+
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+        threshold: 5%

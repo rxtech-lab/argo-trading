@@ -47,6 +47,14 @@ func (suite *DuckDBWriterTestSuite) TestNewDuckDBWriter() {
 	suite.Nil(duckWriter.stmt)
 }
 
+func (suite *DuckDBWriterTestSuite) TestGetOutputPath() {
+	outputPath := suite.tempDir + "/test_get_output_path.parquet"
+	writer := NewDuckDBWriter(outputPath)
+
+	// GetOutputPath should return the configured output path
+	suite.Equal(outputPath, writer.GetOutputPath())
+}
+
 func (suite *DuckDBWriterTestSuite) TestInitialize() {
 	outputPath := suite.tempDir + "/test_init.parquet"
 	writer := NewDuckDBWriter(outputPath)
