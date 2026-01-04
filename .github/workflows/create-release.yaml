@@ -6,7 +6,7 @@ jobs:
   # Step 1: Determine the next version using semantic-release dry-run
   get-version:
     name: Get Next Version
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       version: v${{ steps.semantic.outputs.new_release_version }}
       release_notes: ${{ steps.semantic.outputs.new_release_notes }}
@@ -109,7 +109,7 @@ jobs:
   build-linux-binaries:
     name: Build Linux Binaries
     needs: [get-version]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
