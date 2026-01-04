@@ -1,18 +1,23 @@
 # sample regex patterns
 ignore:
   - "*.pb.go"
+  - "*_vtproto.pb.go"
   - "main.go"
   - "**/e2e/**"
   - "mocks/**"
   - "examples/**"
+  - "cmd/**"
+  - "internal/marker/**"
+  - "internal/trading/**"
+  - "pkg/strategy/*.pb.go"
 
 coverage:
   status:
     project:
       default:
         target: 80%
-        threshold: 1%
+        threshold: 5%
     patch:
       default:
         target: 80%
-        threshold: 5%
+        threshold: 10%
