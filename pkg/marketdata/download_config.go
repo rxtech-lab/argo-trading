@@ -8,6 +8,18 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+const dateOnlyLayout = "2006-01-02"
+
+// parseDate parses a date string in either YYYY-MM-DD or RFC3339 format.
+func parseDate(dateStr string) (time.Time, error) {
+	// Try date-only format first
+	if t, err := time.Parse(dateOnlyLayout, dateStr); err == nil {
+		return t, nil
+	}
+	// Fall back to RFC3339
+	return time.Parse(time.RFC3339, dateStr)
+}
+
 // BaseDownloadConfig contains common fields for all download configurations.
 type BaseDownloadConfig struct {
 	Ticker    string `json:"ticker" jsonschema:"title=Ticker,description=The trading symbol to download data for (e.g. SPY or BTCUSDT),required" validate:"required"`
@@ -37,12 +49,12 @@ func (c *BaseDownloadConfig) Validate() error {
 	}
 
 	// Validate date formats
-	if _, err := time.Parse(time.RFC3339, c.StartDate); err != nil {
-		return fmt.Errorf("invalid startDate format, expected RFC3339: %w", err)
+	if _, err := parseDate(c.StartDate); err != nil {
+		return fmt.Errorf("invalid startDate format, expected YYYY-MM-DD or RFC3339: %w", err)
 	}
 
-	if _, err := time.Parse(time.RFC3339, c.EndDate); err != nil {
-		return fmt.Errorf("invalid endDate format, expected RFC3339: %w", err)
+	if _, err := parseDate(c.EndDate); err != nil {
+		return fmt.Errorf("invalid endDate format, expected YYYY-MM-DD or RFC3339: %w", err)
 	}
 
 	return nil
@@ -65,12 +77,12 @@ func (c *BinanceDownloadConfig) Validate() error {
 
 // ToDownloadParams converts a BaseDownloadConfig to DownloadParams.
 func (c *BaseDownloadConfig) ToDownloadParams() (DownloadParams, error) {
-	startDate, err := time.Parse(time.RFC3339, c.StartDate)
+	startDate, err := parseDate(c.StartDate)
 	if err != nil {
 		return DownloadParams{}, fmt.Errorf("failed to parse startDate: %w", err)
 	}
 
-	endDate, err := time.Parse(time.RFC3339, c.EndDate)
+	endDate, err := parseDate(c.EndDate)
 	if err != nil {
 		return DownloadParams{}, fmt.Errorf("failed to parse endDate: %w", err)
 	}
