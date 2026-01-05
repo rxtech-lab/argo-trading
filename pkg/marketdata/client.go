@@ -88,8 +88,8 @@ func NewClient(config ClientConfig, onProgress provider.OnDownloadProgress) (*Cl
 }
 
 // NewClientFromPolygonConfig creates a new client from a PolygonDownloadConfig.
-func NewClientFromPolygonConfig(config *PolygonDownloadConfig, onProgress provider.OnDownloadProgress) (*Client, DownloadParams, error) {
-	clientConfig := config.ToClientConfig()
+func NewClientFromPolygonConfig(config *PolygonDownloadConfig, dataPath string, onProgress provider.OnDownloadProgress) (*Client, DownloadParams, error) {
+	clientConfig := config.ToClientConfig(dataPath)
 
 	client, err := NewClient(clientConfig, onProgress)
 	if err != nil {
@@ -105,8 +105,8 @@ func NewClientFromPolygonConfig(config *PolygonDownloadConfig, onProgress provid
 }
 
 // NewClientFromBinanceConfig creates a new client from a BinanceDownloadConfig.
-func NewClientFromBinanceConfig(config *BinanceDownloadConfig, onProgress provider.OnDownloadProgress) (*Client, DownloadParams, error) {
-	clientConfig := config.ToClientConfig()
+func NewClientFromBinanceConfig(config *BinanceDownloadConfig, dataPath string, onProgress provider.OnDownloadProgress) (*Client, DownloadParams, error) {
+	clientConfig := config.ToClientConfig(dataPath)
 
 	client, err := NewClient(clientConfig, onProgress)
 	if err != nil {
