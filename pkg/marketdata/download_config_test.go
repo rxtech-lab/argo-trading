@@ -278,6 +278,15 @@ func (suite *DownloadConfigTestSuite) TestBinanceConfigJSONSchema() {
 	suite.Contains(properties, "interval")
 	suite.NotContains(properties, "dataPath") // dataPath is now a separate parameter
 
+	endtime, ok := properties["endDate"].(map[string]interface{})
+	suite.True(ok, "schema should have endDate")
+	suite.Contains(endtime, "format")
+	suite.Equal("date", endtime["format"])
+
+	starttime, ok := properties["startDate"].(map[string]interface{})
+	suite.True(ok, "schema should have startDate")
+	suite.Contains(starttime, "format")
+	suite.Equal("date", starttime["format"])
 	// Binance should not have apiKey in schema
 	suite.NotContains(properties, "apiKey")
 }
