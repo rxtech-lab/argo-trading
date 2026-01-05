@@ -53,8 +53,9 @@ func NewMarketDownloader(helper MarketDownloaderHelper) *MarketDownloader {
 
 // DownloadWithConfig downloads market data using a JSON configuration.
 // The configJSON must conform to the schema returned by GetDownloadClientSchema() for the given provider.
+// The dataFolder parameter specifies the directory path where downloaded data will be saved.
 // This method is blocking. Can be cancelled by calling Cancel() from another goroutine.
-func (m *MarketDownloader) DownloadWithConfig(providerName string, configJSON string) error {
+func (m *MarketDownloader) DownloadWithConfig(providerName string, configJSON string, dataFolder string) error {
 	// Create cancellable context
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -85,7 +86,7 @@ func (m *MarketDownloader) DownloadWithConfig(providerName string, configJSON st
 			return fmt.Errorf("failed to parse polygon config: %w", err)
 		}
 
-		client, params, err := marketdata.NewClientFromPolygonConfig(config, onProgress)
+		client, params, err := marketdata.NewClientFromPolygonConfig(config, dataFolder, onProgress)
 		if err != nil {
 			return fmt.Errorf("failed to create client: %w", err)
 		}
@@ -98,7 +99,7 @@ func (m *MarketDownloader) DownloadWithConfig(providerName string, configJSON st
 			return fmt.Errorf("failed to parse binance config: %w", err)
 		}
 
-		client, params, err := marketdata.NewClientFromBinanceConfig(config, onProgress)
+		client, params, err := marketdata.NewClientFromBinanceConfig(config, dataFolder, onProgress)
 		if err != nil {
 			return fmt.Errorf("failed to create client: %w", err)
 		}

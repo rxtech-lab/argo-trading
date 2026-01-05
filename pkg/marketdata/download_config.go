@@ -11,10 +11,9 @@ import (
 // BaseDownloadConfig contains common fields for all download configurations.
 type BaseDownloadConfig struct {
 	Ticker    string `json:"ticker" jsonschema:"title=Ticker,description=The trading symbol to download data for (e.g. SPY or BTCUSDT),required" validate:"required"`
-	StartDate string `json:"startDate" jsonschema:"title=Start Date,description=Start date in RFC3339 format (e.g. 2024-01-01T00:00:00Z),required" validate:"required"`
-	EndDate   string `json:"endDate" jsonschema:"title=End Date,description=End date in RFC3339 format (e.g. 2024-12-31T23:59:59Z),required" validate:"required"`
+	StartDate string `json:"startDate" jsonschema:"title=Start Date,description=Start date time,format=date-time,required" validate:"required"`
+	EndDate   string `json:"endDate" jsonschema:"title=End Date,description=End date time,format=date-time,required" validate:"required"`
 	Interval  string `json:"interval" jsonschema:"title=Interval,description=Data interval,required,enum=1s,enum=1m,enum=3m,enum=5m,enum=15m,enum=30m,enum=1h,enum=2h,enum=4h,enum=6h,enum=8h,enum=12h,enum=1d,enum=3d,enum=1w,enum=1M" validate:"required,oneof=1s 1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 3d 1w 1M"`
-	DataPath  string `json:"dataPath" jsonschema:"title=Data Path,description=Directory path where downloaded data will be saved,required" validate:"required"`
 }
 
 // PolygonDownloadConfig contains configuration for downloading from Polygon.io.
@@ -88,21 +87,21 @@ func (c *BaseDownloadConfig) ToDownloadParams() (DownloadParams, error) {
 }
 
 // ToClientConfig converts a PolygonDownloadConfig to ClientConfig.
-func (c *PolygonDownloadConfig) ToClientConfig() ClientConfig {
+func (c *PolygonDownloadConfig) ToClientConfig(dataPath string) ClientConfig {
 	return ClientConfig{
 		ProviderType:  ProviderPolygon,
 		WriterType:    WriterDuckDB,
-		DataPath:      c.DataPath,
+		DataPath:      dataPath,
 		PolygonApiKey: c.ApiKey,
 	}
 }
 
 // ToClientConfig converts a BinanceDownloadConfig to ClientConfig.
-func (c *BinanceDownloadConfig) ToClientConfig() ClientConfig {
+func (c *BinanceDownloadConfig) ToClientConfig(dataPath string) ClientConfig {
 	return ClientConfig{
 		ProviderType:  ProviderBinance,
 		WriterType:    WriterDuckDB,
-		DataPath:      c.DataPath,
+		DataPath:      dataPath,
 		PolygonApiKey: "",
 	}
 }

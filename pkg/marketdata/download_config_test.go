@@ -22,7 +22,6 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_Valid() {
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1d",
-			DataPath:  "/tmp/data",
 		},
 		ApiKey: "test-api-key",
 	}
@@ -38,7 +37,6 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_MissingTicker(
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1d",
-			DataPath:  "/tmp/data",
 		},
 		ApiKey: "test-api-key",
 	}
@@ -55,7 +53,6 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_MissingApiKey(
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1d",
-			DataPath:  "/tmp/data",
 		},
 		ApiKey: "",
 	}
@@ -72,7 +69,6 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_InvalidInterva
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "invalid",
-			DataPath:  "/tmp/data",
 		},
 		ApiKey: "test-api-key",
 	}
@@ -89,7 +85,6 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_InvalidDateFor
 			StartDate: "2024-01-01", // Missing time component
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1d",
-			DataPath:  "/tmp/data",
 		},
 		ApiKey: "test-api-key",
 	}
@@ -106,7 +101,6 @@ func (suite *DownloadConfigTestSuite) TestBinanceConfigValidation_Valid() {
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1h",
-			DataPath:  "/tmp/data",
 		},
 	}
 
@@ -121,7 +115,6 @@ func (suite *DownloadConfigTestSuite) TestBinanceConfigValidation_MissingFields(
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1h",
-			DataPath:  "/tmp/data",
 		},
 	}
 
@@ -135,7 +128,6 @@ func (suite *DownloadConfigTestSuite) TestParsePolygonConfig_Valid() {
 		"startDate": "2024-01-01T00:00:00Z",
 		"endDate": "2024-12-31T23:59:59Z",
 		"interval": "1d",
-		"dataPath": "/tmp/data",
 		"apiKey": "test-api-key"
 	}`
 
@@ -158,8 +150,7 @@ func (suite *DownloadConfigTestSuite) TestParsePolygonConfig_MissingRequiredFiel
 		"ticker": "SPY",
 		"startDate": "2024-01-01T00:00:00Z",
 		"endDate": "2024-12-31T23:59:59Z",
-		"interval": "1d",
-		"dataPath": "/tmp/data"
+		"interval": "1d"
 	}`
 
 	_, err := ParsePolygonConfig(jsonConfig)
@@ -172,8 +163,7 @@ func (suite *DownloadConfigTestSuite) TestParseBinanceConfig_Valid() {
 		"ticker": "BTCUSDT",
 		"startDate": "2024-01-01T00:00:00Z",
 		"endDate": "2024-12-31T23:59:59Z",
-		"interval": "1h",
-		"dataPath": "/tmp/data"
+		"interval": "1h"
 	}`
 
 	config, err := ParseBinanceConfig(jsonConfig)
@@ -188,7 +178,6 @@ func (suite *DownloadConfigTestSuite) TestToDownloadParams() {
 		StartDate: "2024-01-01T00:00:00Z",
 		EndDate:   "2024-12-31T23:59:59Z",
 		Interval:  "1d",
-		DataPath:  "/tmp/data",
 	}
 
 	params, err := config.ToDownloadParams()
@@ -204,12 +193,11 @@ func (suite *DownloadConfigTestSuite) TestPolygonToClientConfig() {
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1d",
-			DataPath:  "/tmp/data",
 		},
 		ApiKey: "test-api-key",
 	}
 
-	clientConfig := config.ToClientConfig()
+	clientConfig := config.ToClientConfig("/tmp/data")
 	suite.Equal(ProviderPolygon, clientConfig.ProviderType)
 	suite.Equal(WriterDuckDB, clientConfig.WriterType)
 	suite.Equal("/tmp/data", clientConfig.DataPath)
@@ -223,11 +211,10 @@ func (suite *DownloadConfigTestSuite) TestBinanceToClientConfig() {
 			StartDate: "2024-01-01T00:00:00Z",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1h",
-			DataPath:  "/tmp/data",
 		},
 	}
 
-	clientConfig := config.ToClientConfig()
+	clientConfig := config.ToClientConfig("/tmp/data")
 	suite.Equal(ProviderBinance, clientConfig.ProviderType)
 	suite.Equal(WriterDuckDB, clientConfig.WriterType)
 	suite.Equal("/tmp/data", clientConfig.DataPath)
@@ -243,7 +230,6 @@ func (suite *DownloadConfigTestSuite) TestAllIntervals() {
 				StartDate: "2024-01-01T00:00:00Z",
 				EndDate:   "2024-12-31T23:59:59Z",
 				Interval:  interval,
-				DataPath:  "/tmp/data",
 			},
 		}
 
@@ -269,7 +255,7 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigJSONSchema() {
 	suite.Contains(properties, "startDate")
 	suite.Contains(properties, "endDate")
 	suite.Contains(properties, "interval")
-	suite.Contains(properties, "dataPath")
+	suite.NotContains(properties, "dataPath") // dataPath is now a separate parameter
 	suite.Contains(properties, "apiKey")
 }
 
@@ -290,7 +276,7 @@ func (suite *DownloadConfigTestSuite) TestBinanceConfigJSONSchema() {
 	suite.Contains(properties, "startDate")
 	suite.Contains(properties, "endDate")
 	suite.Contains(properties, "interval")
-	suite.Contains(properties, "dataPath")
+	suite.NotContains(properties, "dataPath") // dataPath is now a separate parameter
 
 	// Binance should not have apiKey in schema
 	suite.NotContains(properties, "apiKey")
