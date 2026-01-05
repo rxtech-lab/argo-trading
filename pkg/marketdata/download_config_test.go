@@ -82,7 +82,7 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_InvalidDateFor
 	config := &PolygonDownloadConfig{
 		BaseDownloadConfig: BaseDownloadConfig{
 			Ticker:    "SPY",
-			StartDate: "2024-01-01", // Missing time component
+			StartDate: "invalid-date",
 			EndDate:   "2024-12-31T23:59:59Z",
 			Interval:  "1d",
 		},
@@ -92,6 +92,68 @@ func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_InvalidDateFor
 	err := config.Validate()
 	suite.Error(err)
 	suite.Contains(err.Error(), "startDate")
+}
+
+func (suite *DownloadConfigTestSuite) TestPolygonConfigValidation_DateOnlyFormat() {
+	config := &PolygonDownloadConfig{
+		BaseDownloadConfig: BaseDownloadConfig{
+			Ticker:    "SPY",
+			StartDate: "2024-01-01",
+			EndDate:   "2024-12-31",
+			Interval:  "1d",
+		},
+		ApiKey: "test-api-key",
+	}
+
+	err := config.Validate()
+	suite.NoError(err)
+}
+
+func (suite *DownloadConfigTestSuite) TestBinanceConfigValidation_DateOnlyFormat() {
+	config := &BinanceDownloadConfig{
+		BaseDownloadConfig: BaseDownloadConfig{
+			Ticker:    "BTCUSDT",
+			StartDate: "2024-01-01",
+			EndDate:   "2024-12-31",
+			Interval:  "1h",
+		},
+	}
+
+	err := config.Validate()
+	suite.NoError(err)
+}
+
+func (suite *DownloadConfigTestSuite) TestToDownloadParams_DateOnlyFormat() {
+	config := &BaseDownloadConfig{
+		Ticker:    "SPY",
+		StartDate: "2024-01-01",
+		EndDate:   "2024-12-31",
+		Interval:  "1d",
+	}
+
+	params, err := config.ToDownloadParams()
+	suite.NoError(err)
+	suite.Equal("SPY", params.Ticker)
+	suite.Equal(2024, params.StartDate.Year())
+	suite.Equal(1, int(params.StartDate.Month()))
+	suite.Equal(1, params.StartDate.Day())
+	suite.Equal(2024, params.EndDate.Year())
+	suite.Equal(12, int(params.EndDate.Month()))
+	suite.Equal(31, params.EndDate.Day())
+}
+
+func (suite *DownloadConfigTestSuite) TestParseBinanceConfig_DateOnlyFormat() {
+	jsonConfig := `{
+		"ticker": "BTCUSDT",
+		"startDate": "2024-01-01",
+		"endDate": "2024-12-31",
+		"interval": "1h"
+	}`
+
+	config, err := ParseBinanceConfig(jsonConfig)
+	suite.NoError(err)
+	suite.Equal("BTCUSDT", config.Ticker)
+	suite.Equal("2024-01-01", config.StartDate)
 }
 
 func (suite *DownloadConfigTestSuite) TestBinanceConfigValidation_Valid() {
