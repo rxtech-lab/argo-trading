@@ -125,3 +125,10 @@ func (s *PlaceOrderStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetC
 	}
 	return &strategy.GetConfigSchemaResponse{Schema: schema}, nil
 }
+
+// GetIdentifier implements strategy.TradingStrategy.
+func (s *PlaceOrderStrategy) GetIdentifier(_ context.Context, _ *strategy.GetIdentifierRequest) (*strategy.GetIdentifierResponse, error) {
+	return &strategy.GetIdentifierResponse{
+		Identifier: "com.argo-trading.e2e.place-order",
+	}, nil
+}

@@ -143,3 +143,10 @@ func (s *ConsecutiveCandlesStrategy) GetDescription(_ context.Context, _ *strate
 		Description: "A strategy that buys on 2 consecutive up candles and sells on 2 consecutive down candles",
 	}, nil
 }
+
+// GetIdentifier implements strategy.TradingStrategy.
+func (s *ConsecutiveCandlesStrategy) GetIdentifier(_ context.Context, _ *strategy.GetIdentifierRequest) (*strategy.GetIdentifierResponse, error) {
+	return &strategy.GetIdentifierResponse{
+		Identifier: "com.argo-trading.examples.consecutive-candles",
+	}, nil
+}

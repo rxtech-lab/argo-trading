@@ -45,6 +45,10 @@ func (m *MockStrategy) GetRuntimeEngineVersion() (string, error) {
 	return "1.0.0", nil
 }
 
+func (m *MockStrategy) GetIdentifier() (string, error) {
+	return "com.test.mock-strategy", nil
+}
+
 // UtilsTestSuite is a test suite for utils package
 type UtilsTestSuite struct {
 	suite.Suite

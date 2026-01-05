@@ -612,6 +612,38 @@ func (x *NameResponse) GetName() string {
 	return ""
 }
 
+// GetIdentifierRequest is an empty request for getting the strategy identifier
+type GetIdentifierRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *GetIdentifierRequest) ProtoReflect() protoreflect.Message {
+	panic(`not implemented`)
+}
+
+// GetIdentifierResponse contains the strategy identifier
+type GetIdentifierResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Unique identifier for the strategy (e.g., "com.example.strategy.sma")
+	Identifier string `protobuf:"bytes,1,opt,name=identifier,proto3" json:"identifier,omitempty"`
+}
+
+func (x *GetIdentifierResponse) ProtoReflect() protoreflect.Message {
+	panic(`not implemented`)
+}
+
+func (x *GetIdentifierResponse) GetIdentifier() string {
+	if x != nil {
+		return x.Identifier
+	}
+	return ""
+}
+
 type GetRangeRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1948,6 +1980,8 @@ type TradingStrategy interface {
 	GetConfigSchema(context.Context, *GetConfigSchemaRequest) (*GetConfigSchemaResponse, error)
 	// GetDescription returns a description of the strategy
 	GetDescription(context.Context, *GetDescriptionRequest) (*GetDescriptionResponse, error)
+	// GetIdentifier returns the unique identifier for the strategy (e.g., "com.example.strategy")
+	GetIdentifier(context.Context, *GetIdentifierRequest) (*GetIdentifierResponse, error)
 }
 
 // StrategyApi defines all the functions that the host provides to the plugin

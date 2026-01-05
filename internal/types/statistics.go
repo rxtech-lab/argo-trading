@@ -43,6 +43,16 @@ type TradeResult struct {
 	MaxDrawdown float64 `yaml:"max_drawdown"`
 }
 
+// StrategyInfo contains metadata about the strategy that generated stats.
+type StrategyInfo struct {
+	// ID is the unique identifier for the strategy (e.g., "com.example.strategy.sma")
+	ID string `yaml:"id" json:"id"`
+	// Version is the version of the strategy (from GetRuntimeEngineVersion)
+	Version string `yaml:"version" json:"version"`
+	// Name is the human-readable name of the strategy
+	Name string `yaml:"name" json:"name"`
+}
+
 type TradeStats struct {
 	// ID is the unique identifier for this backtest run.
 	ID string `yaml:"id" json:"id"`
@@ -66,6 +76,8 @@ type TradeStats struct {
 	OrdersFilePath string `yaml:"orders_file_path" json:"orders_file_path"`
 	// MarksFilePath is the path to the marks parquet file.
 	MarksFilePath string `yaml:"marks_file_path" json:"marks_file_path"`
+	// Strategy contains metadata about the strategy that generated these stats.
+	Strategy StrategyInfo `yaml:"strategy" json:"strategy"`
 	// StrategyPath is the path to the strategy WASM file.
 	StrategyPath string `yaml:"strategy_path" json:"strategy_path"`
 	// DataPath is the path to the market data file used for this backtest.

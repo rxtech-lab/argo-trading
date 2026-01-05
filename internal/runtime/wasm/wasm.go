@@ -158,6 +158,26 @@ func (s *StrategyWasmRuntime) GetRuntimeEngineVersion() (string, error) {
 	return "", nil
 }
 
+// GetIdentifier returns the unique identifier for the strategy (e.g., "com.example.strategy").
+// This method is required - strategies that don't implement it will fail to load.
+func (s *StrategyWasmRuntime) GetIdentifier() (string, error) {
+	if s.strategy == nil {
+		return "", errors.New(errors.ErrCodeStrategyNotLoaded, "strategy is not initialized, call InitializeApi first")
+	}
+
+	identifier, err := s.strategy.GetIdentifier(context.Background(), &strategy.GetIdentifierRequest{})
+	if err != nil {
+		return "", errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to get strategy identifier", err)
+	}
+
+	// Validate required field
+	if identifier.Identifier == "" {
+		return "", errors.New(errors.ErrCodeInvalidConfiguration, "strategy identifier is required but was empty")
+	}
+
+	return identifier.Identifier, nil
+}
+
 func (s *StrategyWasmRuntime) loadPlugin(ctx context.Context, api strategy.StrategyApi) (strategy.TradingStrategy, error) {
 	p, err := strategy.NewTradingStrategyPlugin(ctx)
 	if err != nil {
