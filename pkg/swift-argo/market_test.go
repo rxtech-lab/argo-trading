@@ -110,7 +110,7 @@ func (suite *MarketTestSuite) TestDownloadWithConfig_InvalidProvider() {
 	helper := &mockDownloaderHelper{}
 	downloader := NewMarketDownloader(helper)
 
-	err := downloader.DownloadWithConfig("invalid", `{}`)
+	err := downloader.DownloadWithConfig("invalid", `{}`, "/tmp/data")
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "unsupported provider")
@@ -120,7 +120,7 @@ func (suite *MarketTestSuite) TestDownloadWithConfig_InvalidJSON() {
 	helper := &mockDownloaderHelper{}
 	downloader := NewMarketDownloader(helper)
 
-	err := downloader.DownloadWithConfig("polygon", `{invalid json}`)
+	err := downloader.DownloadWithConfig("polygon", `{invalid json}`, "/tmp/data")
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to parse")
@@ -135,11 +135,10 @@ func (suite *MarketTestSuite) TestDownloadWithConfig_MissingRequiredFields_Polyg
 		"ticker": "SPY",
 		"startDate": "2024-01-01T00:00:00Z",
 		"endDate": "2024-12-31T23:59:59Z",
-		"interval": "1d",
-		"dataPath": "/tmp/data"
+		"interval": "1d"
 	}`
 
-	err := downloader.DownloadWithConfig("polygon", jsonConfig)
+	err := downloader.DownloadWithConfig("polygon", jsonConfig, "/tmp/data")
 
 	suite.Error(err)
 }
@@ -152,11 +151,10 @@ func (suite *MarketTestSuite) TestDownloadWithConfig_MissingRequiredFields_Binan
 	jsonConfig := `{
 		"startDate": "2024-01-01T00:00:00Z",
 		"endDate": "2024-12-31T23:59:59Z",
-		"interval": "1h",
-		"dataPath": "/tmp/data"
+		"interval": "1h"
 	}`
 
-	err := downloader.DownloadWithConfig("binance", jsonConfig)
+	err := downloader.DownloadWithConfig("binance", jsonConfig, "/tmp/data")
 
 	suite.Error(err)
 }
