@@ -258,3 +258,10 @@ func (s *SimpleMAStrategy) GetConfigSchema(_ context.Context, _ *strategy.GetCon
 
 	return &strategy.GetConfigSchemaResponse{Schema: schema}, nil
 }
+
+// GetIdentifier implements strategy.TradingStrategy.
+func (s *SimpleMAStrategy) GetIdentifier(_ context.Context, _ *strategy.GetIdentifierRequest) (*strategy.GetIdentifierResponse, error) {
+	return &strategy.GetIdentifierResponse{
+		Identifier: "com.argo-trading.e2e.simple-ma",
+	}, nil
+}

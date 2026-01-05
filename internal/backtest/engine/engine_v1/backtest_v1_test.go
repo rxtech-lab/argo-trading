@@ -77,6 +77,7 @@ func TestBacktestEngineV1_Run(t *testing.T) {
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
 		mockDatasource.EXPECT().Initialize(gomock.Any()).DoAndReturn(func(path string) error {
@@ -178,6 +179,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		// Important: expect ProcessData to be called with exact data points in order
 		gomock.InOrder(
@@ -265,6 +267,7 @@ endTime: "2023-01-31T23:59:59Z"
 			return nil
 		}).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
 		mockDatasource.EXPECT().Initialize(gomock.Any()).DoAndReturn(func(path string) error {
@@ -365,6 +368,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		// Setup datasource expectations - make sure Initialize ignores the path and returns nil
 		mockDatasource.EXPECT().Initialize(gomock.Any()).DoAndReturn(func(path string) error {
@@ -703,6 +707,7 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
@@ -774,6 +779,7 @@ func TestBacktestEngineV1_SetConfigContent(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(`{"config": 2}`).Return(nil).Times(1)
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
@@ -1248,6 +1254,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
@@ -1311,6 +1318,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
