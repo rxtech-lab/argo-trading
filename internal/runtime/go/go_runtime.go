@@ -47,6 +47,11 @@ func (g *GoRuntime) GetRuntimeEngineVersion() (string, error) {
 	panic("unimplemented")
 }
 
+// GetIdentifier implements StrategyRuntime.
+func (g *GoRuntime) GetIdentifier() (string, error) {
+	panic("unimplemented")
+}
+
 func NewGoRuntime(strategy runtime.StrategyRuntime) runtime.StrategyRuntime {
 	return &GoRuntime{
 		strategy: strategy,

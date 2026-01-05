@@ -34,6 +34,11 @@ initial_capital: 10000
 		s.Require().Equal(stats[0].TradeResult.NumberOfTrades, 1)
 		s.Require().Equal(stats[0].Symbol, "AAPL")
 
+		// Verify strategy metadata is present in stats
+		s.Require().Equal("com.argo-trading.e2e.place-order", stats[0].Strategy.ID)
+		s.Require().NotEmpty(stats[0].Strategy.Version)
+		s.Require().Equal("PlaceOrderStrategy", stats[0].Strategy.Name)
+
 		// read trades
 		trades, err := testhelper.ReadTrades(&s.E2ETestSuite, tmpFolder)
 		s.Require().NoError(err)

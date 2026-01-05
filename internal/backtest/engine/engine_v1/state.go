@@ -546,40 +546,130 @@ func (b *BacktestState) Write(path string) error {
 	return nil
 }
 
-// GetStats returns the statistics of the backtest.
-// runID is the unique identifier for this backtest run.
-// tradesFilePath, ordersFilePath, and marksFilePath are the paths to the output files.
-func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath, dataPath string) ([]types.TradeStats, error) {
-	// Get all unique symbols that have trades using Squirrel
-	selectQuery := b.sq.
-		Select("DISTINCT symbol").
-		From("trades").
-		OrderBy("symbol").
-		RunWith(b.db)
-
-	rows, err := selectQuery.Query()
+// getStrategyInfo retrieves strategy metadata from the runtime.
+func getStrategyInfo(strategyRuntime runtime.StrategyRuntime) (types.StrategyInfo, error) {
+	identifier, err := strategyRuntime.GetIdentifier()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get unique symbols: %w", err)
+		return types.StrategyInfo{}, fmt.Errorf("failed to get strategy identifier: %w", err)
 	}
-	defer rows.Close()
 
-	// Collect symbols from trades
-	var tradeSymbols []string
+	version, err := strategyRuntime.GetRuntimeEngineVersion()
+	if err != nil {
+		return types.StrategyInfo{}, fmt.Errorf("failed to get strategy version: %w", err)
+	}
 
-	for rows.Next() {
-		var symbol string
-		if err := rows.Scan(&symbol); err != nil {
-			return nil, fmt.Errorf("failed to scan symbol: %w", err)
+	return types.StrategyInfo{
+		ID:      identifier,
+		Version: version,
+		Name:    strategyRuntime.Name(),
+	}, nil
+}
+
+// statsParams contains common parameters for creating TradeStats.
+type statsParams struct {
+	runID          string
+	tradesFilePath string
+	ordersFilePath string
+	marksFilePath  string
+	strategyInfo   types.StrategyInfo
+	strategyPath   string
+	dataPath       string
+}
+
+// createZeroStats creates a TradeStats with zero values for a symbol without trades.
+func createZeroStats(symbol string, params statsParams) types.TradeStats {
+	return types.TradeStats{
+		ID:        params.runID,
+		Timestamp: time.Now(),
+		Symbol:    symbol,
+		TradeResult: types.TradeResult{
+			NumberOfTrades:        0,
+			NumberOfWinningTrades: 0,
+			NumberOfLosingTrades:  0,
+			WinRate:               0,
+			MaxDrawdown:           0,
+		},
+		TotalFees: 0,
+		TradeHoldingTime: types.TradeHoldingTime{
+			Min: 0,
+			Max: 0,
+			Avg: 0,
+		},
+		TradePnl: types.TradePnl{
+			RealizedPnL:   0,
+			UnrealizedPnL: 0,
+			TotalPnL:      0,
+			MaximumLoss:   0,
+			MaximumProfit: 0,
+		},
+		BuyAndHoldPnl:  0,
+		TradesFilePath: params.tradesFilePath,
+		OrdersFilePath: params.ordersFilePath,
+		MarksFilePath:  params.marksFilePath,
+		Strategy:       params.strategyInfo,
+		StrategyPath:   params.strategyPath,
+		DataPath:       params.dataPath,
+	}
+}
+
+// calculateUnrealizedPnL calculates the unrealized PnL for an open position.
+func calculateUnrealizedPnL(position types.Position, lastPrice float64) types.TradePnl {
+	tradePnl := types.TradePnl{
+		RealizedPnL:   0,
+		UnrealizedPnL: 0,
+		TotalPnL:      0,
+		MaximumLoss:   0,
+		MaximumProfit: 0,
+	}
+
+	if position.TotalLongPositionQuantity > 0 {
+		entryDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(position.GetAverageLongPositionEntryPrice()))
+		exitDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(lastPrice))
+		unrealizedPnL, _ := exitDec.Sub(entryDec).Float64()
+		realizedPnl := position.GetTotalPnL()
+		tradePnl.TotalPnL = realizedPnl + unrealizedPnL
+		tradePnl.RealizedPnL = realizedPnl
+		tradePnl.UnrealizedPnL = unrealizedPnL
+	} else if position.TotalShortPositionQuantity < 0 {
+		shortQuantity := -position.TotalShortPositionQuantity
+
+		var entryPrice float64
+		if position.TotalShortOutPositionQuantity > 0 {
+			entryPrice = position.TotalShortOutPositionAmount / position.TotalShortOutPositionQuantity
 		}
 
-		tradeSymbols = append(tradeSymbols, symbol)
+		unrealizedPnL := (entryPrice - lastPrice) * shortQuantity
+		realizedPnl := position.GetTotalPnL()
+		tradePnl.TotalPnL = realizedPnl + unrealizedPnL
+		tradePnl.RealizedPnL = realizedPnl
+		tradePnl.UnrealizedPnL = unrealizedPnL
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating symbols: %w", err)
+	return tradePnl
+}
+
+// GetStats returns the statistics of the backtest for all symbols.
+func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath, dataPath string) ([]types.TradeStats, error) {
+	strategyInfo, err := getStrategyInfo(strategyRuntime)
+	if err != nil {
+		return nil, err
 	}
 
-	// If no trades, get symbols from market data
+	params := statsParams{
+		runID:          runID,
+		tradesFilePath: tradesFilePath,
+		ordersFilePath: ordersFilePath,
+		marksFilePath:  marksFilePath,
+		strategyInfo:   strategyInfo,
+		strategyPath:   strategyPath,
+		dataPath:       dataPath,
+	}
+
+	tradeSymbols, err := b.getTradeSymbols()
+	if err != nil {
+		return nil, err
+	}
+
 	symbols := tradeSymbols
 	if len(symbols) == 0 {
 		symbols, err = ctx.DataSource.GetAllSymbols()
@@ -588,7 +678,6 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 		}
 	}
 
-	// Create a set of trade symbols for quick lookup
 	tradeSymbolSet := make(map[string]bool)
 	for _, s := range tradeSymbols {
 		tradeSymbolSet[s] = true
@@ -597,153 +686,12 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, runID, tradesFilePa
 	stats := make([]types.TradeStats, 0, len(symbols))
 
 	for _, symbol := range symbols {
-		hasTrades := tradeSymbolSet[symbol]
-
-		// Get last market data for unrealized PnL calculation and holding time
-		lastData, err := ctx.DataSource.ReadLastData(symbol)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get last market data for %s: %w", symbol, err)
-		}
-
-		// If no trades for this symbol, return zero-value stats
-		if !hasTrades {
-			stats = append(stats, types.TradeStats{
-				ID:        runID,
-				Timestamp: time.Now(),
-				Symbol:    symbol,
-				TradeResult: types.TradeResult{
-					NumberOfTrades:        0,
-					NumberOfWinningTrades: 0,
-					NumberOfLosingTrades:  0,
-					WinRate:               0,
-					MaxDrawdown:           0,
-				},
-				TotalFees: 0,
-				TradeHoldingTime: types.TradeHoldingTime{
-					Min: 0,
-					Max: 0,
-					Avg: 0,
-				},
-				TradePnl: types.TradePnl{
-					RealizedPnL:   0,
-					UnrealizedPnL: 0,
-					TotalPnL:      0,
-					MaximumLoss:   0,
-					MaximumProfit: 0,
-				},
-				BuyAndHoldPnl:  0,
-				TradesFilePath: tradesFilePath,
-				OrdersFilePath: ordersFilePath,
-				MarksFilePath:  marksFilePath,
-				StrategyPath:   strategyPath,
-				DataPath:       dataPath,
-			})
-
-			continue
-		}
-
-		// Calculate trade result
-		tradeResult, err := b.calculateTradeResult(symbol)
+		stat, err := b.calculateSymbolStats(ctx, symbol, tradeSymbolSet[symbol], params)
 		if err != nil {
 			return nil, err
 		}
 
-		// Calculate holding time (uses lastData.Time for open positions)
-		holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time)
-		if err != nil {
-			return nil, err
-		}
-
-		// Calculate total fees
-		totalFees, err := b.calculateTotalFees(symbol)
-		if err != nil {
-			return nil, err
-		}
-
-		// Get current position
-		position, err := b.GetPosition(symbol)
-		if err != nil {
-			return nil, err
-		}
-
-		tradePnl := types.TradePnl{
-			RealizedPnL:   0,
-			UnrealizedPnL: 0,
-			TotalPnL:      0,
-			MaximumLoss:   0,
-			MaximumProfit: 0,
-		}
-
-		// Calculate unrealized PnL if there's an open position
-		if position.TotalLongPositionQuantity > 0 {
-			entryDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(position.GetAverageLongPositionEntryPrice()))
-			exitDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(lastData.Close))
-			unrealizedPnL, _ := exitDec.Sub(entryDec).Float64()
-			realizedPnl := position.GetTotalPnL()
-			tradePnl.TotalPnL = realizedPnl + unrealizedPnL
-			tradePnl.RealizedPnL = realizedPnl
-			tradePnl.UnrealizedPnL = unrealizedPnL
-		} else if position.TotalShortPositionQuantity < 0 {
-			// For short positions, profit is made when price goes down
-			// TotalShortPositionQuantity is negative for a short position
-			shortQuantity := -position.TotalShortPositionQuantity // Convert to positive for calculations
-
-			// For short positions, we don't use GetAverageShortPositionEntryPrice
-			// Instead calculate directly from the position data and our knowledge that
-			// for our specific test with short positions, the entry price is simply the price
-			// of the first sell order
-			var entryPrice float64
-			if position.TotalShortOutPositionQuantity > 0 {
-				entryPrice = position.TotalShortOutPositionAmount / position.TotalShortOutPositionQuantity
-			}
-
-			// Calculate UnrealizedPnL = (entryPrice - lastPrice) * quantity
-			unrealizedPnL := (entryPrice - lastData.Close) * shortQuantity
-
-			realizedPnl := position.GetTotalPnL()
-			tradePnl.TotalPnL = realizedPnl + unrealizedPnL
-			tradePnl.RealizedPnL = realizedPnl
-			tradePnl.UnrealizedPnL = unrealizedPnL
-		}
-
-		// Calculate maximum loss and maximum profit using Squirrel
-		maxLossProfit := b.sq.
-			Select("COALESCE(MIN(pnl), 0) as max_loss", "COALESCE(MAX(pnl), 0) as max_profit").
-			From("trades").
-			Where(squirrel.Eq{"symbol": symbol}).
-			RunWith(b.db)
-
-		var maxLoss, maxProfit float64
-
-		err = maxLossProfit.QueryRow().Scan(&maxLoss, &maxProfit)
-		if err != nil {
-			return nil, fmt.Errorf("failed to calculate max loss/profit: %w", err)
-		}
-
-		tradePnl.MaximumLoss = maxLoss
-		tradePnl.MaximumProfit = maxProfit
-
-		// Calculate Buy-and-Hold PnL
-		buyAndHoldPnl, err := b.calculateBuyAndHoldPnL(symbol, ctx.DataSource)
-		if err != nil {
-			return nil, fmt.Errorf("failed to calculate buy-and-hold PnL: %w", err)
-		}
-
-		stats = append(stats, types.TradeStats{
-			ID:               runID,
-			Timestamp:        time.Now(),
-			Symbol:           symbol,
-			TradeResult:      tradeResult,
-			TotalFees:        totalFees,
-			TradeHoldingTime: holdingTime,
-			TradePnl:         tradePnl,
-			BuyAndHoldPnl:    buyAndHoldPnl,
-			TradesFilePath:   tradesFilePath,
-			OrdersFilePath:   ordersFilePath,
-			MarksFilePath:    marksFilePath,
-			StrategyPath:     strategyPath,
-			DataPath:         dataPath,
-		})
+		stats = append(stats, stat)
 	}
 
 	return stats, nil
@@ -1125,4 +1073,116 @@ func (b *BacktestState) calculateBuyAndHoldPnL(symbol string, ds datasource.Data
 	}
 
 	return buyAndHoldPnl, nil
+}
+
+// getTradeSymbols returns all unique symbols that have trades in the database.
+func (b *BacktestState) getTradeSymbols() ([]string, error) {
+	selectQuery := b.sq.
+		Select("DISTINCT symbol").
+		From("trades").
+		OrderBy("symbol").
+		RunWith(b.db)
+
+	rows, err := selectQuery.Query()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unique symbols: %w", err)
+	}
+	defer rows.Close()
+
+	var symbols []string
+
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			return nil, fmt.Errorf("failed to scan symbol: %w", err)
+		}
+
+		symbols = append(symbols, symbol)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating symbols: %w", err)
+	}
+
+	return symbols, nil
+}
+
+// calculateMaxLossProfit retrieves the maximum loss and profit for a symbol.
+func (b *BacktestState) calculateMaxLossProfit(symbol string) (maxLoss, maxProfit float64, err error) {
+	query := b.sq.
+		Select("COALESCE(MIN(pnl), 0) as max_loss", "COALESCE(MAX(pnl), 0) as max_profit").
+		From("trades").
+		Where(squirrel.Eq{"symbol": symbol}).
+		RunWith(b.db)
+
+	err = query.QueryRow().Scan(&maxLoss, &maxProfit)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to calculate max loss/profit: %w", err)
+	}
+
+	return maxLoss, maxProfit, nil
+}
+
+// calculateSymbolStats calculates trade statistics for a single symbol.
+func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol string, hasTrades bool, params statsParams) (types.TradeStats, error) {
+	lastData, err := ctx.DataSource.ReadLastData(symbol)
+	if err != nil {
+		return types.TradeStats{}, fmt.Errorf("failed to get last market data for %s: %w", symbol, err)
+	}
+
+	if !hasTrades {
+		return createZeroStats(symbol, params), nil
+	}
+
+	tradeResult, err := b.calculateTradeResult(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	totalFees, err := b.calculateTotalFees(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	position, err := b.GetPosition(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	tradePnl := calculateUnrealizedPnL(position, lastData.Close)
+
+	maxLoss, maxProfit, err := b.calculateMaxLossProfit(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	tradePnl.MaximumLoss = maxLoss
+	tradePnl.MaximumProfit = maxProfit
+
+	buyAndHoldPnl, err := b.calculateBuyAndHoldPnL(symbol, ctx.DataSource)
+	if err != nil {
+		return types.TradeStats{}, fmt.Errorf("failed to calculate buy-and-hold PnL: %w", err)
+	}
+
+	return types.TradeStats{
+		ID:               params.runID,
+		Timestamp:        time.Now(),
+		Symbol:           symbol,
+		TradeResult:      tradeResult,
+		TotalFees:        totalFees,
+		TradeHoldingTime: holdingTime,
+		TradePnl:         tradePnl,
+		BuyAndHoldPnl:    buyAndHoldPnl,
+		TradesFilePath:   params.tradesFilePath,
+		OrdersFilePath:   params.ordersFilePath,
+		MarksFilePath:    params.marksFilePath,
+		Strategy:         params.strategyInfo,
+		StrategyPath:     params.strategyPath,
+		DataPath:         params.dataPath,
+	}, nil
 }

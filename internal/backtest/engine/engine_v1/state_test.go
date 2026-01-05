@@ -13,9 +13,22 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/mocks"
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 )
+
+// testMockStrategyRuntime is a mock implementation of StrategyRuntime for state tests
+type testMockStrategyRuntime struct{}
+
+func (m *testMockStrategyRuntime) Initialize(config string) error               { return nil }
+func (m *testMockStrategyRuntime) InitializeApi(api strategy.StrategyApi) error { return nil }
+func (m *testMockStrategyRuntime) ProcessData(data types.MarketData) error      { return nil }
+func (m *testMockStrategyRuntime) GetConfigSchema() (string, error)             { return "", nil }
+func (m *testMockStrategyRuntime) Name() string                                 { return "TestStrategy" }
+func (m *testMockStrategyRuntime) GetDescription() (string, error)              { return "Test", nil }
+func (m *testMockStrategyRuntime) GetRuntimeEngineVersion() (string, error)     { return "1.0.0", nil }
+func (m *testMockStrategyRuntime) GetIdentifier() (string, error)               { return "com.test.state-test", nil }
 
 // BacktestStateTestSuite is a test suite for BacktestState
 type BacktestStateTestSuite struct {
@@ -734,9 +747,10 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 			}
 
 			// Get stats
+			mockStrategy := &testMockStrategyRuntime{}
 			stats, err := suite.state.GetStats(runtime.RuntimeContext{
 				DataSource: mockSource,
-			}, "test-run-id", "/path/to/trades.parquet", "/path/to/orders.parquet", "/path/to/marks.parquet", "/path/to/strategy.wasm", "/path/to/data.parquet")
+			}, mockStrategy, "test-run-id", "/path/to/trades.parquet", "/path/to/orders.parquet", "/path/to/marks.parquet", "/path/to/strategy.wasm", "/path/to/data.parquet")
 			if tc.expectError {
 				suite.Assert().Error(err)
 				return

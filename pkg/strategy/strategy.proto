@@ -31,6 +31,8 @@ service TradingStrategy {
   rpc GetConfigSchema(GetConfigSchemaRequest) returns (GetConfigSchemaResponse) {}
   // GetDescription returns a description of the strategy
   rpc GetDescription(GetDescriptionRequest) returns (GetDescriptionResponse) {}
+  // GetIdentifier returns the unique identifier for the strategy (e.g., "com.example.strategy")
+  rpc GetIdentifier(GetIdentifierRequest) returns (GetIdentifierResponse) {}
 }
 
 message GetConfigSchemaRequest {}
@@ -61,6 +63,15 @@ message NameRequest {}
 // NameResponse contains the strategy name
 message NameResponse {
   string name = 1;
+}
+
+// GetIdentifierRequest is an empty request for getting the strategy identifier
+message GetIdentifierRequest {}
+
+// GetIdentifierResponse contains the strategy identifier
+message GetIdentifierResponse {
+  // Unique identifier for the strategy (e.g., "com.example.strategy.sma")
+  string identifier = 1;
 }
 
 // StrategyApi defines all the functions that the host provides to the plugin

@@ -58,9 +58,13 @@ func (s *MultipleDataTestSuite) TestPlaceOrderStrategyWithMultipleData() {
 		s.Require().NoError(err)
 		s.Require().Equal(len(stats), 3)
 
-		// make sure each trade, num of trades > 0
+		// make sure each trade, num of trades > 0 and strategy metadata is present
 		for _, stat := range stats {
 			s.Require().Greater(stat.TradeResult.NumberOfTrades, 0)
+			// Verify strategy metadata is present in each stat
+			s.Require().Equal("com.argo-trading.e2e.place-order", stat.Strategy.ID)
+			s.Require().NotEmpty(stat.Strategy.Version)
+			s.Require().Equal("PlaceOrderStrategy", stat.Strategy.Name)
 		}
 	})
 }

@@ -46,6 +46,10 @@ func (m *mockStrategyRuntime) GetRuntimeEngineVersion() (string, error) {
 	return m.runtimeVersion, nil
 }
 
+func (m *mockStrategyRuntime) GetIdentifier() (string, error) {
+	return "com.test.mock-strategy", nil
+}
+
 func TestVersionCompatibilityCheck(t *testing.T) {
 	tests := []struct {
 		name             string
