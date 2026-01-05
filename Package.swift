@@ -15,8 +15,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "ArgoTrading",
-            url: "https://github.com/rxtech-lab/argo-trading/releases/download/v1.7.0/ArgoTrading.xcframework.zip",
-            checksum: "84c31b8da131ae8d4c2720e7ed6948b08a6893aa10fd830a678a204ceec18d5c"
+            url: "https://github.com/rxtech-lab/argo-trading/releases/download/v1.7.1/ArgoTrading.xcframework.zip",
+            checksum: "05aecd4967e0f92b6e5e69de97961cab7535cb5adad2f81a266494e5b777c46f"
         )
     ]
 )
