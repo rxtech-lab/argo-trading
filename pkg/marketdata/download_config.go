@@ -11,8 +11,8 @@ import (
 // BaseDownloadConfig contains common fields for all download configurations.
 type BaseDownloadConfig struct {
 	Ticker    string `json:"ticker" jsonschema:"title=Ticker,description=The trading symbol to download data for (e.g. SPY or BTCUSDT),required" validate:"required"`
-	StartDate string `json:"startDate" jsonschema:"title=Start Date,description=Start date,format=date,required" validate:"required"`
-	EndDate   string `json:"endDate" jsonschema:"title=End Date,description=End date,format=date,required" validate:"required"`
+	StartDate string `json:"startDate" jsonschema:"title=Start Date,description=Start date,required" jsonschema_extras:"format=date" validate:"required"`
+	EndDate   string `json:"endDate" jsonschema:"title=End Date,description=End date,required" jsonschema_extras:"format=date" validate:"required"`
 	Interval  string `json:"interval" jsonschema:"title=Interval,description=Data interval,required,enum=1s,enum=1m,enum=3m,enum=5m,enum=15m,enum=30m,enum=1h,enum=2h,enum=4h,enum=6h,enum=8h,enum=12h,enum=1d,enum=3d,enum=1w,enum=1M" validate:"required,oneof=1s 1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 3d 1w 1M"`
 }
 
