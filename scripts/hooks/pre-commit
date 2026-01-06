@@ -6,7 +6,7 @@
 echo "Running go fmt..."
 
 # Get list of staged Go files
-STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
 
 if [ -z "$STAGED_GO_FILES" ]; then
     echo "No Go files to format"
@@ -16,8 +16,8 @@ fi
 # Run go fmt on the entire project
 go fmt ./...
 
-# Check if go fmt made any changes
-CHANGED_FILES=$(git diff --name-only | grep '\.go$')
+# Check if go fmt made any changes to the staged files
+CHANGED_FILES=$(git diff --name-only | grep '\.go$' || true)
 
 if [ -n "$CHANGED_FILES" ]; then
     echo "go fmt made formatting changes to the following files:"
