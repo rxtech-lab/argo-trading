@@ -11,23 +11,20 @@ import (
 
 // CachedDataSource wraps a DataSource and caches repeated queries within the same bar/time period.
 // This significantly improves performance when multiple indicators query similar data.
+// Only successful queries are cached; errors are not cached to allow retries.
 type CachedDataSource struct {
-	underlying           DataSource
-	previousDataCache    map[string][]types.MarketData
-	previousDataErrCache map[string]error
-	rangeCache           map[string][]types.MarketData
-	rangeErrCache        map[string]error
-	mu                   sync.RWMutex
+	underlying        DataSource
+	previousDataCache map[string][]types.MarketData
+	rangeCache        map[string][]types.MarketData
+	mu                sync.RWMutex
 }
 
 // NewCachedDataSource creates a new CachedDataSource wrapping the given DataSource.
 func NewCachedDataSource(underlying DataSource) *CachedDataSource {
 	return &CachedDataSource{
-		underlying:           underlying,
-		previousDataCache:    make(map[string][]types.MarketData),
-		previousDataErrCache: make(map[string]error),
-		rangeCache:           make(map[string][]types.MarketData),
-		rangeErrCache:        make(map[string]error),
+		underlying:        underlying,
+		previousDataCache: make(map[string][]types.MarketData),
+		rangeCache:        make(map[string][]types.MarketData),
 	}
 }
 
@@ -36,9 +33,7 @@ func (c *CachedDataSource) ClearCache() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.previousDataCache = make(map[string][]types.MarketData)
-	c.previousDataErrCache = make(map[string]error)
 	c.rangeCache = make(map[string][]types.MarketData)
-	c.rangeErrCache = make(map[string]error)
 }
 
 // Initialize implements DataSource.
@@ -52,15 +47,15 @@ func (c *CachedDataSource) ReadAll(start optional.Option[time.Time], end optiona
 }
 
 // GetRange implements DataSource with caching.
+// Only successful queries are cached; errors are not cached to allow retries.
 func (c *CachedDataSource) GetRange(start time.Time, end time.Time, interval optional.Option[Interval]) ([]types.MarketData, error) {
 	key := c.buildRangeKey(start, end, interval)
 
 	// Check cache first (read lock)
 	c.mu.RLock()
 	if data, ok := c.rangeCache[key]; ok {
-		err := c.rangeErrCache[key]
 		c.mu.RUnlock()
-		return data, err
+		return data, nil
 	}
 	c.mu.RUnlock()
 
@@ -70,25 +65,27 @@ func (c *CachedDataSource) GetRange(start time.Time, end time.Time, interval opt
 
 	// Double-check after acquiring write lock
 	if data, ok := c.rangeCache[key]; ok {
-		return data, c.rangeErrCache[key]
+		return data, nil
 	}
 
 	data, err := c.underlying.GetRange(start, end, interval)
-	c.rangeCache[key] = data
-	c.rangeErrCache[key] = err
+	// Only cache successful responses to allow retries on errors
+	if err == nil {
+		c.rangeCache[key] = data
+	}
 	return data, err
 }
 
 // GetPreviousNumberOfDataPoints implements DataSource with caching.
+// Only successful queries are cached; errors are not cached to allow retries.
 func (c *CachedDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol string, count int) ([]types.MarketData, error) {
 	key := c.buildPreviousDataKey(end, symbol, count)
 
 	// Check cache first (read lock)
 	c.mu.RLock()
 	if data, ok := c.previousDataCache[key]; ok {
-		err := c.previousDataErrCache[key]
 		c.mu.RUnlock()
-		return data, err
+		return data, nil
 	}
 	c.mu.RUnlock()
 
@@ -98,12 +95,14 @@ func (c *CachedDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 
 	// Double-check after acquiring write lock
 	if data, ok := c.previousDataCache[key]; ok {
-		return data, c.previousDataErrCache[key]
+		return data, nil
 	}
 
 	data, err := c.underlying.GetPreviousNumberOfDataPoints(end, symbol, count)
-	c.previousDataCache[key] = data
-	c.previousDataErrCache[key] = err
+	// Only cache successful responses to allow retries on errors
+	if err == nil {
+		c.previousDataCache[key] = data
+	}
 	return data, err
 }
 
