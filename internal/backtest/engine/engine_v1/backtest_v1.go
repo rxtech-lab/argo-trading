@@ -639,7 +639,7 @@ func (b *BacktestEngineV1) markInsufficientDataStart(data types.MarketData) {
 		Title:        "Insufficient Data",
 		Message:      "Insufficient data error started",
 		Category:     "InsufficientData",
-		Signal:       optional.None[types.Signal](),
+		Signal:       optional.Some(types.Signal{Time: data.Time, Symbol: data.Symbol}),
 	}
 
 	if err := b.marker.Mark(data, mark); err != nil {
@@ -663,7 +663,7 @@ func (b *BacktestEngineV1) markInsufficientDataEnd(data types.MarketData) {
 		Title:        "Insufficient Data",
 		Message:      "Insufficient data error ended",
 		Category:     "InsufficientData",
-		Signal:       optional.None[types.Signal](),
+		Signal:       optional.Some(types.Signal{Time: data.Time, Symbol: data.Symbol}),
 	}
 
 	if err := b.marker.Mark(data, mark); err != nil {
@@ -687,7 +687,7 @@ func (b *BacktestEngineV1) markStrategyError(data types.MarketData, strategyErr 
 		Title:        "Strategy Error",
 		Message:      strategyErr.Error(),
 		Category:     "StrategyError",
-		Signal:       optional.None[types.Signal](),
+		Signal:       optional.Some(types.Signal{Time: data.Time, Symbol: data.Symbol}),
 	}
 
 	if err := b.marker.Mark(data, mark); err != nil {
