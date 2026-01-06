@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	engine "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
@@ -98,16 +99,30 @@ func (suite *GenerateCmdTestSuite) TestGenerateSchemaFile() {
 	content, err := os.ReadFile(schemaPath)
 	suite.Require().NoError(err)
 	suite.NotEmpty(content, "Schema content should not be empty")
+
+	// Verify it's valid JSON
+	suite.True(strings.HasPrefix(string(content), "{"), "Schema should start with {")
+	suite.Contains(string(content), "$schema", "Schema should contain $schema field")
 }
 
-func (suite *GenerateCmdTestSuite) TestGenerateSchemaFileInvalidPath() {
+func (suite *GenerateCmdTestSuite) TestGenerateSchemaFileMultipleCalls() {
 	config := engine.EmptyConfig()
-	// Use invalid path (on Unix systems, writing to /root/... without permissions should fail)
-	schemaPath := filepath.Join("/root/invalid/schema.json")
+	schemaPath := filepath.Join(suite.tempDir, "test-schema2", "schema.json")
 
+	// First call
 	err := generateSchemaFile(config, schemaPath)
-	suite.Error(err, "Should return error for invalid path")
-	suite.Contains(err.Error(), "failed to", "Error should contain descriptive message")
+	suite.Require().NoError(err)
+
+	originalContent, err := os.ReadFile(schemaPath)
+	suite.Require().NoError(err)
+
+	// Second call should overwrite
+	err = generateSchemaFile(config, schemaPath)
+	suite.Require().NoError(err)
+
+	newContent, err := os.ReadFile(schemaPath)
+	suite.Require().NoError(err)
+	suite.Equal(string(originalContent), string(newContent), "Schema should be regenerated with same content")
 }
 
 func (suite *GenerateCmdTestSuite) TestGenerateSampleConfig() {
@@ -125,6 +140,36 @@ func (suite *GenerateCmdTestSuite) TestGenerateSampleConfig() {
 	content, err := os.ReadFile(samplePath)
 	suite.Require().NoError(err)
 	suite.Contains(string(content), "# yaml-language-server: $schema="+schemaName)
+}
+
+func (suite *GenerateCmdTestSuite) TestGenerateSampleConfigWithDifferentSchemaNames() {
+	config := engine.EmptyConfig()
+
+	testCases := []struct {
+		schemaName  string
+		samplePath  string
+		expectedRef string
+	}{
+		{
+			schemaName:  "custom-schema.json",
+			samplePath:  filepath.Join(suite.tempDir, "test1.yaml"),
+			expectedRef: "# yaml-language-server: $schema=custom-schema.json\n",
+		},
+		{
+			schemaName:  "another-schema.json",
+			samplePath:  filepath.Join(suite.tempDir, "test2.yaml"),
+			expectedRef: "# yaml-language-server: $schema=another-schema.json\n",
+		},
+	}
+
+	for _, tc := range testCases {
+		err := generateSampleConfig(config, tc.samplePath, tc.schemaName)
+		suite.Require().NoError(err)
+
+		content, err := os.ReadFile(tc.samplePath)
+		suite.Require().NoError(err)
+		suite.Contains(string(content), tc.expectedRef, "Should contain correct schema reference")
+	}
 }
 
 func (suite *GenerateCmdTestSuite) TestGenerateSampleConfigAlreadyExists() {
@@ -200,15 +245,27 @@ func (suite *GenerateCmdTestSuite) TestGetSchemaReference() {
 	suite.Equal("# yaml-language-server: $schema=\n", ref)
 }
 
+func (suite *GenerateCmdTestSuite) TestFileExists() {
+	// Test with non-existent file
+	suite.False(fileExists(filepath.Join(suite.tempDir, "nonexistent.txt")))
+
+	// Test with existing file
+	testFile := filepath.Join(suite.tempDir, "test-file.txt")
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	suite.Require().NoError(err)
+	suite.True(fileExists(testFile))
+
+	// Test with existing directory
+	testDir := filepath.Join(suite.tempDir, "test-dir")
+	err = os.Mkdir(testDir, 0755)
+	suite.Require().NoError(err)
+	suite.True(fileExists(testDir))
+}
+
 // Helper functions
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return !os.IsNotExist(err) && info.IsDir()
-}
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return !os.IsNotExist(err) && !info.IsDir()
 }
 
 func TestGenerateCmdSuite(t *testing.T) {

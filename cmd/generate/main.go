@@ -38,6 +38,12 @@ func validateSchemaName(schemaName string) error {
 	return nil
 }
 
+// fileExists checks if a file exists at the given path
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
+}
+
 // generateSchemaFile creates the schema JSON file at the specified path.
 func generateSchemaFile(config engine.BacktestEngineV1Config, schemaPath string) error {
 	schemaJSON, err := config.GenerateSchemaJSON()
@@ -58,7 +64,7 @@ func generateSchemaFile(config engine.BacktestEngineV1Config, schemaPath string)
 
 // generateSampleConfig creates the sample YAML config file if it doesn't exist.
 func generateSampleConfig(config engine.BacktestEngineV1Config, sampleConfigPath string, schemaName string) error {
-	if _, err := os.Stat(sampleConfigPath); os.IsNotExist(err) {
+	if !fileExists(sampleConfigPath) {
 		yamlBytes, err := yaml.Marshal(config)
 		if err != nil {
 			return fmt.Errorf("failed to marshal sample config to yaml: %w", err)
@@ -104,7 +110,7 @@ func main() {
 	}
 
 	log.Printf("Schema successfully generated at %s", schemaPath)
-	if _, err := os.Stat(sampleConfigPath); !os.IsNotExist(err) {
+	if fileExists(sampleConfigPath) {
 		log.Printf("Sample config successfully generated at %s", sampleConfigPath)
 	}
 }
