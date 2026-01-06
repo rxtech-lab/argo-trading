@@ -15,6 +15,16 @@ import (
 // using RSI, MACD, EMA, and ATR for high-probability trade signals
 type HybridTradingStrategy struct{}
 
+// Strategy configuration constants - relaxed thresholds for more frequent trading in e2e tests
+const (
+	// RSIOversoldThreshold is the RSI level below which we consider buying (relaxed from typical 30-35)
+	RSIOversoldThreshold = 45.0
+	// RSIOverboughtThreshold is the RSI level above which we consider selling (relaxed from typical 65-70)
+	RSIOverboughtThreshold = 55.0
+	// ATRStopLossMultiplier is the multiplier applied to ATR for stop-loss calculation
+	ATRStopLossMultiplier = 2.0
+)
+
 // Indicator value structures for JSON parsing
 type RSIValue struct {
 	RSI float64 `json:"rsi"`
@@ -203,14 +213,10 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 		})
 	}
 
-	// Strategy parameters - more relaxed thresholds for more frequent trading
-	rsiOversold := 45.0   // Increased from 35 for more buy signals
-	rsiOverbought := 55.0 // Decreased from 65 for more sell signals
-
 	// BUY Signal: RSI below threshold OR bullish MACD crossover (when not in position)
-	buyCondition := !cachedState.InPosition && (rsi < rsiOversold || macdCrossedBullish)
+	buyCondition := !cachedState.InPosition && (rsi < RSIOversoldThreshold || macdCrossedBullish)
 	if buyCondition {
-		stopLoss := data.Close - (atr * 2)
+		stopLoss := data.Close - (atr * ATRStopLossMultiplier)
 		order := &strategy.ExecuteOrder{
 			Symbol:    data.Symbol,
 			Side:      strategy.PurchaseType_PURCHASE_TYPE_BUY,
@@ -244,7 +250,7 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 		}
 
 		// Mark successful buy order with triangle shape (directional signal)
-		_, _ = api.Mark(ctx, &strategy.MarkRequest{
+		if _, err := api.Mark(ctx, &strategy.MarkRequest{
 			MarketData: data,
 			Mark: &strategy.Mark{
 				SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
@@ -255,15 +261,17 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 				Message:    "BUY @ " + formatFloat(data.Close) + " RSI=" + formatFloat(rsi),
 				Category:   "Trade",
 			},
-		})
+		}); err != nil {
+			return nil, err
+		}
 
 		cachedState.InPosition = true
 	}
 
 	// SELL Signal: RSI above threshold OR bearish MACD crossover (when in position)
-	sellCondition := cachedState.InPosition && (rsi > rsiOverbought || macdCrossedBearish)
+	sellCondition := cachedState.InPosition && (rsi > RSIOverboughtThreshold || macdCrossedBearish)
 	if sellCondition {
-		stopLoss := data.Close + (atr * 2)
+		stopLoss := data.Close + (atr * ATRStopLossMultiplier)
 		order := &strategy.ExecuteOrder{
 			Symbol:    data.Symbol,
 			Side:      strategy.PurchaseType_PURCHASE_TYPE_SELL,
@@ -297,7 +305,7 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 		}
 
 		// Mark successful sell order with triangle shape (directional signal)
-		_, _ = api.Mark(ctx, &strategy.MarkRequest{
+		if _, err := api.Mark(ctx, &strategy.MarkRequest{
 			MarketData: data,
 			Mark: &strategy.Mark{
 				SignalType: strategy.SignalType_SIGNAL_TYPE_SELL_LONG,
@@ -308,13 +316,15 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 				Message:    "SELL @ " + formatFloat(data.Close) + " RSI=" + formatFloat(rsi),
 				Category:   "Trade",
 			},
-		})
+		}); err != nil {
+			return nil, err
+		}
 
 		cachedState.InPosition = false
 	}
 
 	// Mark skipped signals when conditions are met but we can't trade
-	if !buyCondition && !sellCondition && rsi < rsiOversold && cachedState.InPosition {
+	if !buyCondition && !sellCondition && rsi < RSIOversoldThreshold && cachedState.InPosition {
 		_, _ = api.Mark(ctx, &strategy.MarkRequest{
 			MarketData: data,
 			Mark: &strategy.Mark{
@@ -329,7 +339,7 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 		})
 	}
 
-	if !buyCondition && !sellCondition && rsi > rsiOverbought && !cachedState.InPosition {
+	if !buyCondition && !sellCondition && rsi > RSIOverboughtThreshold && !cachedState.InPosition {
 		_, _ = api.Mark(ctx, &strategy.MarkRequest{
 			MarketData: data,
 			Mark: &strategy.Mark{
