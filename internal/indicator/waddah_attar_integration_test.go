@@ -225,10 +225,20 @@ func (suite *WaddahAttarIntegrationTestSuite) TestWaddahAttarMultipleSignals() {
 		signalTypeCounts[signal.Type]++
 	}
 
-	// Should see at least some signals after processing enough data
+	// Verify we got meaningful signal distribution after processing data
 	totalSignals := 0
 	for _, count := range signalTypeCounts {
 		totalSignals += count
 	}
 	suite.Equal(len(results), totalSignals, "Should have processed all results")
+
+	// At least one signal type should have been generated (meaningful assertion)
+	hasNonZeroCount := false
+	for _, count := range signalTypeCounts {
+		if count > 0 {
+			hasNonZeroCount = true
+			break
+		}
+	}
+	suite.True(hasNonZeroCount, "Should have at least one signal type with non-zero count")
 }
