@@ -107,6 +107,11 @@ func (a *ATR) RawValue(params ...any) (float64, error) {
 			return 0, errors.New(errors.ErrCodeNoDataFound, "no historical data available for the specified time range")
 		}
 
+		// Check if we have enough data points for ATR calculation
+		if len(historicalData) < a.period {
+			return 0, errors.NewInsufficientDataErrorf(a.period, len(historicalData), symbol, "insufficient historical data for ATR calculation for symbol %s: required %d, got %d", symbol, a.period, len(historicalData))
+		}
+
 		marketData = historicalData[len(historicalData)-1]
 	} else {
 		marketData, err = ctx.DataSource.ReadLastData(symbol)

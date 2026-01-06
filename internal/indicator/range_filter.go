@@ -165,6 +165,11 @@ func (rf *RangeFilter) RawValue(params ...any) (float64, error) {
 			return 0, errors.Newf(errors.ErrCodeNoDataFound, "no historical data available for symbol %s", symbol)
 		}
 
+		// Check if we have enough data points for Range Filter calculation
+		if len(historicalData) < rf.period {
+			return 0, errors.NewInsufficientDataErrorf(rf.period, len(historicalData), symbol, "insufficient historical data for Range Filter calculation for symbol %s: required %d, got %d", symbol, rf.period, len(historicalData))
+		}
+
 		// Use the last data point
 		marketData = historicalData[len(historicalData)-1]
 	} else {

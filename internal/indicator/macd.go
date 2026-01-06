@@ -137,6 +137,11 @@ func (m *MACD) RawValue(params ...any) (float64, error) {
 			return 0, errors.Newf(errors.ErrCodeNoDataFound, "no historical data available for symbol %s", symbol)
 		}
 
+		// Check if we have enough data points for MACD calculation
+		if len(historicalData) < m.slowPeriod {
+			return 0, errors.NewInsufficientDataErrorf(m.slowPeriod, len(historicalData), symbol, "insufficient historical data for MACD calculation for symbol %s: required %d, got %d", symbol, m.slowPeriod, len(historicalData))
+		}
+
 		marketData = historicalData[len(historicalData)-1]
 	} else {
 		marketData, err = ctx.DataSource.ReadLastData(symbol)
