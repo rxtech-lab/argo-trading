@@ -1,0 +1,33 @@
+#!/bin/bash
+#
+# Pre-commit hook that runs go fmt on all Go files
+# This ensures all committed Go code is properly formatted
+
+echo "Running go fmt..."
+
+# Get list of staged Go files
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
+
+if [ -z "$STAGED_GO_FILES" ]; then
+    echo "No Go files to format"
+    exit 0
+fi
+
+# Run go fmt on the entire project
+go fmt ./...
+
+# Check if go fmt made any changes
+CHANGED_FILES=$(git diff --name-only | grep '\.go$')
+
+if [ -n "$CHANGED_FILES" ]; then
+    echo "go fmt made formatting changes to the following files:"
+    echo "$CHANGED_FILES"
+    echo ""
+    echo "Please stage these changes and try committing again:"
+    echo "  git add ."
+    echo "  git commit"
+    exit 1
+fi
+
+echo "All Go files are properly formatted"
+exit 0

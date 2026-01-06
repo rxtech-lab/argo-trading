@@ -22,6 +22,13 @@ A powerful framework for developing, testing, and implementing algorithmic tradi
    make generate
    ```
 
+4. (Optional) Install git pre-commit hooks to automatically format code
+   ```bash
+   ./scripts/install-hooks.sh
+   ```
+   
+   This will install a pre-commit hook that runs `go fmt ./...` before each commit to ensure all Go code is properly formatted.
+
 ## Project Structure
 
 ```

@@ -53,6 +53,18 @@ go install go.uber.org/mock/mockgen@latest
 go install golang.org/x/mobile/cmd/gomobile@latest
 go get golang.org/x/mobile@latest
 
+# Install git pre-commit hook
+echo "Installing git pre-commit hook..."
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)"
+if [ -n "$GIT_DIR" ]; then
+    cp "$SCRIPT_DIR/hooks/pre-commit" "$GIT_DIR/hooks/pre-commit"
+    chmod +x "$GIT_DIR/hooks/pre-commit"
+    echo "Git pre-commit hook installed successfully!"
+else
+    echo "Warning: Not in a git repository, skipping git hook installation"
+fi
+
 # Clean up
 echo "Cleaning up..."
 rm -f "$DOWNLOAD_DIR/$PACKAGE_NAME"
