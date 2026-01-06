@@ -457,8 +457,12 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize state", err)
 	}
 
+	// Wrap the datasource with a caching layer to improve performance
+	// when multiple indicators query similar historical data within the same bar
+	cachedDataSource := datasource.NewCachedDataSource(b.datasource)
+
 	strategyContext := runtime.RuntimeContext{
-		DataSource:        b.datasource,
+		DataSource:        cachedDataSource,
 		IndicatorRegistry: b.indicatorRegistry,
 		Marker:            b.marker,
 		TradingSystem:     b.tradingSystem,
@@ -582,6 +586,12 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 
 		// Process data and track insufficient data errors for markers
 		processErr := params.strategy.ProcessData(data)
+
+		// Clear the datasource cache after processing each bar to prevent stale data
+		// and manage memory. The cache is only useful within a single bar's processing.
+		if cachedDS, ok := strategyContext.DataSource.(*datasource.CachedDataSource); ok {
+			cachedDS.ClearCache()
+		}
 
 		if errors.IsInsufficientDataError(processErr) {
 			if !inInsufficientDataError {

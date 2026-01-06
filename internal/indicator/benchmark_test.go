@@ -1,0 +1,151 @@
+package indicator
+
+import (
+	"testing"
+	"time"
+
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/logger"
+	"github.com/rxtech-lab/argo-trading/internal/types"
+	"go.uber.org/zap"
+)
+
+// setupBenchmarkEnvironment creates a test environment for benchmarking
+func setupBenchmarkEnvironment(b *testing.B) (datasource.DataSource, IndicatorRegistry, cache.Cache) {
+	loggerConfig := zap.NewDevelopmentConfig()
+	loggerConfig.OutputPaths = []string{}
+	loggerConfig.ErrorOutputPaths = []string{}
+	zapLogger, err := loggerConfig.Build()
+	if err != nil {
+		b.Fatal(err)
+	}
+	log := &logger.Logger{Logger: zapLogger}
+
+	ds, err := datasource.NewDataSource(":memory:", log)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	err = ds.Initialize("./test_data/test_data.parquet")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	registry := NewIndicatorRegistry()
+	registry.RegisterIndicator(NewEMA())
+	registry.RegisterIndicator(NewRSI())
+	registry.RegisterIndicator(NewMACD())
+	registry.RegisterIndicator(NewATR())
+	registry.RegisterIndicator(NewBollingerBands())
+	registry.RegisterIndicator(NewMA())
+
+	cacheInstance := cache.NewCacheV1()
+
+	return ds, registry, cacheInstance
+}
+
+// BenchmarkMultipleIndicatorsWithoutCaching benchmarks multiple indicator calls without caching.
+// This simulates the old behavior where each indicator call makes a separate DB query.
+func BenchmarkMultipleIndicatorsWithoutCaching(b *testing.B) {
+	ds, registry, cacheInstance := setupBenchmarkEnvironment(b)
+	defer ds.Close()
+
+	// Simulate a time point where indicators would be calculated
+	endTime := time.Date(2024, 1, 5, 10, 0, 0, 0, time.UTC)
+	symbol := "AAPL"
+
+	ctx := IndicatorContext{
+		DataSource:        ds,
+		IndicatorRegistry: registry,
+		Cache:             cacheInstance,
+	}
+
+	ema, _ := registry.GetIndicator(types.IndicatorTypeEMA)
+	rsi, _ := registry.GetIndicator(types.IndicatorTypeRSI)
+	ma, _ := registry.GetIndicator(types.IndicatorTypeMA)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Simulate calling multiple indicators on the same bar (without caching)
+		// Each call makes a separate database query
+		ema.RawValue(symbol, endTime, ctx, 20)
+		ema.RawValue(symbol, endTime, ctx, 12) // Fast EMA for MACD
+		ema.RawValue(symbol, endTime, ctx, 26) // Slow EMA for MACD
+		rsi.RawValue(symbol, endTime, ctx, 14) // RSI 14
+		ma.RawValue(symbol, endTime, ctx, 20)  // MA 20
+	}
+}
+
+// BenchmarkMultipleIndicatorsWithCaching benchmarks multiple indicator calls with caching.
+// This simulates the new behavior where repeated calls to the same data are cached.
+func BenchmarkMultipleIndicatorsWithCaching(b *testing.B) {
+	ds, registry, cacheInstance := setupBenchmarkEnvironment(b)
+	defer ds.Close()
+
+	// Wrap with cached datasource
+	cachedDS := datasource.NewCachedDataSource(ds)
+
+	// Simulate a time point where indicators would be calculated
+	endTime := time.Date(2024, 1, 5, 10, 0, 0, 0, time.UTC)
+	symbol := "AAPL"
+
+	ctx := IndicatorContext{
+		DataSource:        cachedDS,
+		IndicatorRegistry: registry,
+		Cache:             cacheInstance,
+	}
+
+	ema, _ := registry.GetIndicator(types.IndicatorTypeEMA)
+	rsi, _ := registry.GetIndicator(types.IndicatorTypeRSI)
+	ma, _ := registry.GetIndicator(types.IndicatorTypeMA)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Simulate calling multiple indicators on the same bar (with caching)
+		// Duplicate queries are served from cache
+		ema.RawValue(symbol, endTime, ctx, 20)
+		ema.RawValue(symbol, endTime, ctx, 12) // Fast EMA for MACD
+		ema.RawValue(symbol, endTime, ctx, 26) // Slow EMA for MACD
+		rsi.RawValue(symbol, endTime, ctx, 14) // RSI 14
+		ma.RawValue(symbol, endTime, ctx, 20)  // MA 20
+
+		// Clear cache at end of bar (simulating bar transition)
+		cachedDS.ClearCache()
+	}
+}
+
+// BenchmarkCacheHitVsDBQuery directly compares cache hit vs DB query performance.
+func BenchmarkCacheHitVsDBQuery(b *testing.B) {
+	loggerConfig := zap.NewDevelopmentConfig()
+	loggerConfig.OutputPaths = []string{}
+	loggerConfig.ErrorOutputPaths = []string{}
+	zapLogger, _ := loggerConfig.Build()
+	log := &logger.Logger{Logger: zapLogger}
+
+	ds, _ := datasource.NewDataSource(":memory:", log)
+	defer ds.Close()
+	ds.Initialize("./test_data/test_data.parquet")
+
+	cachedDS := datasource.NewCachedDataSource(ds)
+
+	endTime := time.Date(2024, 1, 5, 10, 0, 0, 0, time.UTC)
+	symbol := "AAPL"
+
+	// Warm up cache
+	cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+
+	b.Run("CacheHit", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			// This should be served from cache
+			cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+		}
+	})
+
+	b.Run("DBQuery", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			// This always hits the database
+			ds.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+		}
+	})
+}
