@@ -10,6 +10,7 @@ import (
 	"github.com/knqyf263/go-plugin/types/known/timestamppb"
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/log"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/mocks"
@@ -945,6 +946,184 @@ func (suite *StrategyApiTestSuite) TestLogWithNilLogger() {
 	})
 
 	suite.NoError(err)
+}
+
+// TestLogWithStorage tests the Log method stores to LogStorage when available
+func (suite *StrategyApiTestSuite) TestLogWithStorage() {
+	// Create a mock log storage
+	mockLogStorage := mocks.NewMockLog(suite.ctrl)
+
+	// Set up the runtime context with market data and log storage
+	now := time.Now()
+	marketData := &types.MarketData{
+		Symbol: "BTCUSDT",
+		Time:   now,
+		Open:   50000.0,
+		High:   51000.0,
+		Low:    49000.0,
+		Close:  50500.0,
+		Volume: 1000.0,
+	}
+	suite.runtimeContext.CurrentMarketData = marketData
+	suite.runtimeContext.LogStorage = mockLogStorage
+
+	// Setup expectations - log storage should receive the log entry
+	mockLogStorage.EXPECT().
+		Log(gomock.Any()).
+		DoAndReturn(func(entry log.LogEntry) error {
+			suite.Equal(now, entry.Timestamp)
+			suite.Equal("BTCUSDT", entry.Symbol)
+			suite.Equal(types.LogLevelInfo, entry.Level)
+			suite.Equal("test message", entry.Message)
+			suite.Equal("value1", entry.Fields["key1"])
+			return nil
+		})
+
+	// Execute test
+	_, err := suite.api.Log(context.Background(), &strategy.LogRequest{
+		Message: "test message",
+		Level:   strategy.LogLevel_LOG_LEVEL_INFO,
+		Fields: map[string]string{
+			"key1": "value1",
+		},
+	})
+
+	suite.NoError(err)
+
+	// Reset runtime context
+	suite.runtimeContext.CurrentMarketData = nil
+	suite.runtimeContext.LogStorage = nil
+}
+
+// TestLogWithNilStorage tests the Log method gracefully handles nil LogStorage
+func (suite *StrategyApiTestSuite) TestLogWithNilStorage() {
+	// Ensure log storage is nil
+	suite.runtimeContext.LogStorage = nil
+	suite.runtimeContext.CurrentMarketData = &types.MarketData{
+		Symbol: "BTCUSDT",
+		Time:   time.Now(),
+	}
+
+	// Execute test - should not error even without log storage
+	_, err := suite.api.Log(context.Background(), &strategy.LogRequest{
+		Message: "test message",
+		Level:   strategy.LogLevel_LOG_LEVEL_INFO,
+	})
+
+	suite.NoError(err)
+
+	// Reset runtime context
+	suite.runtimeContext.CurrentMarketData = nil
+}
+
+// TestLogWithNilMarketData tests the Log method handles nil CurrentMarketData
+func (suite *StrategyApiTestSuite) TestLogWithNilMarketData() {
+	// Create a mock log storage
+	mockLogStorage := mocks.NewMockLog(suite.ctrl)
+
+	// Set up log storage but no market data
+	suite.runtimeContext.LogStorage = mockLogStorage
+	suite.runtimeContext.CurrentMarketData = nil
+
+	// The log should NOT be stored when there's no market data context
+	// No expectation set for mockLogStorage.Log() means it should not be called
+
+	// Execute test - should not error even without market data
+	_, err := suite.api.Log(context.Background(), &strategy.LogRequest{
+		Message: "test message",
+		Level:   strategy.LogLevel_LOG_LEVEL_INFO,
+	})
+
+	suite.NoError(err)
+
+	// Reset runtime context
+	suite.runtimeContext.LogStorage = nil
+}
+
+// TestLogStoresCorrectTimestamp tests that the market data timestamp is used
+func (suite *StrategyApiTestSuite) TestLogStoresCorrectTimestamp() {
+	// Create a mock log storage
+	mockLogStorage := mocks.NewMockLog(suite.ctrl)
+
+	// Set up a specific timestamp from market data
+	marketDataTime := time.Date(2023, 5, 15, 14, 30, 0, 0, time.UTC)
+	marketData := &types.MarketData{
+		Symbol: "ETHUSDT",
+		Time:   marketDataTime,
+	}
+	suite.runtimeContext.CurrentMarketData = marketData
+	suite.runtimeContext.LogStorage = mockLogStorage
+
+	// Setup expectations - verify timestamp is from market data, not current time
+	mockLogStorage.EXPECT().
+		Log(gomock.Any()).
+		DoAndReturn(func(entry log.LogEntry) error {
+			// The timestamp should be from market data, not current time
+			suite.Equal(marketDataTime, entry.Timestamp)
+			suite.Equal("ETHUSDT", entry.Symbol)
+			return nil
+		})
+
+	// Execute test
+	_, err := suite.api.Log(context.Background(), &strategy.LogRequest{
+		Message: "timestamp test",
+		Level:   strategy.LogLevel_LOG_LEVEL_DEBUG,
+	})
+
+	suite.NoError(err)
+
+	// Reset runtime context
+	suite.runtimeContext.CurrentMarketData = nil
+	suite.runtimeContext.LogStorage = nil
+}
+
+// TestLogAllLevels tests that all log levels are correctly converted
+func (suite *StrategyApiTestSuite) TestLogAllLevels() {
+	testCases := []struct {
+		name          string
+		protoLevel    strategy.LogLevel
+		expectedLevel types.LogLevel
+	}{
+		{"Debug", strategy.LogLevel_LOG_LEVEL_DEBUG, types.LogLevelDebug},
+		{"Info", strategy.LogLevel_LOG_LEVEL_INFO, types.LogLevelInfo},
+		{"Warning", strategy.LogLevel_LOG_LEVEL_WARN, types.LogLevelWarning},
+		{"Error", strategy.LogLevel_LOG_LEVEL_ERROR, types.LogLevelError},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			// Create a mock log storage
+			mockLogStorage := mocks.NewMockLog(suite.ctrl)
+
+			// Set up market data and log storage
+			marketData := &types.MarketData{
+				Symbol: "BTCUSDT",
+				Time:   time.Now(),
+			}
+			suite.runtimeContext.CurrentMarketData = marketData
+			suite.runtimeContext.LogStorage = mockLogStorage
+
+			// Setup expectations
+			mockLogStorage.EXPECT().
+				Log(gomock.Any()).
+				DoAndReturn(func(entry log.LogEntry) error {
+					suite.Equal(tc.expectedLevel, entry.Level)
+					return nil
+				})
+
+			// Execute test
+			_, err := suite.api.Log(context.Background(), &strategy.LogRequest{
+				Message: "level test",
+				Level:   tc.protoLevel,
+			})
+
+			suite.NoError(err)
+
+			// Reset runtime context
+			suite.runtimeContext.CurrentMarketData = nil
+			suite.runtimeContext.LogStorage = nil
+		})
+	}
 }
 
 // TestBuildZapFields tests the buildZapFields helper function

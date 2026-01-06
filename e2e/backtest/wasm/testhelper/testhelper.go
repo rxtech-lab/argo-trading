@@ -13,6 +13,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	v1 "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
+	"github.com/rxtech-lab/argo-trading/internal/log"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
 	"github.com/rxtech-lab/argo-trading/internal/types"
@@ -386,7 +387,7 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 	query, args, err := sq.
 		Select(
 			"id", "market_data_id", "signal_type", "signal_name", "signal_time", "signal_symbol",
-			"color", "shape", "title", "message", "category",
+			"color", "shape", "level", "title", "message", "category",
 		).
 		From("marks_view").
 		OrderBy("id ASC").
@@ -414,6 +415,7 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 			signalSymbol sql.NullString
 			color        string
 			shapeStr     string
+			levelStr     string
 			title        string
 			message      string
 			category     string
@@ -428,6 +430,7 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 			&signalSymbol,
 			&color,
 			&shapeStr,
+			&levelStr,
 			&title,
 			&message,
 			&category,
@@ -441,6 +444,7 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 			MarketDataId: marketDataId,
 			Color:        types.MarkColor(color),
 			Shape:        types.MarkShape(shapeStr),
+			Level:        types.MarkLevel(levelStr),
 			Title:        title,
 			Message:      message,
 			Category:     category,
@@ -467,4 +471,102 @@ func ReadMarker(s *E2ETestSuite, tmpFolder string) (marker []types.Mark, err err
 	}
 
 	return marks, nil
+}
+
+// ReadLogs reads the logs from the tmp folder
+func ReadLogs(s *E2ETestSuite, tmpFolder string) (logs []log.LogEntry, err error) {
+	var logsPaths []string
+
+	err = filepath.Walk(tmpFolder, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && filepath.Base(path) == "logs.parquet" {
+			logsPaths = append(logsPaths, path)
+		}
+		return nil
+	})
+
+	require.NoError(s.T(), err)
+	// require at least one logs file
+	require.Greater(s.T(), len(logsPaths), 0)
+
+	// read the first logs file
+	logsPath := logsPaths[0]
+
+	// Create an in-memory DuckDB instance for reading the parquet file
+	db, err := sql.Open("duckdb", ":memory:")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
+	}
+	defer db.Close()
+
+	// Create a view from the parquet file - using raw SQL as Squirrel doesn't support CREATE VIEW
+	createViewSQL := fmt.Sprintf(`CREATE VIEW logs_view AS SELECT * FROM read_parquet('%s');`, logsPath)
+	_, err = db.Exec(createViewSQL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create view from parquet file: %w", err)
+	}
+
+	// Initialize Squirrel with dollar placeholder format
+	sq := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+
+	// Construct query using Squirrel
+	query, args, err := sq.
+		Select("id", "timestamp", "symbol", "level", "message", "fields").
+		From("logs_view").
+		OrderBy("id ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build SQL query: %w", err)
+	}
+
+	// Execute query
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query logs: %w", err)
+	}
+	defer rows.Close()
+
+	// Scan rows into log entry structs
+	logs = []log.LogEntry{}
+	for rows.Next() {
+		var (
+			id         int
+			entry      log.LogEntry
+			levelStr   string
+			fieldsJSON sql.NullString
+		)
+
+		err := rows.Scan(
+			&id,
+			&entry.Timestamp,
+			&entry.Symbol,
+			&levelStr,
+			&entry.Message,
+			&fieldsJSON,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan log entry row: %w", err)
+		}
+
+		entry.Level = types.LogLevel(levelStr)
+
+		// Deserialize fields from JSON
+		if fieldsJSON.Valid && fieldsJSON.String != "" {
+			var fields map[string]string
+			if err := json.Unmarshal([]byte(fieldsJSON.String), &fields); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal fields from JSON: %w", err)
+			}
+			entry.Fields = fields
+		}
+
+		logs = append(logs, entry)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating log rows: %w", err)
+	}
+
+	return logs, nil
 }

@@ -2196,3 +2196,265 @@ func TestInsufficientDataErrorMarkers(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+// TestStrategyErrorMarkers tests that non-insufficient errors add error markers
+// and processing continues.
+func TestStrategyErrorMarkers(t *testing.T) {
+	t.Run("Strategy error adds marker and continues processing", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+		mockMarker := mocks.NewMockMarker(ctrl)
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		// Create test market data: [OK, Error, OK]
+		marketData := make([]types.MarketData, 3)
+		for i := 0; i < 3; i++ {
+			marketData[i] = types.MarketData{
+				Id:     fmt.Sprintf("id-%d", i),
+				Symbol: "TEST",
+				Close:  100.0 + float64(i),
+			}
+		}
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
+
+		strategyError := errors.New("strategy processing failed")
+		gomock.InOrder(
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil),           // First call succeeds
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(strategyError), // Second call fails
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil),           // Third call succeeds (continues processing)
+		)
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(3, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData[0], nil).AnyTimes()
+
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			for _, data := range marketData {
+				if !yield(data, nil) {
+					return
+				}
+			}
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		// Expect one error marker for the strategy error at index 1
+		mockMarker.EXPECT().Mark(matchMarketData(marketData[1]), gomock.Any()).DoAndReturn(
+			func(md types.MarketData, mark types.Mark) error {
+				assert.Equal(t, types.MarkColorRed, mark.Color)
+				assert.Equal(t, types.MarkShapeCircle, mark.Shape)
+				assert.Equal(t, types.MarkLevelError, mark.Level)
+				assert.Equal(t, "Strategy Error", mark.Title)
+				assert.Equal(t, "strategy processing failed", mark.Message)
+				assert.Equal(t, "StrategyError", mark.Category)
+				return nil
+			})
+
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err = backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.marker = mockMarker
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetDataSource(mockDatasource)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{filepath.Join(configDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
+		require.NoError(t, err)
+	})
+
+	t.Run("Multiple strategy errors add multiple markers", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+		mockMarker := mocks.NewMockMarker(ctrl)
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		// Create test market data: [Error, OK, Error]
+		marketData := make([]types.MarketData, 3)
+		for i := 0; i < 3; i++ {
+			marketData[i] = types.MarketData{
+				Id:     fmt.Sprintf("id-%d", i),
+				Symbol: "TEST",
+				Close:  100.0 + float64(i),
+			}
+		}
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
+
+		strategyError1 := errors.New("error at index 0")
+		strategyError2 := errors.New("error at index 2")
+		gomock.InOrder(
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(strategyError1), // First call fails
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil),            // Second call succeeds
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(strategyError2), // Third call fails
+		)
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(3, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData[0], nil).AnyTimes()
+
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			for _, data := range marketData {
+				if !yield(data, nil) {
+					return
+				}
+			}
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		// Expect two error markers
+		gomock.InOrder(
+			mockMarker.EXPECT().Mark(matchMarketData(marketData[0]), gomock.Any()).DoAndReturn(
+				func(md types.MarketData, mark types.Mark) error {
+					assert.Equal(t, "error at index 0", mark.Message)
+					return nil
+				}),
+			mockMarker.EXPECT().Mark(matchMarketData(marketData[2]), gomock.Any()).DoAndReturn(
+				func(md types.MarketData, mark types.Mark) error {
+					assert.Equal(t, "error at index 2", mark.Message)
+					return nil
+				}),
+		)
+
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err = backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.marker = mockMarker
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetDataSource(mockDatasource)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{filepath.Join(configDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
+		require.NoError(t, err)
+	})
+
+	t.Run("Insufficient errors do not create error markers but strategy errors do", func(t *testing.T) {
+		setTestVersion(t, "1.0.0")
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockStrategy := mocks.NewMockStrategyRuntime(ctrl)
+		mockDatasource := mocks.NewMockDataSource(ctrl)
+		mockMarker := mocks.NewMockMarker(ctrl)
+
+		tempDir := t.TempDir()
+		configDir := t.TempDir()
+		configPath := filepath.Join(configDir, "config.yaml")
+		os.WriteFile(configPath, []byte("test: config"), 0644)
+
+		// Pattern: [Insufficient, Error, OK, Insufficient]
+		marketData := make([]types.MarketData, 4)
+		for i := 0; i < 4; i++ {
+			marketData[i] = types.MarketData{
+				Id:     fmt.Sprintf("id-%d", i),
+				Symbol: "TEST",
+				Close:  100.0 + float64(i),
+			}
+		}
+
+		mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+		mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("com.test.mock", nil).AnyTimes()
+
+		insufficientErr := argoErrors.NewInsufficientDataError(10, 5, "TEST", "need more data")
+		strategyError := errors.New("strategy error")
+		gomock.InOrder(
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(insufficientErr), // Insufficient (warning marker)
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(strategyError),   // Strategy error (error marker)
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil),             // OK
+			mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(insufficientErr), // Insufficient (warning marker)
+		)
+
+		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(4, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData[0], nil).AnyTimes()
+
+		readAllFunc := func(yield func(types.MarketData, error) bool) {
+			for _, data := range marketData {
+				if !yield(data, nil) {
+					return
+				}
+			}
+		}
+		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
+
+		// Expect markers:
+		// - Index 0: Start of insufficient sequence (warning marker)
+		// - Index 0: End of insufficient sequence (at lastInsufficientData = data[0])
+		// - Index 1: Strategy error (error marker)
+		// - Index 3: Start of insufficient sequence (warning marker)
+		// - Index 3: End of insufficient sequence (after loop)
+		gomock.InOrder(
+			mockMarker.EXPECT().Mark(matchMarketData(marketData[0]), gomock.Any()).Return(nil), // Start insufficient
+			mockMarker.EXPECT().Mark(matchMarketData(marketData[0]), gomock.Any()).Return(nil), // End insufficient (at lastInsufficientData)
+			mockMarker.EXPECT().Mark(matchMarketData(marketData[1]), gomock.Any()).DoAndReturn( // Strategy error marker
+				func(md types.MarketData, mark types.Mark) error {
+					assert.Equal(t, types.MarkLevelError, mark.Level)
+					assert.Equal(t, "Strategy Error", mark.Title)
+					return nil
+				}),
+			mockMarker.EXPECT().Mark(matchMarketData(marketData[3]), gomock.Any()).Return(nil), // Start insufficient
+			mockMarker.EXPECT().Mark(matchMarketData(marketData[3]), gomock.Any()).Return(nil), // End insufficient (after loop)
+		)
+
+		engine, err := NewBacktestEngineV1()
+		require.NoError(t, err)
+		backtestEngine := engine.(*BacktestEngineV1)
+
+		config := `initialCapital: 10000`
+		err = backtestEngine.Initialize(config)
+		require.NoError(t, err)
+
+		backtestEngine.marker = mockMarker
+		backtestEngine.LoadStrategy(mockStrategy)
+		backtestEngine.SetDataSource(mockDatasource)
+		backtestEngine.SetConfigPath(configPath)
+		backtestEngine.dataPaths = []string{filepath.Join(configDir, "data_path")}
+		backtestEngine.SetResultsFolder(tempDir)
+
+		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
+		require.NoError(t, err)
+	})
+}
