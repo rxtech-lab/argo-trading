@@ -568,3 +568,38 @@ func (suite *ClientTestSuite) TestSetupWriterCreatesDataPath() {
 func TestClientSuite(t *testing.T) {
 	suite.Run(t, new(ClientTestSuite))
 }
+
+// TestNewClientFromPolygonConfig tests the NewClientFromPolygonConfig function
+func (suite *ClientTestSuite) TestNewClientFromPolygonConfig() {
+	config := &PolygonDownloadConfig{
+		BaseDownloadConfig: BaseDownloadConfig{
+			Ticker:    "AAPL",
+			StartDate: "2024-01-01",
+			EndDate:   "2024-01-31",
+			Interval:  "1m",
+		},
+		ApiKey: "test-api-key",
+	}
+
+	client, params, err := NewClientFromPolygonConfig(config, suite.tempDir, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.NotNil(client)
+	suite.Equal("AAPL", params.Ticker)
+}
+
+// TestNewClientFromBinanceConfig tests the NewClientFromBinanceConfig function
+func (suite *ClientTestSuite) TestNewClientFromBinanceConfig() {
+	config := &BinanceDownloadConfig{
+		BaseDownloadConfig: BaseDownloadConfig{
+			Ticker:    "BTCUSDT",
+			StartDate: "2024-01-01",
+			EndDate:   "2024-01-31",
+			Interval:  "1m",
+		},
+	}
+
+	client, params, err := NewClientFromBinanceConfig(config, suite.tempDir, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.NotNil(client)
+	suite.Equal("BTCUSDT", params.Ticker)
+}
