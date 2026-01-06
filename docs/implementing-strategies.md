@@ -323,7 +323,21 @@ func (s *MyStrategy) ProcessData(ctx context.Context, req *strategy.ProcessDataR
 
 ## Creating Marks on Data
 
-Marks are visual indicators that appear on charts. Use them to annotate buy/sell signals, important events, or debugging:
+Marks are visual indicators that appear on charts during backtesting. They allow you to annotate specific data points with signals, important events, or debugging information. Marks are saved to a Parquet file after the backtest completes, enabling post-analysis and visualization.
+
+### When to Use Markers
+
+Markers are particularly useful in the following scenarios:
+
+1. **Signal Triggered but Order Not Placed**: When your strategy detects a trading signal but decides not to place an order (e.g., due to risk management rules, position limits, or market conditions), use a marker to record this decision for later analysis.
+
+2. **Important Data Points**: When significant market conditions appear (e.g., unusual volume, price breakouts, key support/resistance levels), mark the data point to track these events automatically.
+
+3. **Debugging and Analysis**: During strategy development, use markers to visualize where your strategy logic triggers, helping you understand and refine your approach.
+
+4. **Trade Entry/Exit Points**: Mark the actual points where trades were executed to correlate with performance metrics.
+
+### Basic Usage
 
 ```go
 api := strategy.NewStrategyApi()
@@ -345,21 +359,204 @@ if err != nil {
 }
 ```
 
+### Example: Marking Skipped Orders
+
+When a signal triggers but you decide not to place an order, use a marker to record this event.
+
+> **Note**: This example assumes RSI was configured in the `Initialize` method using `ConfigureIndicator`. See the [Using Technical Indicators](#using-technical-indicators) section for details.
+
+```go
+func (s *MyStrategy) ProcessData(ctx context.Context, req *strategy.ProcessDataRequest) (*emptypb.Empty, error) {
+    data := req.Data
+    api := strategy.NewStrategyApi()
+    
+    // Get indicator signal (RSI must be configured in Initialize)
+    signal, err := api.GetSignal(ctx, &strategy.GetSignalRequest{
+        IndicatorType: strategy.IndicatorType_INDICATOR_RSI,
+        MarketData:    data,
+    })
+    if err != nil {
+        return nil, err
+    }
+    
+    // Check if we have a buy signal
+    if signal.Type == strategy.SignalType_SIGNAL_TYPE_BUY_LONG {
+        // Check if we should place the order (e.g., risk management)
+        positions, _ := api.GetPositions(ctx, &emptypb.Empty{})
+        
+        if len(positions.Positions) >= 3 {
+            // Signal triggered but we're at max positions - mark this event
+            _, _ = api.Mark(ctx, &strategy.MarkRequest{
+                MarketData: data,
+                Mark: &strategy.Mark{
+                    SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+                    Color:      "yellow",
+                    Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+                    Level:      strategy.MarkLevel_MARK_LEVEL_WARNING,
+                    Title:      "Skipped Buy",
+                    Message:    "Buy signal triggered but max positions reached",
+                    Category:   "RiskManagement",
+                },
+            })
+            return &emptypb.Empty{}, nil
+        }
+        
+        // Place the order
+        _, err := api.PlaceOrder(ctx, &strategy.ExecuteOrder{
+            Symbol:       data.Symbol,
+            Side:         strategy.PurchaseType_PURCHASE_TYPE_BUY,
+            OrderType:    strategy.OrderType_ORDER_TYPE_LIMIT,
+            Quantity:     1.0,
+            Price:        data.Close,
+            StrategyName: "MyStrategy",
+            Reason:       &strategy.Reason{Reason: "strategy", Message: "RSI buy signal"},
+        })
+        if err != nil {
+            return nil, err
+        }
+        
+        // Mark the successful order placement
+        _, _ = api.Mark(ctx, &strategy.MarkRequest{
+            MarketData: data,
+            Mark: &strategy.Mark{
+                SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+                Color:      "green",
+                Shape:      strategy.MarkShape_MARK_SHAPE_TRIANGLE,
+                Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
+                Title:      "Buy Order",
+                Message:    "Buy order placed",
+                Category:   "Trade",
+            },
+        })
+    }
+    
+    return &emptypb.Empty{}, nil
+}
+```
+
+### Example: Marking Important Market Events
+
+Use markers to automatically track significant market conditions:
+
+```go
+func (s *MyStrategy) ProcessData(ctx context.Context, req *strategy.ProcessDataRequest) (*emptypb.Empty, error) {
+    data := req.Data
+    api := strategy.NewStrategyApi()
+    
+    // Retrieve the average volume from cache (calculated over historical data)
+    avgVolumeResp, _ := api.GetCache(ctx, &strategy.GetRequest{Key: "avg_volume_" + data.Symbol})
+    avgVolume := 1000000.0 // Default value; parse from avgVolumeResp.Value in production
+    
+    // Detect high volume spike (e.g., 3x average)
+    if data.Volume > avgVolume * 3 {
+        _, _ = api.Mark(ctx, &strategy.MarkRequest{
+            MarketData: data,
+            Mark: &strategy.Mark{
+                SignalType: strategy.SignalType_SIGNAL_TYPE_NO_ACTION,
+                Color:      "purple",
+                Shape:      strategy.MarkShape_MARK_SHAPE_SQUARE,
+                Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
+                Title:      "Volume Spike",
+                Message:    fmt.Sprintf("Volume %.0f is %.1fx average", data.Volume, data.Volume/avgVolume),
+                Category:   "MarketEvent",
+            },
+        })
+    }
+    
+    // Retrieve the previous close price from cache
+    prevCloseResp, _ := api.GetCache(ctx, &strategy.GetRequest{Key: "prev_close_" + data.Symbol})
+    prevClose := 100.0 // Default value; parse from prevCloseResp.Value in production
+    _ = prevCloseResp  // Use prevCloseResp.Value to get actual previous close
+    
+    // Detect price gap
+    gapPercent := (data.Open - prevClose) / prevClose * 100
+    if gapPercent > 2.0 || gapPercent < -2.0 {
+        color := "green"
+        if gapPercent < 0 {
+            color = "red"
+        }
+        _, _ = api.Mark(ctx, &strategy.MarkRequest{
+            MarketData: data,
+            Mark: &strategy.Mark{
+                SignalType: strategy.SignalType_SIGNAL_TYPE_NO_ACTION,
+                Color:      color,
+                Shape:      strategy.MarkShape_MARK_SHAPE_SQUARE,
+                Level:      strategy.MarkLevel_MARK_LEVEL_WARNING,
+                Title:      "Price Gap",
+                Message:    fmt.Sprintf("Gap of %.2f%% detected", gapPercent),
+                Category:   "MarketEvent",
+            },
+        })
+    }
+    
+    // Store current close for next iteration
+    _, _ = api.SetCache(ctx, &strategy.SetRequest{
+        Key:   "prev_close_" + data.Symbol,
+        Value: fmt.Sprintf("%f", data.Close),
+    })
+    
+    return &emptypb.Empty{}, nil
+}
+```
+
+### Mark Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `SignalType` | `SignalType` | The type of signal associated with this mark |
+| `Color` | `string` | Color of the marker (name or hex code) |
+| `Shape` | `MarkShape` | Visual shape of the marker |
+| `Level` | `MarkLevel` | Severity level of the marker |
+| `Title` | `string` | Short title for the marker |
+| `Message` | `string` | Detailed description or explanation |
+| `Category` | `string` | Category for grouping markers (e.g., "Trade", "RiskManagement", "MarketEvent") |
+
 ### Mark Shapes
 
-| Shape | Constant |
-|-------|----------|
-| Circle | `MARK_SHAPE_CIRCLE` |
-| Square | `MARK_SHAPE_SQUARE` |
-| Triangle | `MARK_SHAPE_TRIANGLE` |
+| Shape | Constant | Recommended Use |
+|-------|----------|-----------------|
+| Circle | `MARK_SHAPE_CIRCLE` | General events, signals |
+| Square | `MARK_SHAPE_SQUARE` | Market conditions, data points |
+| Triangle | `MARK_SHAPE_TRIANGLE` | Trade entries/exits, directional signals |
 
 ### Mark Levels
 
 | Level | Constant | Use Case |
 |-------|----------|----------|
-| Info | `MARK_LEVEL_INFO` | General information markers |
-| Warning | `MARK_LEVEL_WARNING` | Warning conditions |
-| Error | `MARK_LEVEL_ERROR` | Error conditions |
+| Info | `MARK_LEVEL_INFO` | General information, successful trades |
+| Warning | `MARK_LEVEL_WARNING` | Skipped orders, unusual conditions |
+| Error | `MARK_LEVEL_ERROR` | Errors, failed operations |
+
+### Mark Colors
+
+Supported color names: `red`, `green`, `blue`, `yellow`, `purple`, `orange`
+
+You can also use hex color codes like `#FF0000` for custom colors.
+
+### Retrieving Markers
+
+To retrieve all markers created during the backtest:
+
+```go
+api := strategy.NewStrategyApi()
+
+markers, err := api.GetMarkers(ctx, &emptypb.Empty{})
+if err != nil {
+    return nil, err
+}
+
+for _, marker := range markers.Markers {
+    fmt.Printf("Mark: %s - %s\n", marker.Title, marker.Message)
+}
+```
+
+### Best Practices for Markers
+
+1. **Use Categories**: Group related markers using the `Category` field to make filtering easier during analysis.
+2. **Be Descriptive**: Include relevant values in the `Message` field to understand why the marker was created.
+3. **Choose Appropriate Levels**: Use `Warning` for skipped orders and unusual conditions, `Info` for normal events.
+4. **Color Coding**: Use consistent colors (green for bullish, red for bearish, yellow for warnings).
+5. **Don't Over-Mark**: Only mark significant events to avoid cluttering the visualization.
 
 ## Storing State in Cache
 
