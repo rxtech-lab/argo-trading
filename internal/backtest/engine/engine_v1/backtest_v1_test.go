@@ -1194,7 +1194,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to read data")
 	})
 
-	t.Run("ProcessData error", func(t *testing.T) {
+	t.Run("ProcessData error creates mark and continues", func(t *testing.T) {
 		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1209,11 +1209,13 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
-		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(2, nil).AnyTimes()
 
-		marketData := types.MarketData{Symbol: "TEST", Close: 100.0}
+		marketData1 := types.MarketData{Id: "md1", Symbol: "TEST", Close: 100.0}
+		marketData2 := types.MarketData{Id: "md2", Symbol: "TEST", Close: 101.0}
 		readAllFunc := func(yield func(types.MarketData, error) bool) {
-			yield(marketData, nil)
+			yield(marketData1, nil)
+			yield(marketData2, nil)
 		}
 		mockDatasource.EXPECT().ReadAll(gomock.Any(), gomock.Any()).Return(readAllFunc).AnyTimes()
 
@@ -1236,9 +1238,26 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
+		// Run should succeed even though ProcessData fails
 		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to process data")
+		require.NoError(t, err)
+
+		// Verify that error marks were created (one for each data point)
+		marks, err := backtestEngine.marker.GetMarks()
+		require.NoError(t, err)
+		assert.Len(t, marks, 2, "Should have created error marks for both failed ProcessData calls")
+
+		// Verify the first error mark
+		assert.Equal(t, "md1", marks[0].MarketDataId)
+		assert.Equal(t, types.MarkColorRed, marks[0].Color)
+		assert.Equal(t, types.MarkShapeTriangle, marks[0].Shape)
+		assert.Equal(t, "ProcessData Error", marks[0].Title)
+		assert.Contains(t, marks[0].Message, "process data failed")
+		assert.Equal(t, "error", marks[0].Category)
+
+		// Verify the second error mark
+		assert.Equal(t, "md2", marks[1].MarketDataId)
+		assert.Equal(t, types.MarkColorRed, marks[1].Color)
 	})
 
 	t.Run("With callback", func(t *testing.T) {
@@ -1428,7 +1447,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 		assert.Equal(t, 2, processDataCount, "OnProcessData should be called for each data point")
 	})
 
-	t.Run("OnBacktestEnd is called even on error", func(t *testing.T) {
+	t.Run("OnBacktestEnd is called with nil when ProcessData errors are marked", func(t *testing.T) {
 		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1445,7 +1464,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
 
-		marketData := types.MarketData{Symbol: "TEST", Close: 100.0}
+		marketData := types.MarketData{Id: "md1", Symbol: "TEST", Close: 100.0}
 		readAllFunc := func(yield func(types.MarketData, error) bool) {
 			yield(marketData, nil)
 		}
@@ -1483,12 +1502,16 @@ func TestLifecycleCallbacks(t *testing.T) {
 		}
 
 		err = backtestEngine.Run(context.Background(), callbacks)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to process data")
+		require.NoError(t, err, "Run should succeed even though ProcessData fails")
 
-		// OnBacktestEnd should still be called with the error
-		assert.True(t, onBacktestEndCalled, "OnBacktestEnd should be called even on error")
-		assert.NotNil(t, receivedErr, "OnBacktestEnd should receive the error")
+		// OnBacktestEnd should be called with nil error since backtest completed successfully
+		assert.True(t, onBacktestEndCalled, "OnBacktestEnd should be called")
+		assert.Nil(t, receivedErr, "OnBacktestEnd should receive nil error since ProcessData errors are marked, not fatal")
+
+		// Verify that error mark was created
+		marks, err := backtestEngine.marker.GetMarks()
+		require.NoError(t, err)
+		assert.Len(t, marks, 1, "Should have created an error mark")
 	})
 
 	t.Run("Callback error stops execution", func(t *testing.T) {

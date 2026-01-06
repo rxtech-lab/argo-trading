@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
@@ -557,7 +558,32 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 
 		err = params.strategy.ProcessData(data)
 		if err != nil {
-			return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to process data", err)
+			// Log the error
+			b.log.Error("Strategy ProcessData error",
+				zap.String("strategy", params.strategy.Name()),
+				zap.String("symbol", data.Symbol),
+				zap.Time("time", data.Time),
+				zap.Error(err),
+			)
+
+			// Create an error mark instead of stopping the backtest
+			errorMark := types.Mark{
+				MarketDataId: data.Id,
+				Color:        types.MarkColorRed,
+				Shape:        types.MarkShapeTriangle,
+				Title:        "ProcessData Error",
+				Message:      fmt.Sprintf("Strategy failed to process data: %v", err),
+				Category:     "error",
+				Signal:       optional.None[types.Signal](),
+			}
+
+			if markErr := b.marker.Mark(data, errorMark); markErr != nil {
+				b.log.Error("Failed to create error mark",
+					zap.Error(markErr),
+				)
+			}
+
+			// Continue processing remaining data points instead of returning error
 		}
 		// Update progress bar
 		currentCount++
