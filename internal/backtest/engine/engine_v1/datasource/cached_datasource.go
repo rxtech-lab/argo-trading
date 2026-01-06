@@ -25,6 +25,7 @@ func NewCachedDataSource(underlying DataSource) *CachedDataSource {
 		underlying:        underlying,
 		previousDataCache: make(map[string][]types.MarketData),
 		rangeCache:        make(map[string][]types.MarketData),
+		mu:                sync.RWMutex{},
 	}
 }
 
@@ -55,7 +56,8 @@ func (c *CachedDataSource) GetRange(start time.Time, end time.Time, interval opt
 	c.mu.RLock()
 	if data, ok := c.rangeCache[key]; ok {
 		c.mu.RUnlock()
-		return data, nil
+		// Copy to prevent callers from corrupting cache
+		return copyMarketData(data), nil
 	}
 	c.mu.RUnlock()
 
@@ -65,7 +67,8 @@ func (c *CachedDataSource) GetRange(start time.Time, end time.Time, interval opt
 
 	// Double-check after acquiring write lock
 	if data, ok := c.rangeCache[key]; ok {
-		return data, nil
+		// Copy to prevent callers from corrupting cache
+		return copyMarketData(data), nil
 	}
 
 	data, err := c.underlying.GetRange(start, end, interval)
@@ -73,6 +76,7 @@ func (c *CachedDataSource) GetRange(start time.Time, end time.Time, interval opt
 	if err == nil {
 		c.rangeCache[key] = data
 	}
+
 	return data, err
 }
 
@@ -85,7 +89,8 @@ func (c *CachedDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 	c.mu.RLock()
 	if data, ok := c.previousDataCache[key]; ok {
 		c.mu.RUnlock()
-		return data, nil
+		// Copy to prevent callers from corrupting cache
+		return copyMarketData(data), nil
 	}
 	c.mu.RUnlock()
 
@@ -95,7 +100,8 @@ func (c *CachedDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 
 	// Double-check after acquiring write lock
 	if data, ok := c.previousDataCache[key]; ok {
-		return data, nil
+		// Copy to prevent callers from corrupting cache
+		return copyMarketData(data), nil
 	}
 
 	data, err := c.underlying.GetPreviousNumberOfDataPoints(end, symbol, count)
@@ -103,6 +109,7 @@ func (c *CachedDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 	if err == nil {
 		c.previousDataCache[key] = data
 	}
+
 	return data, err
 }
 
@@ -147,5 +154,14 @@ func (c *CachedDataSource) buildRangeKey(start time.Time, end time.Time, interva
 	if interval.IsSome() {
 		intervalStr = string(interval.Unwrap())
 	}
+
 	return fmt.Sprintf("range:%d:%d:%s", start.UnixNano(), end.UnixNano(), intervalStr)
+}
+
+// copyMarketData creates a copy of the slice to prevent callers from corrupting cached data.
+func copyMarketData(data []types.MarketData) []types.MarketData {
+	dataCopy := make([]types.MarketData, len(data))
+	copy(dataCopy, data)
+
+	return dataCopy
 }

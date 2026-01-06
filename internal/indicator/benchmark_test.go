@@ -149,3 +149,63 @@ func BenchmarkCacheHitVsDBQuery(b *testing.B) {
 		}
 	})
 }
+
+// TestCachePerformanceImprovement verifies that caching provides a measurable speedup.
+// This test runs both cached and uncached queries and asserts cache is faster.
+func TestCachePerformanceImprovement(t *testing.T) {
+	loggerConfig := zap.NewDevelopmentConfig()
+	loggerConfig.OutputPaths = []string{}
+	loggerConfig.ErrorOutputPaths = []string{}
+	zapLogger, err := loggerConfig.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := &logger.Logger{Logger: zapLogger}
+
+	ds, err := datasource.NewDataSource(":memory:", log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ds.Close()
+
+	err = ds.Initialize("./test_data/test_data.parquet")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cachedDS := datasource.NewCachedDataSource(ds)
+	endTime := time.Date(2025, 1, 2, 10, 0, 0, 0, time.UTC)
+	symbol := "AAPL"
+	iterations := 100
+
+	// Warm up cache
+	_, err = cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Measure uncached queries
+	uncachedStart := time.Now()
+	for i := 0; i < iterations; i++ {
+		ds.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+	}
+	uncachedDuration := time.Since(uncachedStart)
+
+	// Measure cached queries
+	cachedStart := time.Now()
+	for i := 0; i < iterations; i++ {
+		cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+	}
+	cachedDuration := time.Since(cachedStart)
+
+	// Log results
+	t.Logf("Uncached: %v, Cached: %v, Speedup: %.2fx",
+		uncachedDuration, cachedDuration,
+		float64(uncachedDuration)/float64(cachedDuration))
+
+	// Assert cache is faster
+	if cachedDuration >= uncachedDuration {
+		t.Errorf("Cache should be faster: cached=%v, uncached=%v",
+			cachedDuration, uncachedDuration)
+	}
+}
