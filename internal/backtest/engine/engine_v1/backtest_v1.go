@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
@@ -434,9 +435,12 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 
 	var err error
 
-	b.marker, err = NewBacktestMarker(b.log)
-	if err != nil {
-		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create backtest marker", err)
+	// Only create a new marker if one isn't already set (allows dependency injection in tests)
+	if b.marker == nil {
+		b.marker, err = NewBacktestMarker(b.log)
+		if err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create backtest marker", err)
+		}
 	}
 
 	if err := b.state.Initialize(); err != nil {
@@ -533,6 +537,12 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext runtime.RuntimeContext, count int) error {
 	currentCount := 0
 
+	// Track insufficient data error state for marker boundaries
+	var (
+		inInsufficientDataError bool
+		lastInsufficientData    types.MarketData
+	)
+
 	for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
 		// Check for context cancellation
 		select {
@@ -555,9 +565,27 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 			backtestTrading.UpdateCurrentMarketData(data)
 		}
 
-		// Ignore ProcessData errors and continue running
-		// This allows the backtest to complete even if some data points fail
-		_ = params.strategy.ProcessData(data)
+		// Process data and track insufficient data errors for markers
+		processErr := params.strategy.ProcessData(data)
+
+		if errors.IsInsufficientDataError(processErr) {
+			if !inInsufficientDataError {
+				// Transition: OK → Insufficient - mark beginning
+				b.markInsufficientDataStart(data)
+
+				inInsufficientDataError = true
+			}
+			// Track the last data point with insufficient error for end marker
+			lastInsufficientData = data
+		} else {
+			if inInsufficientDataError {
+				// Transition: Insufficient → OK - mark end at last insufficient data point
+				b.markInsufficientDataEnd(lastInsufficientData)
+
+				inInsufficientDataError = false
+			}
+		}
+
 		// Update progress bar
 		currentCount++
 
@@ -569,7 +597,60 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		}
 	}
 
+	// If we ended in an insufficient data error state, mark the end
+	if inInsufficientDataError {
+		b.markInsufficientDataEnd(lastInsufficientData)
+	}
+
 	return nil
+}
+
+// markInsufficientDataStart adds a warning marker at the start of an insufficient data error sequence.
+func (b *BacktestEngineV1) markInsufficientDataStart(data types.MarketData) {
+	if b.marker == nil {
+		return
+	}
+
+	mark := types.Mark{
+		MarketDataId: data.Id,
+		Color:        types.MarkColorYellow,
+		Shape:        types.MarkShapeTriangle,
+		Level:        types.MarkLevelWarning,
+		Title:        "Insufficient Data",
+		Message:      "Insufficient data error started",
+		Category:     "InsufficientData",
+		Signal:       optional.None[types.Signal](),
+	}
+
+	if err := b.marker.Mark(data, mark); err != nil {
+		b.log.Error("Failed to mark insufficient data start",
+			zap.Error(err),
+		)
+	}
+}
+
+// markInsufficientDataEnd adds a warning marker at the end of an insufficient data error sequence.
+func (b *BacktestEngineV1) markInsufficientDataEnd(data types.MarketData) {
+	if b.marker == nil {
+		return
+	}
+
+	mark := types.Mark{
+		MarketDataId: data.Id,
+		Color:        types.MarkColorYellow,
+		Shape:        types.MarkShapeTriangle,
+		Level:        types.MarkLevelWarning,
+		Title:        "Insufficient Data",
+		Message:      "Insufficient data error ended",
+		Category:     "InsufficientData",
+		Signal:       optional.None[types.Signal](),
+	}
+
+	if err := b.marker.Mark(data, mark); err != nil {
+		b.log.Error("Failed to mark insufficient data end",
+			zap.Error(err),
+		)
+	}
 }
 
 func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID string, resultFolderPath string, strategyPath string, dataPath string) error {
