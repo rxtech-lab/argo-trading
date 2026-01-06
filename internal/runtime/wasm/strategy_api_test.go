@@ -322,6 +322,7 @@ func (suite *StrategyApiTestSuite) TestGetMarkers() {
 			Signal:   optional.Some(signal),
 			Color:    "red",
 			Shape:    types.MarkShapeCircle,
+			Level:    types.MarkLevelWarning,
 			Title:    "test title",
 			Message:  "test message",
 			Category: "test category",
@@ -342,6 +343,7 @@ func (suite *StrategyApiTestSuite) TestGetMarkers() {
 	// Access the Signal value from the Option
 	suite.True(markers[0].Signal.IsSome())
 	suite.Equal(strategy.SignalType_SIGNAL_TYPE_BUY_LONG, response.Markers[0].SignalType)
+	suite.Equal(strategy.MarkLevel_MARK_LEVEL_WARNING, response.Markers[0].Level)
 	suite.Equal("BTCUSDT", signal.Symbol) // Compare with the original signal we created
 }
 
@@ -550,6 +552,7 @@ func (suite *StrategyApiTestSuite) TestMark() {
 	mark := &strategy.Mark{
 		Color:      "red",
 		Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+		Level:      strategy.MarkLevel_MARK_LEVEL_WARNING,
 		Title:      "Test mark title",
 		Message:    "Test mark message",
 		Category:   "Test category",
@@ -583,6 +586,7 @@ func (suite *StrategyApiTestSuite) TestMark() {
 			// Verify the mark
 			suite.Equal(types.MarkColor("red"), mark.Color)
 			suite.Equal(types.MarkShapeCircle, mark.Shape)
+			suite.Equal(types.MarkLevelWarning, mark.Level)
 			suite.Equal("Test mark title", mark.Title)
 			suite.Equal("Test mark message", mark.Message)
 			suite.Equal("Test category", mark.Category)

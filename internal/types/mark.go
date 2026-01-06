@@ -21,10 +21,19 @@ const (
 	MarkColorOrange MarkColor = "orange"
 )
 
+type MarkLevel string
+
+const (
+	MarkLevelInfo    MarkLevel = "info"
+	MarkLevelWarning MarkLevel = "warning"
+	MarkLevelError   MarkLevel = "error"
+)
+
 type Mark struct {
 	MarketDataId string
 	Color        MarkColor
 	Shape        MarkShape
+	Level        MarkLevel
 	Title        string
 	Message      string
 	Category     string

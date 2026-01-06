@@ -383,6 +383,34 @@ func (x MarkShape) Enum() *MarkShape {
 	return p
 }
 
+type MarkLevel int32
+
+const (
+	MarkLevel_MARK_LEVEL_INFO    MarkLevel = 0
+	MarkLevel_MARK_LEVEL_WARNING MarkLevel = 1
+	MarkLevel_MARK_LEVEL_ERROR   MarkLevel = 2
+)
+
+// Enum value maps for MarkLevel.
+var (
+	MarkLevel_name = map[int32]string{
+		0: "MARK_LEVEL_INFO",
+		1: "MARK_LEVEL_WARNING",
+		2: "MARK_LEVEL_ERROR",
+	}
+	MarkLevel_value = map[string]int32{
+		"MARK_LEVEL_INFO":    0,
+		"MARK_LEVEL_WARNING": 1,
+		"MARK_LEVEL_ERROR":   2,
+	}
+)
+
+func (x MarkLevel) Enum() *MarkLevel {
+	p := new(MarkLevel)
+	*p = x
+	return p
+}
+
 // LogLevel represents the severity of a log message
 type LogLevel int32
 
@@ -1547,6 +1575,8 @@ type Mark struct {
 	Message    string     `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
 	Category   string     `protobuf:"bytes,5,opt,name=category,proto3" json:"category,omitempty"`
 	SignalType SignalType `protobuf:"varint,6,opt,name=signal_type,json=signalType,proto3,enum=strategy.SignalType" json:"signal_type,omitempty"`
+	// level of the mark (info, warning, error)
+	Level MarkLevel `protobuf:"varint,7,opt,name=level,proto3,enum=strategy.MarkLevel" json:"level,omitempty"`
 }
 
 func (x *Mark) ProtoReflect() protoreflect.Message {
@@ -1593,6 +1623,13 @@ func (x *Mark) GetSignalType() SignalType {
 		return x.SignalType
 	}
 	return SignalType_SIGNAL_TYPE_BUY_LONG
+}
+
+func (x *Mark) GetLevel() MarkLevel {
+	if x != nil {
+		return x.Level
+	}
+	return MarkLevel_MARK_LEVEL_INFO
 }
 
 // AccountInfo represents the current account state

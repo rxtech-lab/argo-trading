@@ -395,6 +395,11 @@ enum MarkShape {
   MARK_SHAPE_TRIANGLE = 2;
 }
 
+enum MarkLevel {
+  MARK_LEVEL_INFO = 0;
+  MARK_LEVEL_WARNING = 1;
+  MARK_LEVEL_ERROR = 2;
+}
 
 message Mark {
   // color of the mark.
@@ -406,6 +411,8 @@ message Mark {
   string message = 4;
   string category = 5;
   SignalType signal_type = 6;
+  // level of the mark (info, warning, error)
+  MarkLevel level = 7;
 }
 
 // AccountInfo represents the current account state
