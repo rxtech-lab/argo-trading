@@ -15,6 +15,16 @@ import (
 // using RSI, MACD, EMA, and ATR for high-probability trade signals
 type HybridTradingStrategy struct{}
 
+// Strategy configuration constants - relaxed thresholds for more frequent trading in e2e tests
+const (
+	// RSIOversoldThreshold is the RSI level below which we consider buying (relaxed from typical 30-35)
+	RSIOversoldThreshold = 45.0
+	// RSIOverboughtThreshold is the RSI level above which we consider selling (relaxed from typical 65-70)
+	RSIOverboughtThreshold = 55.0
+	// ATRStopLossMultiplier is the multiplier applied to ATR for stop-loss calculation
+	ATRStopLossMultiplier = 2.0
+)
+
 // Indicator value structures for JSON parsing
 type RSIValue struct {
 	RSI float64 `json:"rsi"`
@@ -32,9 +42,11 @@ type ATRValue struct {
 	ATR float64 `json:"atr"`
 }
 
-// CachedState stores previous indicator values for crossover detection
+// CachedState stores previous indicator values for crossover detection and position tracking
 type CachedState struct {
-	PrevMACD float64 `json:"prev_macd"`
+	PrevMACD   float64 `json:"prev_macd"`
+	InPosition bool    `json:"in_position"`
+	DataCount  int     `json:"data_count"`
 }
 
 func main() {}
@@ -132,32 +144,79 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 	ema := parseEMA(emaSignal.RawValue)
 	atr := parseATR(atrSignal.RawValue)
 
-	// Skip if we couldn't parse indicator values (insufficient data)
-	if rsi == 0 || ema == 0 {
-		return &emptypb.Empty{}, nil
-	}
-
-	// Get previous MACD from cache for crossover detection
+	// Get previous state from cache for crossover detection and position tracking
 	cacheKey := "hybrid_state_" + data.Symbol
 	cachedStateResp, _ := api.GetCache(ctx, &strategy.GetRequest{Key: cacheKey})
 
 	var cachedState CachedState
 	if cachedStateResp != nil && cachedStateResp.Value != "" {
-		json.Unmarshal([]byte(cachedStateResp.Value), &cachedState)
+		_ = json.Unmarshal([]byte(cachedStateResp.Value), &cachedState)
+	}
+
+	// Increment data count
+	cachedState.DataCount++
+
+	// Skip if we couldn't parse indicator values (insufficient data)
+	if rsi == 0 || ema == 0 {
+		// Mark data point with insufficient data (warning level, square shape)
+		_, _ = api.Mark(ctx, &strategy.MarkRequest{
+			MarketData: data,
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_NO_ACTION,
+				Color:      "yellow",
+				Shape:      strategy.MarkShape_MARK_SHAPE_SQUARE,
+				Level:      strategy.MarkLevel_MARK_LEVEL_WARNING,
+				Title:      "Insufficient Data",
+				Message:    "Waiting for indicator warmup - RSI: " + formatFloat(rsi) + ", EMA: " + formatFloat(ema),
+				Category:   "DataQuality",
+			},
+		})
+		// Still save state
+		stateJSON, _ := json.Marshal(cachedState)
+		_, _ = api.SetCache(ctx, &strategy.SetRequest{
+			Key:   cacheKey,
+			Value: string(stateJSON),
+		})
+		return &emptypb.Empty{}, nil
 	}
 
 	// Detect MACD crossover (bullish: crosses above 0, bearish: crosses below 0)
 	macdCrossedBullish := cachedState.PrevMACD <= 0 && macd > 0
 	macdCrossedBearish := cachedState.PrevMACD >= 0 && macd < 0
 
-	// Strategy parameters (moderate risk)
-	rsiOversold := 35.0
-	rsiOverbought := 65.0
+	// Mark MACD crossovers - these are significant market events
+	if macdCrossedBullish {
+		_, _ = api.Mark(ctx, &strategy.MarkRequest{
+			MarketData: data,
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_NO_ACTION,
+				Color:      "green",
+				Shape:      strategy.MarkShape_MARK_SHAPE_SQUARE,
+				Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
+				Title:      "MACD Bullish Crossover",
+				Message:    "MACD crossed above zero: " + formatFloat(cachedState.PrevMACD) + " -> " + formatFloat(macd),
+				Category:   "MarketEvent",
+			},
+		})
+	} else if macdCrossedBearish {
+		_, _ = api.Mark(ctx, &strategy.MarkRequest{
+			MarketData: data,
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_NO_ACTION,
+				Color:      "red",
+				Shape:      strategy.MarkShape_MARK_SHAPE_SQUARE,
+				Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
+				Title:      "MACD Bearish Crossover",
+				Message:    "MACD crossed below zero: " + formatFloat(cachedState.PrevMACD) + " -> " + formatFloat(macd),
+				Category:   "MarketEvent",
+			},
+		})
+	}
 
-	// BUY Signal: RSI oversold + bullish MACD + price above EMA (uptrend)
-	buyCondition := rsi < rsiOversold && (macd > 0 || macdCrossedBullish) && data.Close > ema
+	// BUY Signal: RSI below threshold OR bullish MACD crossover (when not in position)
+	buyCondition := !cachedState.InPosition && (rsi < RSIOversoldThreshold || macdCrossedBullish)
 	if buyCondition {
-		stopLoss := data.Close - (atr * 2)
+		stopLoss := data.Close - (atr * ATRStopLossMultiplier)
 		order := &strategy.ExecuteOrder{
 			Symbol:    data.Symbol,
 			Side:      strategy.PurchaseType_PURCHASE_TYPE_BUY,
@@ -166,23 +225,53 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 			Price:     data.Close,
 			Reason: &strategy.Reason{
 				Reason: "strategy",
-				Message: "BUY: RSI=" + formatFloat(rsi) + " (oversold<" + formatFloat(rsiOversold) + "), " +
-					"MACD=" + formatFloat(macd) + " (bullish), " +
-					"Price=" + formatFloat(data.Close) + " > EMA=" + formatFloat(ema) + ", " +
-					"StopLoss=" + formatFloat(stopLoss),
+				Message: "BUY: RSI=" + formatFloat(rsi) + ", MACD=" + formatFloat(macd) +
+					", Price=" + formatFloat(data.Close) + ", EMA=" + formatFloat(ema) +
+					", StopLoss=" + formatFloat(stopLoss),
 			},
 			StrategyName: "HybridTradingStrategy",
 		}
 		_, err := api.PlaceOrder(ctx, order)
 		if err != nil {
+			// Mark failed order with error level
+			_, _ = api.Mark(ctx, &strategy.MarkRequest{
+				MarketData: data,
+				Mark: &strategy.Mark{
+					SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+					Color:      "orange",
+					Shape:      strategy.MarkShape_MARK_SHAPE_TRIANGLE,
+					Level:      strategy.MarkLevel_MARK_LEVEL_ERROR,
+					Title:      "Buy Order Failed",
+					Message:    "Failed to place buy order: " + err.Error(),
+					Category:   "OrderError",
+				},
+			})
 			return nil, err
 		}
+
+		// Mark successful buy order with triangle shape (directional signal)
+		if _, err := api.Mark(ctx, &strategy.MarkRequest{
+			MarketData: data,
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+				Color:      "green",
+				Shape:      strategy.MarkShape_MARK_SHAPE_TRIANGLE,
+				Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
+				Title:      "Buy Order Placed",
+				Message:    "BUY @ " + formatFloat(data.Close) + " RSI=" + formatFloat(rsi),
+				Category:   "Trade",
+			},
+		}); err != nil {
+			return nil, err
+		}
+
+		cachedState.InPosition = true
 	}
 
-	// SELL Signal: RSI overbought + bearish MACD + price below EMA (downtrend)
-	sellCondition := rsi > rsiOverbought && (macd < 0 || macdCrossedBearish) && data.Close < ema
+	// SELL Signal: RSI above threshold OR bearish MACD crossover (when in position)
+	sellCondition := cachedState.InPosition && (rsi > RSIOverboughtThreshold || macdCrossedBearish)
 	if sellCondition {
-		stopLoss := data.Close + (atr * 2)
+		stopLoss := data.Close + (atr * ATRStopLossMultiplier)
 		order := &strategy.ExecuteOrder{
 			Symbol:    data.Symbol,
 			Side:      strategy.PurchaseType_PURCHASE_TYPE_SELL,
@@ -191,23 +280,84 @@ func (s *HybridTradingStrategy) ProcessData(ctx context.Context, req *strategy.P
 			Price:     data.Close,
 			Reason: &strategy.Reason{
 				Reason: "strategy",
-				Message: "SELL: RSI=" + formatFloat(rsi) + " (overbought>" + formatFloat(rsiOverbought) + "), " +
-					"MACD=" + formatFloat(macd) + " (bearish), " +
-					"Price=" + formatFloat(data.Close) + " < EMA=" + formatFloat(ema) + ", " +
-					"StopLoss=" + formatFloat(stopLoss),
+				Message: "SELL: RSI=" + formatFloat(rsi) + ", MACD=" + formatFloat(macd) +
+					", Price=" + formatFloat(data.Close) + ", EMA=" + formatFloat(ema) +
+					", StopLoss=" + formatFloat(stopLoss),
 			},
 			StrategyName: "HybridTradingStrategy",
 		}
 		_, err := api.PlaceOrder(ctx, order)
 		if err != nil {
+			// Mark failed order with error level
+			_, _ = api.Mark(ctx, &strategy.MarkRequest{
+				MarketData: data,
+				Mark: &strategy.Mark{
+					SignalType: strategy.SignalType_SIGNAL_TYPE_SELL_LONG,
+					Color:      "orange",
+					Shape:      strategy.MarkShape_MARK_SHAPE_TRIANGLE,
+					Level:      strategy.MarkLevel_MARK_LEVEL_ERROR,
+					Title:      "Sell Order Failed",
+					Message:    "Failed to place sell order: " + err.Error(),
+					Category:   "OrderError",
+				},
+			})
 			return nil, err
 		}
+
+		// Mark successful sell order with triangle shape (directional signal)
+		if _, err := api.Mark(ctx, &strategy.MarkRequest{
+			MarketData: data,
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_SELL_LONG,
+				Color:      "red",
+				Shape:      strategy.MarkShape_MARK_SHAPE_TRIANGLE,
+				Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
+				Title:      "Sell Order Placed",
+				Message:    "SELL @ " + formatFloat(data.Close) + " RSI=" + formatFloat(rsi),
+				Category:   "Trade",
+			},
+		}); err != nil {
+			return nil, err
+		}
+
+		cachedState.InPosition = false
+	}
+
+	// Mark skipped signals when conditions are met but we can't trade
+	if !buyCondition && !sellCondition && rsi < RSIOversoldThreshold && cachedState.InPosition {
+		_, _ = api.Mark(ctx, &strategy.MarkRequest{
+			MarketData: data,
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
+				Color:      "purple",
+				Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+				Level:      strategy.MarkLevel_MARK_LEVEL_WARNING,
+				Title:      "Skipped Buy Signal",
+				Message:    "RSI oversold (" + formatFloat(rsi) + ") but already in position",
+				Category:   "RiskManagement",
+			},
+		})
+	}
+
+	if !buyCondition && !sellCondition && rsi > RSIOverboughtThreshold && !cachedState.InPosition {
+		_, _ = api.Mark(ctx, &strategy.MarkRequest{
+			MarketData: data,
+			Mark: &strategy.Mark{
+				SignalType: strategy.SignalType_SIGNAL_TYPE_SELL_LONG,
+				Color:      "purple",
+				Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE,
+				Level:      strategy.MarkLevel_MARK_LEVEL_WARNING,
+				Title:      "Skipped Sell Signal",
+				Message:    "RSI overbought (" + formatFloat(rsi) + ") but not in position",
+				Category:   "RiskManagement",
+			},
+		})
 	}
 
 	// Update cached state with current MACD
 	cachedState.PrevMACD = macd
 	stateJSON, _ := json.Marshal(cachedState)
-	api.SetCache(ctx, &strategy.SetRequest{
+	_, _ = api.SetCache(ctx, &strategy.SetRequest{
 		Key:   cacheKey,
 		Value: string(stateJSON),
 	})
