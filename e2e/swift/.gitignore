@@ -1,0 +1,11 @@
+# Swift build artifacts
+.build/
+.swiftpm/
+
+# Generated test resources
+Tests/ArgoTradingE2ETests/Resources/*.wasm
+Tests/ArgoTradingE2ETests/Resources/*.parquet
+Tests/ArgoTradingE2ETests/Resources/config.json
+
+# macOS
+.DS_Store
