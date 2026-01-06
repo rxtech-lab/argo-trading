@@ -1195,6 +1195,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 	})
 
 	t.Run("ProcessData error", func(t *testing.T) {
+		// ProcessData errors are now ignored and backtest continues
 		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1207,11 +1208,15 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(errors.New("process data failed")).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("test-strategy-id", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
 
 		marketData := types.MarketData{Symbol: "TEST", Close: 100.0}
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData, nil).AnyTimes()
+
 		readAllFunc := func(yield func(types.MarketData, error) bool) {
 			yield(marketData, nil)
 		}
@@ -1232,13 +1237,13 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 
 		backtestEngine.LoadStrategy(mockStrategy)
 		backtestEngine.SetConfigPath(configPath)
-		backtestEngine.dataPaths = []string{"/some/data/path"}
+		backtestEngine.dataPaths = []string{filepath.Join(configDir, "data_path")}
 		backtestEngine.SetResultsFolder(tempDir)
 		backtestEngine.SetDataSource(mockDatasource)
 
+		// ProcessData errors are ignored, so Run should succeed
 		err = backtestEngine.Run(context.Background(), engine_types.LifecycleCallbacks{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to process data")
+		require.NoError(t, err)
 	})
 
 	t.Run("With callback", func(t *testing.T) {
@@ -1428,7 +1433,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 		assert.Equal(t, 2, processDataCount, "OnProcessData should be called for each data point")
 	})
 
-	t.Run("OnBacktestEnd is called even on error", func(t *testing.T) {
+	t.Run("ProcessData errors are ignored and backtest continues", func(t *testing.T) {
 		setTestVersion(t, "1.0.0")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1441,11 +1446,15 @@ func TestLifecycleCallbacks(t *testing.T) {
 		mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(errors.New("processing failed")).AnyTimes()
 		mockStrategy.EXPECT().GetRuntimeEngineVersion().Return("1.0.0", nil).AnyTimes()
+		mockStrategy.EXPECT().GetIdentifier().Return("test-strategy-id", nil).AnyTimes()
 
 		mockDatasource.EXPECT().Initialize(gomock.Any()).Return(nil).AnyTimes()
 		mockDatasource.EXPECT().Count(gomock.Any(), gomock.Any()).Return(1, nil).AnyTimes()
+		mockDatasource.EXPECT().GetAllSymbols().Return([]string{"TEST"}, nil).AnyTimes()
 
 		marketData := types.MarketData{Symbol: "TEST", Close: 100.0}
+		mockDatasource.EXPECT().ReadLastData(gomock.Any()).Return(marketData, nil).AnyTimes()
+
 		readAllFunc := func(yield func(types.MarketData, error) bool) {
 			yield(marketData, nil)
 		}
@@ -1482,13 +1491,13 @@ func TestLifecycleCallbacks(t *testing.T) {
 			OnBacktestEnd: &onBacktestEnd,
 		}
 
+		// ProcessData errors are now ignored, so Run should succeed
 		err = backtestEngine.Run(context.Background(), callbacks)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to process data")
+		require.NoError(t, err)
 
-		// OnBacktestEnd should still be called with the error
-		assert.True(t, onBacktestEndCalled, "OnBacktestEnd should be called even on error")
-		assert.NotNil(t, receivedErr, "OnBacktestEnd should receive the error")
+		// OnBacktestEnd should be called with nil error since backtest completed
+		assert.True(t, onBacktestEndCalled, "OnBacktestEnd should be called")
+		assert.Nil(t, receivedErr, "OnBacktestEnd should receive nil error when backtest completes")
 	})
 
 	t.Run("Callback error stops execution", func(t *testing.T) {

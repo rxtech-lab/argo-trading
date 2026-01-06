@@ -555,10 +555,9 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 			backtestTrading.UpdateCurrentMarketData(data)
 		}
 
-		err = params.strategy.ProcessData(data)
-		if err != nil {
-			return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to process data", err)
-		}
+		// Ignore ProcessData errors and continue running
+		// This allows the backtest to complete even if some data points fail
+		_ = params.strategy.ProcessData(data)
 		// Update progress bar
 		currentCount++
 
