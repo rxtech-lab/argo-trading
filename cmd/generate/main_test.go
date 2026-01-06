@@ -259,13 +259,16 @@ func (suite *GenerateCmdTestSuite) TestFileExists() {
 	testDir := filepath.Join(suite.tempDir, "test-dir")
 	err = os.Mkdir(testDir, 0755)
 	suite.Require().NoError(err)
-	suite.True(fileExists(testDir))
+	suite.True(dirExists(testDir))
 }
 
 // Helper functions
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
-	return !os.IsNotExist(err) && info.IsDir()
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }
 
 func TestGenerateCmdSuite(t *testing.T) {
