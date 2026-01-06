@@ -26,6 +26,20 @@ const (
 	PatternVolatile SimulationPattern = "volatile"
 )
 
+// Default configuration constants
+const (
+	// DefaultMinimumPrice is the minimum price floor to prevent negative or zero prices
+	DefaultMinimumPrice = 0.01
+	// DefaultBaseVolume is the base volume for generating random volume data
+	DefaultBaseVolume = 1000000.0
+	// DefaultIncreasingNoiseBias is the bias factor for noise in increasing pattern (0.3 means slightly positive bias)
+	DefaultIncreasingNoiseBias = 0.3
+	// DefaultDecreasingNoiseBias is the bias factor for noise in decreasing pattern (0.7 means slightly negative bias)
+	DefaultDecreasingNoiseBias = 0.7
+	// DefaultVolatileUpwardBias is the bias factor for volatile pattern (0.45 means slight upward bias)
+	DefaultVolatileUpwardBias = 0.45
+)
+
 // MockDataConfig holds the configuration for generating mock market data
 type MockDataConfig struct {
 	// Symbol is the ticker symbol for the generated data
@@ -135,7 +149,7 @@ func (g *MockDataGenerator) Generate() ([]types.MarketData, error) {
 
 		newPrice := currentPrice + priceChange
 		if newPrice <= 0 {
-			newPrice = 0.01 // Prevent negative or zero prices
+			newPrice = DefaultMinimumPrice // Prevent negative or zero prices
 		}
 
 		// Generate OHLCV data
@@ -150,7 +164,7 @@ func (g *MockDataGenerator) Generate() ([]types.MarketData, error) {
 		high := maxPrice + g.rng.Float64()*volatilityRange
 		low := minPrice - g.rng.Float64()*volatilityRange
 		if low <= 0 {
-			low = 0.01
+			low = DefaultMinimumPrice
 		}
 
 		// Ensure OHLC relationships are valid
@@ -162,8 +176,7 @@ func (g *MockDataGenerator) Generate() ([]types.MarketData, error) {
 		}
 
 		// Generate volume (random with some variance)
-		baseVolume := 1000000.0
-		volume := baseVolume * (0.5 + g.rng.Float64())
+		volume := DefaultBaseVolume * (0.5 + g.rng.Float64())
 
 		data[i] = types.MarketData{
 			Id:     uuid.New().String(),
@@ -194,7 +207,7 @@ func (g *MockDataGenerator) generateIncreasingChange(currentPrice float64) float
 	trend := currentPrice * g.config.TrendStrength
 
 	// Add some randomness (can be slightly negative but overall positive)
-	noise := currentPrice * (g.config.VolatilityPercent / 100.0) * (g.rng.Float64() - 0.3)
+	noise := currentPrice * (g.config.VolatilityPercent / 100.0) * (g.rng.Float64() - DefaultIncreasingNoiseBias)
 
 	return trend + noise
 }
@@ -205,7 +218,7 @@ func (g *MockDataGenerator) generateDecreasingChange(currentPrice float64) float
 	trend := -currentPrice * g.config.TrendStrength
 
 	// Add some randomness (can be slightly positive but overall negative)
-	noise := currentPrice * (g.config.VolatilityPercent / 100.0) * (g.rng.Float64() - 0.7)
+	noise := currentPrice * (g.config.VolatilityPercent / 100.0) * (g.rng.Float64() - DefaultDecreasingNoiseBias)
 
 	return trend + noise
 }
@@ -213,7 +226,7 @@ func (g *MockDataGenerator) generateDecreasingChange(currentPrice float64) float
 // generateVolatileChange generates a volatile price change with drawdown constraint
 func (g *MockDataGenerator) generateVolatileChange(currentPrice, peakPrice float64) float64 {
 	// Random direction with slight upward bias
-	direction := g.rng.Float64() - 0.45 // Slight upward bias
+	direction := g.rng.Float64() - DefaultVolatileUpwardBias
 
 	// Base change
 	change := currentPrice * (g.config.VolatilityPercent / 100.0) * direction
