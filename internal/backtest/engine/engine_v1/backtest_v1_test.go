@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	engine_types "github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
@@ -1679,6 +1680,7 @@ func TestInsufficientDataErrorMarkers(t *testing.T) {
 		for i := 0; i < 7; i++ {
 			marketData[i] = types.MarketData{
 				Symbol: "TEST",
+				Time:   time.Date(2024, 1, 1, 9, 30+i, 0, 0, time.UTC),
 				Open:   100.0 + float64(i),
 				High:   105.0 + float64(i),
 				Low:    95.0 + float64(i),
@@ -1724,12 +1726,16 @@ func TestInsufficientDataErrorMarkers(t *testing.T) {
 				func(data types.MarketData, mark types.Mark) error {
 					assert.Equal(t, types.MarkLevelWarning, mark.Level)
 					assert.Equal(t, "Insufficient data error started", mark.Message)
+					assert.True(t, mark.Signal.IsSome())
+					assert.Equal(t, data.Time, mark.Signal.Unwrap().Time)
 					return nil
 				}),
 			mockMarker.EXPECT().Mark(matchMarketData(marketData[4]), gomock.Any()).DoAndReturn(
 				func(data types.MarketData, mark types.Mark) error {
 					assert.Equal(t, types.MarkLevelWarning, mark.Level)
 					assert.Equal(t, "Insufficient data error ended", mark.Message)
+					assert.True(t, mark.Signal.IsSome())
+					assert.Equal(t, data.Time, mark.Signal.Unwrap().Time)
 					return nil
 				}),
 		)
