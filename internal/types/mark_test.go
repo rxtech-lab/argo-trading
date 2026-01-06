@@ -28,6 +28,18 @@ func (suite *MarkTestSuite) TestMarkShapeAsString() {
 	suite.Equal("triangle", string(MarkShapeTriangle))
 }
 
+func (suite *MarkTestSuite) TestMarkLevelConstants() {
+	suite.Equal(MarkLevel("info"), MarkLevelInfo)
+	suite.Equal(MarkLevel("warning"), MarkLevelWarning)
+	suite.Equal(MarkLevel("error"), MarkLevelError)
+}
+
+func (suite *MarkTestSuite) TestMarkLevelAsString() {
+	suite.Equal("info", string(MarkLevelInfo))
+	suite.Equal("warning", string(MarkLevelWarning))
+	suite.Equal("error", string(MarkLevelError))
+}
+
 func (suite *MarkTestSuite) TestMarkStruct() {
 	signal := Signal{
 		Time:      time.Now(),
@@ -42,6 +54,7 @@ func (suite *MarkTestSuite) TestMarkStruct() {
 		MarketDataId: "md-123",
 		Color:        "#FF0000",
 		Shape:        MarkShapeCircle,
+		Level:        MarkLevelInfo,
 		Title:        "Buy Signal",
 		Message:      "RSI indicates oversold condition",
 		Category:     "entry",
@@ -51,6 +64,7 @@ func (suite *MarkTestSuite) TestMarkStruct() {
 	suite.Equal("md-123", mark.MarketDataId)
 	suite.Equal(MarkColor("#FF0000"), mark.Color)
 	suite.Equal(MarkShapeCircle, mark.Shape)
+	suite.Equal(MarkLevelInfo, mark.Level)
 	suite.Equal("Buy Signal", mark.Title)
 	suite.Equal("RSI indicates oversold condition", mark.Message)
 	suite.Equal("entry", mark.Category)
@@ -64,6 +78,7 @@ func (suite *MarkTestSuite) TestMarkZeroValues() {
 	suite.Empty(mark.MarketDataId)
 	suite.Empty(mark.Color)
 	suite.Empty(string(mark.Shape))
+	suite.Empty(string(mark.Level))
 	suite.Empty(mark.Title)
 	suite.Empty(mark.Message)
 	suite.Empty(mark.Category)
@@ -98,6 +113,22 @@ func (suite *MarkTestSuite) TestMarkShapes() {
 			Shape:        shape,
 		}
 		suite.Equal(shape, mark.Shape)
+	}
+}
+
+func (suite *MarkTestSuite) TestMarkLevels() {
+	levels := []MarkLevel{
+		MarkLevelInfo,
+		MarkLevelWarning,
+		MarkLevelError,
+	}
+
+	for _, level := range levels {
+		mark := Mark{
+			MarketDataId: "md-test",
+			Level:        level,
+		}
+		suite.Equal(level, mark.Level)
 	}
 }
 
@@ -185,4 +216,31 @@ func (suite *MarkTestSuite) TestMarkShapeInequality() {
 	suite.NotEqual(MarkShapeCircle, MarkShapeSquare)
 	suite.NotEqual(MarkShapeSquare, MarkShapeTriangle)
 	suite.NotEqual(MarkShapeCircle, MarkShapeTriangle)
+}
+
+func (suite *MarkTestSuite) TestMarkLevelUniqueness() {
+	levels := []MarkLevel{
+		MarkLevelInfo,
+		MarkLevelWarning,
+		MarkLevelError,
+	}
+
+	seen := make(map[MarkLevel]bool)
+	for _, level := range levels {
+		suite.False(seen[level], "Duplicate level found: %s", level)
+		seen[level] = true
+	}
+}
+
+func (suite *MarkTestSuite) TestMarkLevelEquality() {
+	level1 := MarkLevelInfo
+	level2 := MarkLevel("info")
+
+	suite.Equal(level1, level2)
+}
+
+func (suite *MarkTestSuite) TestMarkLevelInequality() {
+	suite.NotEqual(MarkLevelInfo, MarkLevelWarning)
+	suite.NotEqual(MarkLevelWarning, MarkLevelError)
+	suite.NotEqual(MarkLevelInfo, MarkLevelError)
 }

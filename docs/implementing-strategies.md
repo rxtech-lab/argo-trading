@@ -334,6 +334,7 @@ _, err := api.Mark(ctx, &strategy.MarkRequest{
         SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
         Color:      "green",                              // Color name or hex code
         Shape:      strategy.MarkShape_MARK_SHAPE_CIRCLE, // CIRCLE, SQUARE, or TRIANGLE
+        Level:      strategy.MarkLevel_MARK_LEVEL_INFO,   // INFO, WARNING, or ERROR
         Title:      "Buy Signal",
         Message:    "RSI oversold condition detected",
         Category:   "MyStrategy",
@@ -351,6 +352,14 @@ if err != nil {
 | Circle | `MARK_SHAPE_CIRCLE` |
 | Square | `MARK_SHAPE_SQUARE` |
 | Triangle | `MARK_SHAPE_TRIANGLE` |
+
+### Mark Levels
+
+| Level | Constant | Use Case |
+|-------|----------|----------|
+| Info | `MARK_LEVEL_INFO` | General information markers |
+| Warning | `MARK_LEVEL_WARNING` | Warning conditions |
+| Error | `MARK_LEVEL_ERROR` | Error conditions |
 
 ## Storing State in Cache
 
@@ -669,6 +678,7 @@ func (s *RSIStrategy) ProcessData(ctx context.Context, req *strategy.ProcessData
                 SignalType: strategy.SignalType_SIGNAL_TYPE_BUY_LONG,
                 Color:      "green",
                 Shape:      strategy.MarkShape_MARK_SHAPE_TRIANGLE,
+                Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
                 Title:      "Buy",
                 Message:    fmt.Sprintf("RSI oversold: %.2f", rsi.RSI),
                 Category:   "RSIStrategy",
@@ -700,6 +710,7 @@ func (s *RSIStrategy) ProcessData(ctx context.Context, req *strategy.ProcessData
                 SignalType: strategy.SignalType_SIGNAL_TYPE_SELL_LONG,
                 Color:      "red",
                 Shape:      strategy.MarkShape_MARK_SHAPE_TRIANGLE,
+                Level:      strategy.MarkLevel_MARK_LEVEL_INFO,
                 Title:      "Sell",
                 Message:    fmt.Sprintf("RSI overbought: %.2f", rsi.RSI),
                 Category:   "RSIStrategy",

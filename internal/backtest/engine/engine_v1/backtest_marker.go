@@ -91,11 +91,11 @@ func (m *BacktestMarker) Mark(marketData types.MarketData, mark types.Mark) erro
 		Insert("marks").
 		Columns(
 			"id", "market_data_id", "signal_type", "signal_name", "signal_time", "signal_symbol",
-			"color", "shape", "title", "message", "category",
+			"color", "shape", "level", "title", "message", "category",
 		).
 		Values(
 			nextID, mark.MarketDataId, signalType, signalName, signalTime, signalSymbol,
-			mark.Color, string(mark.Shape), mark.Title, mark.Message, mark.Category,
+			mark.Color, string(mark.Shape), string(mark.Level), mark.Title, mark.Message, mark.Category,
 		).
 		RunWith(m.db)
 
@@ -118,7 +118,7 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 	selectQuery := m.sq.
 		Select(
 			"id", "market_data_id", "signal_type", "signal_name", "signal_time", "signal_symbol",
-			"color", "shape", "title", "message", "category",
+			"color", "shape", "level", "title", "message", "category",
 		).
 		From("marks").
 		OrderBy("id ASC").
@@ -149,6 +149,8 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 
 		var shapeStr string
 
+		var levelStr string
+
 		var title string
 
 		var message string
@@ -164,6 +166,7 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 			&signalSymbol,
 			&color,
 			&shapeStr,
+			&levelStr,
 			&title,
 			&message,
 			&category,
@@ -177,6 +180,7 @@ func (m *BacktestMarker) GetMarks() ([]types.Mark, error) {
 			MarketDataId: marketDataId,
 			Color:        color,
 			Shape:        types.MarkShape(shapeStr),
+			Level:        types.MarkLevel(levelStr),
 			Title:        title,
 			Message:      message,
 			Category:     category,
@@ -289,6 +293,7 @@ func (m *BacktestMarker) initialize() error {
 			signal_symbol TEXT,
 			color TEXT,
 			shape TEXT,
+			level TEXT,
 			title TEXT,
 			message TEXT,
 			category TEXT

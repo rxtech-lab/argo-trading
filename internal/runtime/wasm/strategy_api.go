@@ -181,6 +181,7 @@ func (s StrategyApiForWasm) GetMarkers(ctx context.Context, _ *emptypb.Empty) (*
 		response.Markers[i] = &strategy.Mark{
 			Color:      string(mark.Color),
 			Shape:      runtime.MarkShapeToStrategyMarkShape(mark.Shape),
+			Level:      runtime.MarkLevelToStrategyMarkLevel(mark.Level),
 			Title:      mark.Title,
 			Message:    mark.Message,
 			Category:   mark.Category,
@@ -387,6 +388,7 @@ func (s StrategyApiForWasm) Mark(ctx context.Context, req *strategy.MarkRequest)
 		MarketDataId: "",
 		Color:        types.MarkColor(req.Mark.Color),
 		Shape:        runtime.StrategyMarkShapeToMarkShape(req.Mark.Shape),
+		Level:        runtime.StrategyMarkLevelToMarkLevel(req.Mark.Level),
 		Title:        req.Mark.Title,
 		Message:      req.Mark.Message,
 		Category:     req.Mark.Category,

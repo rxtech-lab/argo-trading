@@ -66,6 +66,7 @@ func (suite *BacktestMarkerTestSuite) TestMarkAndGet() {
 				MarketDataId: "md123",
 				Color:        "green",
 				Shape:        types.MarkShapeCircle,
+				Level:        types.MarkLevelInfo,
 				Title:        "Buy Signal",
 				Message:      "Strong buy signal detected",
 				Category:     "trade",
@@ -83,6 +84,7 @@ func (suite *BacktestMarkerTestSuite) TestMarkAndGet() {
 				MarketDataId: "md456",
 				Color:        "red",
 				Shape:        types.MarkShapeTriangle,
+				Level:        types.MarkLevelWarning,
 				Title:        "Sell Signal",
 				Message:      "Bearish pattern detected",
 				Category:     "analysis",
@@ -114,6 +116,7 @@ func (suite *BacktestMarkerTestSuite) TestMarkAndGet() {
 			suite.Equal(tc.mark.MarketDataId, mark.MarketDataId)
 			suite.Equal(tc.mark.Color, mark.Color)
 			suite.Equal(tc.mark.Shape, mark.Shape)
+			suite.Equal(tc.mark.Level, mark.Level)
 			suite.Equal(tc.mark.Title, mark.Title)
 			suite.Equal(tc.mark.Message, mark.Message)
 			suite.Equal(tc.mark.Category, mark.Category)
@@ -150,6 +153,7 @@ func (suite *BacktestMarkerTestSuite) TestWriteToParquet() {
 		MarketDataId: "md789",
 		Color:        "blue",
 		Shape:        types.MarkShapeSquare,
+		Level:        types.MarkLevelError,
 		Title:        "Export Test",
 		Message:      "Testing parquet export",
 		Category:     "test",
