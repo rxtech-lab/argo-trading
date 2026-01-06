@@ -1,18 +1,29 @@
-name: CI
-
+name: CI Build
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
-  test:
-    name: Test and Coverage
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+  build-xcframework:
+    name: Build XCFramework
+    uses: ./.github/workflows/build-xcframework.yml
+    with:
+      version: dev-${{ github.sha }}
+    secrets:
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
+  build-macos:
+    name: Build macOS Binary
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -23,81 +34,108 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Install nilaway
-        run: go install go.uber.org/nilaway/cmd/nilaway@latest
-
-      - name: Install go-plugin
+      - name: Install required tools
         run: ./scripts/setup.sh
 
       - name: Generate sdk and mocks
         run: make generate
 
-      - name: Check formatting
-        run: |
-          UNFORMATTED=$(go fmt ./...)
-
-          if [ -n "$UNFORMATTED" ]; then
-            echo "Error: the following files are not gofmt-ed:"
-            echo "$UNFORMATTED"
-            exit 1
-          fi
-
-          echo "All Go files are properly formatted."
-
-      - name: Run Golangci-lint
-        uses: golangci/golangci-lint-action@v9
-
-      - name: Run nilaway
-        run: ./scripts/lint.sh
-
-      - name: Compile wasm
-        run: cd examples/strategy && make build
-
-      - name: Compile E2E wasms
-        run: cd e2e/backtest/wasm && make build
-
-      - name: Run tests with coverage
-        run: |
-          # Create test output directory
-          mkdir -p test-results
-
-          # Run tests with detailed output and save to file, capturing the exit code
-          go test -v -race -coverprofile=coverage.txt -covermode=atomic -coverpkg=./... ./... 2>&1 | tee test-results/test-output.log
-          TEST_EXIT_CODE=${PIPESTATUS[0]}
-
-          # Generate coverage report
-          go tool cover -func=coverage.txt > test-results/coverage-report.txt
-
-          # Exit with the test exit code
-          exit $TEST_EXIT_CODE
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Import code signing certificates
+        uses: apple-actions/import-codesign-certs@v3
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.txt
+          p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
 
-      - name: Upload test results
+      - name: Build the binary
+        run: ./scripts/build.sh
+        env:
+          VERSION: dev-${{ github.sha }}
+
+      - name: Sign the binary
+        run: ./scripts/sign.sh
+        env:
+          SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: test-results/
+          name: argo-trading-macos-${{ github.sha }}
+          path: output/trading-backtest
           retention-days: 1
 
-      - name: Upload coverage report
+  swift-e2e-tests:
+    name: Swift E2E Tests
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Install required tools
+        run: ./scripts/setup.sh
+
+      - name: Generate sdk and mocks
+        run: make generate
+
+      - name: Build xcframework for tests
+        run: make build-swift-argo VERSION=test-${{ github.sha }}
+
+      - name: Prepare test resources
+        run: ./e2e/swift/prepare-test-resources.sh
+
+      - name: Run Swift E2E tests
+        run: |
+          cd e2e/swift
+          swift test
+
+  build-linux:
+    name: Build Linux Binary
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Setup
+        run: ./scripts/setup.sh
+
+      - name: Generate sdk and mocks
+        run: make generate
+
+      - name: Build the binary
+        run: |
+          mkdir -p output
+          go build -o output/trading-backtest \
+            -ldflags "-X main.Version=dev-${{ github.sha }} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            ./cmd/backtest
+          chmod +x output/trading-backtest
+
+      - name: Prepare assets
+        run: |
+          mkdir -p assets
+          cp output/trading-backtest assets/
+          zip -j assets/ArgoTrading_Linux_amd64.zip output/trading-backtest
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: coverage.txt
-          retention-days: 1
-
-      - name: Show test output on failure
-        if: failure()
-        run: |
-          echo "::group::Test Output"
-          cat test-results/test-output.log
-          echo "::endgroup::"
-
-          echo "::group::Coverage Report"
-          cat test-results/coverage-report.txt
-          echo "::endgroup::"
+          name: argo-trading-linux-${{ github.sha }}
+          path: |
+            assets/ArgoTrading_Linux_amd64.zip
+          retention-days: 7
