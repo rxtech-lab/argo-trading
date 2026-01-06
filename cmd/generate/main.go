@@ -101,16 +101,16 @@ func main() {
 
 	// Generate schema file
 	if err := generateSchemaFile(config, schemaPath); err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("Failed to generate schema file: %v", err)
 	}
 
 	// Generate sample config
 	if err := generateSampleConfig(config, sampleConfigPath, schemaName); err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("Failed to generate sample config: %v", err)
 	}
 
 	log.Printf("Schema successfully generated at %s", schemaPath)
 	if fileExists(sampleConfigPath) {
-		log.Printf("Sample config successfully generated at %s", sampleConfigPath)
+		log.Printf("Sample config exists at %s", sampleConfigPath)
 	}
 }

@@ -122,7 +122,7 @@ func (suite *GenerateCmdTestSuite) TestGenerateSchemaFileMultipleCalls() {
 
 	newContent, err := os.ReadFile(schemaPath)
 	suite.Require().NoError(err)
-	suite.Equal(string(originalContent), string(newContent), "Schema should be regenerated with same content")
+	suite.Equal(string(originalContent), string(newContent), "Schema generation should be idempotent when regenerated")
 }
 
 func (suite *GenerateCmdTestSuite) TestGenerateSampleConfig() {
@@ -259,7 +259,9 @@ func (suite *GenerateCmdTestSuite) TestFileExists() {
 	testDir := filepath.Join(suite.tempDir, "test-dir")
 	err = os.Mkdir(testDir, 0755)
 	suite.Require().NoError(err)
-	suite.True(dirExists(testDir))
+	info, statErr := os.Stat(testDir)
+	suite.Require().NoError(statErr)
+	suite.True(info.IsDir())
 }
 
 // Helper functions
