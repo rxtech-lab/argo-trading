@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -149,10 +150,15 @@ func (suite *BollingerBandsTestSuite) TestCalculateBandsInsufficientData() {
 	_, _, _, err := bb.calculateBands(data)
 	suite.Error(err)
 
-	// Check it's an InsufficientDataError
-	_, ok := err.(*InsufficientDataError)
-	suite.True(ok)
+	// Check it's an InsufficientDataError using the helper function
+	suite.True(errors.IsInsufficientDataError(err))
 	suite.Contains(err.Error(), "insufficient data points")
+
+	// Verify the error contains the expected values
+	var insufficientErr *errors.InsufficientDataError
+	suite.True(errors.As(err, &insufficientErr))
+	suite.Equal(20, insufficientErr.Required)
+	suite.Equal(5, insufficientErr.Actual)
 }
 
 func (suite *BollingerBandsTestSuite) TestRawValueInvalidParams() {
@@ -175,6 +181,7 @@ func (suite *BollingerBandsTestSuite) TestRawValueInvalidParams() {
 }
 
 func (suite *BollingerBandsTestSuite) TestInsufficientDataError() {
-	err := &InsufficientDataError{Message: "test error message"}
+	err := errors.NewInsufficientDataError(20, 5, "AAPL", "test error message")
 	suite.Equal("test error message", err.Error())
+	suite.True(errors.IsInsufficientDataError(err))
 }

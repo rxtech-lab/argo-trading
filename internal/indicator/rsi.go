@@ -126,7 +126,7 @@ func (r *RSI) RawValue(params ...any) (float64, error) {
 	}
 
 	if len(historicalData) < r.period+1 {
-		return 0, errors.Newf(errors.ErrCodeInsufficientData, "insufficient historical data for RSI calculation for symbol %s", symbol)
+		return 0, errors.NewInsufficientDataErrorf(r.period+1, len(historicalData), symbol, "insufficient historical data for RSI calculation for symbol %s: required %d, got %d", symbol, r.period+1, len(historicalData))
 	}
 
 	// Calculate price changes

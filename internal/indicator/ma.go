@@ -138,6 +138,11 @@ func (m *MA) RawValue(params ...any) (float64, error) {
 		return 0, errors.Newf(errors.ErrCodeNoDataFound, "no historical data available for symbol %s", symbol)
 	}
 
+	// Check if we have enough data points for MA calculation
+	if len(historicalData) < period {
+		return 0, errors.NewInsufficientDataErrorf(period, len(historicalData), symbol, "insufficient historical data for MA calculation for symbol %s: required %d, got %d", symbol, period, len(historicalData))
+	}
+
 	// Calculate MA
 	return calculateSimpleMovingAverage(historicalData), nil
 }

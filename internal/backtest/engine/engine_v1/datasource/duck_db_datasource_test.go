@@ -1816,7 +1816,7 @@ func (suite *DuckDBTestSuite) TestGetPreviousNumberOfDataPoints() {
 			symbol:       "MSFT",
 			count:        2,
 			expectedData: []types.MarketData{},
-			expectError:  false,
+			expectError:  true, // Now returns InsufficientDataError
 		},
 		{
 			name: "Request more data points than available",
@@ -1856,7 +1856,7 @@ func (suite *DuckDBTestSuite) TestGetPreviousNumberOfDataPoints() {
 					Symbol: "AAPL",
 				},
 			},
-			expectError: false,
+			expectError: true, // Now returns InsufficientDataError
 		},
 	}
 

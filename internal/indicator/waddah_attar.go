@@ -193,6 +193,11 @@ func (wa *WaddahAttar) RawValue(params ...any) (float64, error) {
 			return 0, errors.New(errors.ErrCodeNoDataFound, "no historical data available for the specified time range")
 		}
 
+		// Check if we have enough data points for Waddah Attar calculation (need at least slowPeriod)
+		if len(historicalData) < wa.slowPeriod {
+			return 0, errors.NewInsufficientDataErrorf(wa.slowPeriod, len(historicalData), symbol, "insufficient historical data for Waddah Attar calculation for symbol %s: required %d, got %d", symbol, wa.slowPeriod, len(historicalData))
+		}
+
 		marketData = historicalData[len(historicalData)-1]
 	} else {
 		marketData, err = ctx.DataSource.ReadLastData(symbol)
