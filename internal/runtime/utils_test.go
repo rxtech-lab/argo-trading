@@ -226,6 +226,78 @@ func TestStrategyMarkShapeToMarkShape(t *testing.T) {
 	}
 }
 
+func TestStrategyMarkLevelToMarkLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    strategy.MarkLevel
+		expected types.MarkLevel
+	}{
+		{
+			name:     "info level",
+			input:    strategy.MarkLevel_MARK_LEVEL_INFO,
+			expected: types.MarkLevelInfo,
+		},
+		{
+			name:     "warning level",
+			input:    strategy.MarkLevel_MARK_LEVEL_WARNING,
+			expected: types.MarkLevelWarning,
+		},
+		{
+			name:     "error level",
+			input:    strategy.MarkLevel_MARK_LEVEL_ERROR,
+			expected: types.MarkLevelError,
+		},
+		{
+			name:     "unknown defaults to info",
+			input:    strategy.MarkLevel(999),
+			expected: types.MarkLevelInfo,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := StrategyMarkLevelToMarkLevel(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestMarkLevelToStrategyMarkLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    types.MarkLevel
+		expected strategy.MarkLevel
+	}{
+		{
+			name:     "info level",
+			input:    types.MarkLevelInfo,
+			expected: strategy.MarkLevel_MARK_LEVEL_INFO,
+		},
+		{
+			name:     "warning level",
+			input:    types.MarkLevelWarning,
+			expected: strategy.MarkLevel_MARK_LEVEL_WARNING,
+		},
+		{
+			name:     "error level",
+			input:    types.MarkLevelError,
+			expected: strategy.MarkLevel_MARK_LEVEL_ERROR,
+		},
+		{
+			name:     "unknown defaults to info",
+			input:    types.MarkLevel("unknown"),
+			expected: strategy.MarkLevel_MARK_LEVEL_INFO,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := MarkLevelToStrategyMarkLevel(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
 func TestStrategyIndicatorTypeToIndicatorType(t *testing.T) {
 	tests := []struct {
 		name     string

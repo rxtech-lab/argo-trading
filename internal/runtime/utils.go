@@ -192,6 +192,32 @@ func MarkShapeToStrategyMarkShape(markShape types.MarkShape) strategy.MarkShape 
 	}
 }
 
+func StrategyMarkLevelToMarkLevel(markLevel strategy.MarkLevel) types.MarkLevel {
+	switch markLevel {
+	case strategy.MarkLevel_MARK_LEVEL_INFO:
+		return types.MarkLevelInfo
+	case strategy.MarkLevel_MARK_LEVEL_WARNING:
+		return types.MarkLevelWarning
+	case strategy.MarkLevel_MARK_LEVEL_ERROR:
+		return types.MarkLevelError
+	default:
+		return types.MarkLevelInfo
+	}
+}
+
+func MarkLevelToStrategyMarkLevel(markLevel types.MarkLevel) strategy.MarkLevel {
+	switch markLevel {
+	case types.MarkLevelInfo:
+		return strategy.MarkLevel_MARK_LEVEL_INFO
+	case types.MarkLevelWarning:
+		return strategy.MarkLevel_MARK_LEVEL_WARNING
+	case types.MarkLevelError:
+		return strategy.MarkLevel_MARK_LEVEL_ERROR
+	default:
+		return strategy.MarkLevel_MARK_LEVEL_INFO
+	}
+}
+
 func PurchaseTypeToStrategyPurchaseType(pt types.PurchaseType) strategy.PurchaseType {
 	switch pt {
 	case types.PurchaseTypeBuy:
