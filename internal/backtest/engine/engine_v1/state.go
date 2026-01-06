@@ -571,6 +571,7 @@ type statsParams struct {
 	tradesFilePath string
 	ordersFilePath string
 	marksFilePath  string
+	logsFilePath   string
 	strategyInfo   types.StrategyInfo
 	strategyPath   string
 	dataPath       string
@@ -606,6 +607,7 @@ func createZeroStats(symbol string, params statsParams) types.TradeStats {
 		TradesFilePath: params.tradesFilePath,
 		OrdersFilePath: params.ordersFilePath,
 		MarksFilePath:  params.marksFilePath,
+		LogsFilePath:   params.logsFilePath,
 		Strategy:       params.strategyInfo,
 		StrategyPath:   params.strategyPath,
 		DataPath:       params.dataPath,
@@ -649,7 +651,7 @@ func calculateUnrealizedPnL(position types.Position, lastPrice float64) types.Tr
 }
 
 // GetStats returns the statistics of the backtest for all symbols.
-func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath, dataPath string) ([]types.TradeStats, error) {
+func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID, tradesFilePath, ordersFilePath, marksFilePath, logsFilePath, strategyPath, dataPath string) ([]types.TradeStats, error) {
 	strategyInfo, err := getStrategyInfo(strategyRuntime)
 	if err != nil {
 		return nil, err
@@ -660,6 +662,7 @@ func (b *BacktestState) GetStats(ctx runtime.RuntimeContext, strategyRuntime run
 		tradesFilePath: tradesFilePath,
 		ordersFilePath: ordersFilePath,
 		marksFilePath:  marksFilePath,
+		logsFilePath:   logsFilePath,
 		strategyInfo:   strategyInfo,
 		strategyPath:   strategyPath,
 		dataPath:       dataPath,
@@ -1181,6 +1184,7 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 		TradesFilePath:   params.tradesFilePath,
 		OrdersFilePath:   params.ordersFilePath,
 		MarksFilePath:    params.marksFilePath,
+		LogsFilePath:     params.logsFilePath,
 		Strategy:         params.strategyInfo,
 		StrategyPath:     params.strategyPath,
 		DataPath:         params.dataPath,

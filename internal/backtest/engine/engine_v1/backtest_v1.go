@@ -42,6 +42,7 @@ type BacktestEngineV1 struct {
 	datasource          datasource.DataSource
 	balance             float64
 	cache               cache.Cache
+	logStorage          *BacktestLog
 }
 
 func NewBacktestEngineV1() (engine.Engine, error) {
@@ -66,6 +67,7 @@ func NewBacktestEngineV1() (engine.Engine, error) {
 		datasource:          nil,
 		balance:             0,
 		cache:               cache.NewCacheV1(),
+		logStorage:          nil,
 	}, nil
 }
 
@@ -443,6 +445,14 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		}
 	}
 
+	// Only create a new log storage if one isn't already set (allows dependency injection in tests)
+	if b.logStorage == nil {
+		b.logStorage, err = NewBacktestLog(b.log)
+		if err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create backtest log storage", err)
+		}
+	}
+
 	if err := b.state.Initialize(); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize state", err)
 	}
@@ -454,6 +464,8 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		TradingSystem:     b.tradingSystem,
 		Cache:             b.cache,
 		Logger:            b.log,
+		LogStorage:        b.logStorage,
+		CurrentMarketData: nil,
 	}
 
 	// need to initialize the strategy api first since there is no wasm plugin available before this line
@@ -504,7 +516,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	}
 
 	// Process data points
-	if err := b.processDataPoints(params, strategyContext, count); err != nil {
+	if err := b.processDataPoints(params, &strategyContext, count); err != nil {
 		return err
 	}
 
@@ -534,7 +546,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 }
 
 // processDataPoints processes all data points for a single run iteration.
-func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext runtime.RuntimeContext, count int) error {
+func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext *runtime.RuntimeContext, count int) error {
 	currentCount := 0
 
 	// Track insufficient data error state for marker boundaries
@@ -565,6 +577,9 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 			backtestTrading.UpdateCurrentMarketData(data)
 		}
 
+		// Set current market data in strategy context for implicit log context
+		strategyContext.CurrentMarketData = &data
+
 		// Process data and track insufficient data errors for markers
 		processErr := params.strategy.ProcessData(data)
 
@@ -583,6 +598,11 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 				b.markInsufficientDataEnd(lastInsufficientData)
 
 				inInsufficientDataError = false
+			}
+
+			// Add error marker for non-insufficient errors (continue processing)
+			if processErr != nil {
+				b.markStrategyError(data, processErr)
 			}
 		}
 
@@ -653,6 +673,30 @@ func (b *BacktestEngineV1) markInsufficientDataEnd(data types.MarketData) {
 	}
 }
 
+// markStrategyError adds an error marker for strategy errors (non-insufficient data errors).
+func (b *BacktestEngineV1) markStrategyError(data types.MarketData, strategyErr error) {
+	if b.marker == nil {
+		return
+	}
+
+	mark := types.Mark{
+		MarketDataId: data.Id,
+		Color:        types.MarkColorRed,
+		Shape:        types.MarkShapeCircle,
+		Level:        types.MarkLevelError,
+		Title:        "Strategy Error",
+		Message:      strategyErr.Error(),
+		Category:     "StrategyError",
+		Signal:       optional.None[types.Signal](),
+	}
+
+	if err := b.marker.Mark(data, mark); err != nil {
+		b.log.Error("Failed to mark strategy error",
+			zap.Error(err),
+		)
+	}
+}
+
 func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID string, resultFolderPath string, strategyPath string, dataPath string) error {
 	if b.state == nil {
 		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
@@ -663,8 +707,9 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	tradesFilePath := filepath.Join(stateDBPath, "trades.parquet")
 	ordersFilePath := filepath.Join(stateDBPath, "orders.parquet")
 	marksFilePath := filepath.Join(resultFolderPath, "marks.parquet")
+	logsFilePath := filepath.Join(resultFolderPath, "logs.parquet")
 
-	stats, err := b.state.GetStats(strategyContext, strategyRuntime, runID, tradesFilePath, ordersFilePath, marksFilePath, strategyPath, dataPath)
+	stats, err := b.state.GetStats(strategyContext, strategyRuntime, runID, tradesFilePath, ordersFilePath, marksFilePath, logsFilePath, strategyPath, dataPath)
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to get stats", err)
 	}
@@ -687,6 +732,13 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	if marker, ok := b.marker.(*BacktestMarker); ok {
 		if err := marker.Write(resultFolderPath); err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write marker", err)
+		}
+	}
+
+	// write the logs to disk
+	if b.logStorage != nil {
+		if err := b.logStorage.Write(resultFolderPath); err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write logs", err)
 		}
 	}
 
@@ -714,6 +766,13 @@ func (b *BacktestEngineV1) cleanUpRun() error {
 	if marker, ok := b.marker.(*BacktestMarker); ok {
 		if err := marker.Cleanup(); err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup marker", err)
+		}
+	}
+
+	// Cleanup the log storage
+	if b.logStorage != nil {
+		if err := b.logStorage.Cleanup(); err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup log storage", err)
 		}
 	}
 

@@ -76,6 +76,8 @@ type TradeStats struct {
 	OrdersFilePath string `yaml:"orders_file_path" json:"orders_file_path"`
 	// MarksFilePath is the path to the marks parquet file.
 	MarksFilePath string `yaml:"marks_file_path" json:"marks_file_path"`
+	// LogsFilePath is the path to the logs parquet file.
+	LogsFilePath string `yaml:"logs_file_path" json:"logs_file_path"`
 	// Strategy contains metadata about the strategy that generated these stats.
 	Strategy StrategyInfo `yaml:"strategy" json:"strategy"`
 	// StrategyPath is the path to the strategy WASM file.
