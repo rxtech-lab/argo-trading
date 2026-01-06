@@ -502,3 +502,20 @@ func (suite *DuckDBWriterTestSuite) TestWriteLargeDataset() {
 	// Cleanup
 	writer.Close()
 }
+
+func (suite *DuckDBWriterTestSuite) TestGetOutputPath() {
+	outputPath := suite.tempDir + "/test_get_output.parquet"
+	writer := NewDuckDBWriter(outputPath)
+	defer writer.Close()
+
+	// Cast to DuckDBWriter to access GetOutputPath
+	duckWriter := writer.(*DuckDBWriter)
+	suite.Equal(outputPath, duckWriter.GetOutputPath())
+
+	// Test with different paths
+	anotherPath := "/some/other/path.parquet"
+	writer2 := NewDuckDBWriter(anotherPath)
+	defer writer2.Close()
+	duckWriter2 := writer2.(*DuckDBWriter)
+	suite.Equal(anotherPath, duckWriter2.GetOutputPath())
+}

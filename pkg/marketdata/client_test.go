@@ -568,3 +568,60 @@ func (suite *ClientTestSuite) TestSetupWriterCreatesDataPath() {
 func TestClientSuite(t *testing.T) {
 	suite.Run(t, new(ClientTestSuite))
 }
+
+// TestNewClientFromPolygonConfig tests the NewClientFromPolygonConfig function
+func (suite *ClientTestSuite) TestNewClientFromPolygonConfig() {
+	config := &PolygonDownloadConfig{
+		BaseDownloadConfig: BaseDownloadConfig{
+			Ticker:    "AAPL",
+			StartDate: "2024-01-01",
+			EndDate:   "2024-01-31",
+			Interval:  "1m",
+		},
+		ApiKey: "test-api-key",
+	}
+
+	client, params, err := NewClientFromPolygonConfig(config, suite.tempDir, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.NotNil(client)
+
+	// Verify all DownloadParams fields
+	suite.Equal("AAPL", params.Ticker)
+	suite.Equal(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), params.StartDate)
+	suite.Equal(time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC), params.EndDate)
+	suite.Equal(1, params.Multiplier)
+	suite.NotEmpty(params.Timespan)
+
+	// Verify client configuration
+	suite.Equal(ProviderPolygon, client.config.ProviderType)
+	suite.Equal(WriterDuckDB, client.config.WriterType)
+	suite.Equal(suite.tempDir, client.config.DataPath)
+}
+
+// TestNewClientFromBinanceConfig tests the NewClientFromBinanceConfig function
+func (suite *ClientTestSuite) TestNewClientFromBinanceConfig() {
+	config := &BinanceDownloadConfig{
+		BaseDownloadConfig: BaseDownloadConfig{
+			Ticker:    "BTCUSDT",
+			StartDate: "2024-01-01",
+			EndDate:   "2024-01-31",
+			Interval:  "1m",
+		},
+	}
+
+	client, params, err := NewClientFromBinanceConfig(config, suite.tempDir, func(current float64, total float64, message string) {})
+	suite.NoError(err)
+	suite.NotNil(client)
+
+	// Verify all DownloadParams fields
+	suite.Equal("BTCUSDT", params.Ticker)
+	suite.Equal(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), params.StartDate)
+	suite.Equal(time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC), params.EndDate)
+	suite.Equal(1, params.Multiplier)
+	suite.NotEmpty(params.Timespan)
+
+	// Verify client configuration
+	suite.Equal(ProviderBinance, client.config.ProviderType)
+	suite.Equal(WriterDuckDB, client.config.WriterType)
+	suite.Equal(suite.tempDir, client.config.DataPath)
+}
