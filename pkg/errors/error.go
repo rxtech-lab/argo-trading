@@ -115,3 +115,45 @@ func GetCode(err error) ErrorCode {
 func HasCode(err error, code ErrorCode) bool {
 	return GetCode(err) == code
 }
+
+// InsufficientDataError represents an error when there is not enough data
+// for a calculation (e.g., indicator calculations requiring a minimum period).
+type InsufficientDataError struct {
+	Required int    // Minimum data points required
+	Actual   int    // Actual data points available
+	Symbol   string // Optional: symbol context
+	Message  string // Human-readable message
+}
+
+// NewInsufficientDataError creates a new InsufficientDataError.
+func NewInsufficientDataError(required, actual int, symbol, message string) *InsufficientDataError {
+	return &InsufficientDataError{
+		Required: required,
+		Actual:   actual,
+		Symbol:   symbol,
+		Message:  message,
+	}
+}
+
+// NewInsufficientDataErrorf creates a new InsufficientDataError with a formatted message.
+func NewInsufficientDataErrorf(required, actual int, symbol, format string, args ...any) *InsufficientDataError {
+	return &InsufficientDataError{
+		Required: required,
+		Actual:   actual,
+		Symbol:   symbol,
+		Message:  fmt.Sprintf(format, args...),
+	}
+}
+
+// Error implements the error interface.
+func (e *InsufficientDataError) Error() string {
+	return e.Message
+}
+
+// IsInsufficientDataError checks if an error is an InsufficientDataError.
+// It uses errors.As to check the error chain.
+func IsInsufficientDataError(err error) bool {
+	var insufficientErr *InsufficientDataError
+
+	return errors.As(err, &insufficientErr)
+}

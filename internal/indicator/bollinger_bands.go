@@ -1,7 +1,6 @@
 package indicator
 
 import (
-	"fmt"
 	"math"
 	"time"
 
@@ -10,14 +9,6 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/errors"
 )
-
-type InsufficientDataError struct {
-	Message string
-}
-
-func (e *InsufficientDataError) Error() string {
-	return e.Message
-}
 
 // BollingerBands implements the Indicator interface for Bollinger Bands.
 type BollingerBands struct {
@@ -138,7 +129,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 	upper, middle, lower, err := bb.calculateBands(historicalData)
 	if err != nil {
 		// if the error is insufficient data, return a no action signal
-		if _, ok := err.(*InsufficientDataError); ok {
+		if errors.IsInsufficientDataError(err) {
 			return types.Signal{
 				Time:      marketData.Time,
 				Type:      types.SignalTypeNoAction,
@@ -197,9 +188,7 @@ func (bb *BollingerBands) GetSignal(marketData types.MarketData, ctx IndicatorCo
 // calculateBands calculates the Bollinger Bands values.
 func (bb *BollingerBands) calculateBands(data []types.MarketData) (upper, middle, lower float64, err error) {
 	if len(data) < bb.period {
-		return 0, 0, 0, &InsufficientDataError{
-			Message: fmt.Sprintf("insufficient data points for period %d", bb.period),
-		}
+		return 0, 0, 0, errors.NewInsufficientDataErrorf(bb.period, len(data), "", "insufficient data points for Bollinger Bands: required %d, got %d", bb.period, len(data))
 	}
 
 	// Calculate SMA (middle band)

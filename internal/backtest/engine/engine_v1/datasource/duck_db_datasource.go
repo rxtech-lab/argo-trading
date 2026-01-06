@@ -11,6 +11,7 @@ import (
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -711,6 +712,11 @@ func (d *DuckDBDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol s
 	// Reverse the slice to get chronological order (oldest to newest)
 	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
 		result[i], result[j] = result[j], result[i]
+	}
+
+	// Check if we got fewer data points than requested
+	if len(result) < count {
+		return result, errors.NewInsufficientDataErrorf(count, len(result), symbol, "insufficient data points for symbol %s: requested %d, got %d", symbol, count, len(result))
 	}
 
 	return result, nil

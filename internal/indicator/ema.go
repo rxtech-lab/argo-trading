@@ -132,9 +132,9 @@ func (e *EMA) RawValue(params ...any) (float64, error) {
 		return 0, errors.Newf(errors.ErrCodeNoDataFound, "no historical data available for symbol %s", symbol)
 	}
 
-	// If we don't have enough data points for a proper EMA, use simple average
+	// Check if we have enough data points for EMA calculation
 	if len(historicalData) < period {
-		return calculateSimpleMovingAverage(historicalData), nil
+		return 0, errors.NewInsufficientDataErrorf(period, len(historicalData), symbol, "insufficient historical data for EMA calculation for symbol %s: required %d, got %d", symbol, period, len(historicalData))
 	}
 
 	// Calculate EMA

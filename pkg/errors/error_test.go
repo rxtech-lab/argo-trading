@@ -119,3 +119,59 @@ func (suite *ErrorTestSuite) TestErrorCodeValues() {
 	suite.Equal(ErrorCode(700), ErrCodeMarketDataFetchFailed)
 	suite.Equal(ErrorCode(800), ErrCodeCallbackFailed)
 }
+
+func (suite *ErrorTestSuite) TestInsufficientDataError() {
+	err := &InsufficientDataError{
+		Required: 20,
+		Actual:   5,
+		Symbol:   "AAPL",
+		Message:  "insufficient data for calculation",
+	}
+	suite.Equal("insufficient data for calculation", err.Error())
+	suite.Equal(20, err.Required)
+	suite.Equal(5, err.Actual)
+	suite.Equal("AAPL", err.Symbol)
+}
+
+func (suite *ErrorTestSuite) TestNewInsufficientDataError() {
+	err := NewInsufficientDataError(14, 10, "SPY", "insufficient data for RSI calculation")
+	suite.NotNil(err)
+	suite.Equal(14, err.Required)
+	suite.Equal(10, err.Actual)
+	suite.Equal("SPY", err.Symbol)
+	suite.Equal("insufficient data for RSI calculation", err.Message)
+	suite.Equal("insufficient data for RSI calculation", err.Error())
+}
+
+func (suite *ErrorTestSuite) TestNewInsufficientDataErrorf() {
+	err := NewInsufficientDataErrorf(20, 5, "AAPL", "insufficient data for %s: required %d, got %d", "Bollinger Bands", 20, 5)
+	suite.NotNil(err)
+	suite.Equal(20, err.Required)
+	suite.Equal(5, err.Actual)
+	suite.Equal("AAPL", err.Symbol)
+	suite.Equal("insufficient data for Bollinger Bands: required 20, got 5", err.Message)
+}
+
+func (suite *ErrorTestSuite) TestIsInsufficientDataError() {
+	// Test with InsufficientDataError
+	insufficientErr := NewInsufficientDataError(14, 10, "SPY", "insufficient data")
+	suite.True(IsInsufficientDataError(insufficientErr))
+
+	// Test with standard error
+	stdErr := errors.New("standard error")
+	suite.False(IsInsufficientDataError(stdErr))
+
+	// Test with *Error type
+	argoErr := New(ErrCodeInvalidParameter, "invalid parameter")
+	suite.False(IsInsufficientDataError(argoErr))
+
+	// Test with nil
+	suite.False(IsInsufficientDataError(nil))
+}
+
+func (suite *ErrorTestSuite) TestIsInsufficientDataErrorWithEmptySymbol() {
+	// Symbol can be empty when context is not needed
+	err := NewInsufficientDataError(20, 5, "", "insufficient data points for period 20")
+	suite.True(IsInsufficientDataError(err))
+	suite.Equal("", err.Symbol)
+}
