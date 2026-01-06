@@ -183,6 +183,11 @@ jobs:
           ./scripts/update-package-swift.sh "${{ needs.get-version.outputs.version }}" "${{ needs.build-xcframework.outputs.checksum }}"
           cat Package.swift
 
+      - name: Update version.go
+        run: |
+          ./scripts/update-version.sh "${{ needs.get-version.outputs.version }}"
+          cat internal/version/version.go
+
       - name: Setup SSH for deploy key
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -198,9 +203,9 @@ jobs:
           # Configure git to use SSH
           git remote set-url origin git@github.com:${{ github.repository }}.git
 
-          # Commit updated Package.swift
-          git add Package.swift
-          git commit -m "chore: update Package.swift for ${TAG}"
+          # Commit updated Package.swift and version.go
+          git add Package.swift internal/version/version.go
+          git commit -m "chore: update Package.swift and version for ${TAG}"
 
           # Create annotated tag
           git tag -a "${TAG}" -m "Release ${TAG}"
