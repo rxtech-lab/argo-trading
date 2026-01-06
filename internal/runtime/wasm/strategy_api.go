@@ -10,6 +10,7 @@ import (
 	"github.com/knqyf263/go-plugin/types/known/timestamppb"
 	"github.com/moznion/go-optional"
 	i "github.com/rxtech-lab/argo-trading/internal/indicator"
+	"github.com/rxtech-lab/argo-trading/internal/log"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/errors"
@@ -636,29 +637,57 @@ func (s StrategyApiForWasm) GetTrades(ctx context.Context, req *strategy.GetTrad
 
 // Log implements strategy.StrategyApi.
 func (s StrategyApiForWasm) Log(ctx context.Context, req *strategy.LogRequest) (*emptypb.Empty, error) {
-	if s.runtimeContext.Logger == nil {
-		// Silent no-op if logger not configured
-		return &emptypb.Empty{}, nil
+	// Log to zap logger if available
+	if s.runtimeContext.Logger != nil {
+		msg := req.Message
+		fields := req.Fields
+
+		switch req.Level {
+		case strategy.LogLevel_LOG_LEVEL_DEBUG:
+			s.runtimeContext.Logger.Debug(msg, buildZapFields(fields)...)
+		case strategy.LogLevel_LOG_LEVEL_INFO:
+			s.runtimeContext.Logger.Info(msg, buildZapFields(fields)...)
+		case strategy.LogLevel_LOG_LEVEL_WARN:
+			s.runtimeContext.Logger.Warn(msg, buildZapFields(fields)...)
+		case strategy.LogLevel_LOG_LEVEL_ERROR:
+			s.runtimeContext.Logger.Error(msg, buildZapFields(fields)...)
+		default:
+			s.runtimeContext.Logger.Info(msg, buildZapFields(fields)...)
+		}
 	}
 
-	// Build the log message with optional fields
-	msg := req.Message
-	fields := req.Fields
-
-	switch req.Level {
-	case strategy.LogLevel_LOG_LEVEL_DEBUG:
-		s.runtimeContext.Logger.Debug(msg, buildZapFields(fields)...)
-	case strategy.LogLevel_LOG_LEVEL_INFO:
-		s.runtimeContext.Logger.Info(msg, buildZapFields(fields)...)
-	case strategy.LogLevel_LOG_LEVEL_WARN:
-		s.runtimeContext.Logger.Warn(msg, buildZapFields(fields)...)
-	case strategy.LogLevel_LOG_LEVEL_ERROR:
-		s.runtimeContext.Logger.Error(msg, buildZapFields(fields)...)
-	default:
-		s.runtimeContext.Logger.Info(msg, buildZapFields(fields)...)
+	// Store in LogStorage if available and we have market data context
+	if s.runtimeContext.LogStorage != nil && s.runtimeContext.CurrentMarketData != nil {
+		entry := log.LogEntry{
+			Timestamp: s.runtimeContext.CurrentMarketData.Time,
+			Symbol:    s.runtimeContext.CurrentMarketData.Symbol,
+			Level:     convertStrategyLogLevel(req.Level),
+			Message:   req.Message,
+			Fields:    req.Fields,
+		}
+		// Log storage errors are not fatal - just log them
+		if err := s.runtimeContext.LogStorage.Log(entry); err != nil && s.runtimeContext.Logger != nil {
+			s.runtimeContext.Logger.Error("Failed to store log entry", zap.Error(err))
+		}
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// convertStrategyLogLevel converts strategy.LogLevel to types.LogLevel.
+func convertStrategyLogLevel(level strategy.LogLevel) types.LogLevel {
+	switch level {
+	case strategy.LogLevel_LOG_LEVEL_DEBUG:
+		return types.LogLevelDebug
+	case strategy.LogLevel_LOG_LEVEL_INFO:
+		return types.LogLevelInfo
+	case strategy.LogLevel_LOG_LEVEL_WARN:
+		return types.LogLevelWarning
+	case strategy.LogLevel_LOG_LEVEL_ERROR:
+		return types.LogLevelError
+	default:
+		return types.LogLevelInfo
+	}
 }
 
 func NewWasmStrategyApi(ctx *runtime.RuntimeContext) strategy.StrategyApi {

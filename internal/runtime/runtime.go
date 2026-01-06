@@ -4,6 +4,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/indicator"
+	"github.com/rxtech-lab/argo-trading/internal/log"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/marker"
 	"github.com/rxtech-lab/argo-trading/internal/trading"
@@ -43,4 +44,8 @@ type RuntimeContext struct {
 	Marker marker.Marker
 	// Logger is used for strategy logging output
 	Logger *logger.Logger
+	// LogStorage is used for storing strategy logs to DuckDB
+	LogStorage log.Log
+	// CurrentMarketData tracks the market data being processed (for implicit log context)
+	CurrentMarketData *types.MarketData
 }
