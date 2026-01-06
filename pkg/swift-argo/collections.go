@@ -12,6 +12,12 @@ type StringArray struct {
 	items []string
 }
 
+// NewStringArray creates a new empty StringArray.
+// This is the constructor that should be used from Swift via gomobile.
+func NewStringArray() *StringArray {
+	return &StringArray{items: []string{}}
+}
+
 func (a *StringArray) Add(s string) StringCollection {
 	a.items = append(a.items, s)
 

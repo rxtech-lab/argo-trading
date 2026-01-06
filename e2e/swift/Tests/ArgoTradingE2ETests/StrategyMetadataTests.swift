@@ -25,10 +25,9 @@ final class StrategyMetadataTests: XCTestCase {
 
         let api = SwiftargoNewStrategyApi()!
 
-        var error: NSError?
-        let metadata = api.getStrategyMetadata(wasmPath, error: &error)
+        // GetStrategyMetadata returns (*StrategyMetadata, error) so it throws in Swift
+        let metadata = try api.getStrategyMetadata(wasmPath)
 
-        XCTAssertNil(error, "Failed to get strategy metadata: \(error?.localizedDescription ?? "unknown")")
         XCTAssertNotNil(metadata)
 
         // Verify metadata fields
@@ -55,10 +54,7 @@ final class StrategyMetadataTests: XCTestCase {
     func testGetStrategyMetadataInvalidPath() throws {
         let api = SwiftargoNewStrategyApi()!
 
-        var error: NSError?
-        let metadata = api.getStrategyMetadata("/nonexistent/path/strategy.wasm", error: &error)
-
-        XCTAssertNotNil(error)
-        XCTAssertNil(metadata)
+        // GetStrategyMetadata should throw for invalid path
+        XCTAssertThrowsError(try api.getStrategyMetadata("/nonexistent/path/strategy.wasm"))
     }
 }

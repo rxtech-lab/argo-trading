@@ -67,11 +67,10 @@ final class ArgoBacktestTests: XCTestCase {
     func testGetBacktestEngineConfigSchema() throws {
         let schema = SwiftargoGetBacktestEngineConfigSchema()
 
-        XCTAssertNotNil(schema)
-        XCTAssertFalse(schema!.isEmpty)
+        XCTAssertFalse(schema.isEmpty)
 
         // Verify it's valid JSON
-        let data = schema!.data(using: .utf8)!
+        let data = schema.data(using: .utf8)!
         let json = try JSONSerialization.jsonObject(with: data)
         XCTAssertNotNil(json)
 
@@ -85,8 +84,7 @@ final class ArgoBacktestTests: XCTestCase {
     func testGetBacktestEngineVersion() throws {
         let version = SwiftargoGetBacktestEngineVersion()
 
-        XCTAssertNotNil(version)
-        XCTAssertFalse(version!.isEmpty)
+        XCTAssertFalse(version.isEmpty)
     }
 
     /// Test that we can create an Argo instance

@@ -39,41 +39,36 @@ final class MarketDownloaderTests: XCTestCase {
 
     /// Test that we can get the Polygon download client schema
     func testGetPolygonDownloadClientSchema() throws {
-        var error: NSError?
-        let schema = SwiftargoGetDownloadClientSchema("polygon", &error)
+        // GetDownloadClientSchema returns String (empty on error), no error parameter
+        let schema = SwiftargoGetDownloadClientSchema("polygon")
 
-        XCTAssertNil(error)
-        XCTAssertNotNil(schema)
-        XCTAssertFalse(schema!.isEmpty)
+        XCTAssertFalse(schema.isEmpty)
 
         // Verify it's valid JSON
-        let data = schema!.data(using: .utf8)!
+        let data = schema.data(using: .utf8)!
         let json = try JSONSerialization.jsonObject(with: data)
         XCTAssertNotNil(json)
     }
 
     /// Test that we can get the Binance download client schema
     func testGetBinanceDownloadClientSchema() throws {
-        var error: NSError?
-        let schema = SwiftargoGetDownloadClientSchema("binance", &error)
+        // GetDownloadClientSchema returns String (empty on error), no error parameter
+        let schema = SwiftargoGetDownloadClientSchema("binance")
 
-        XCTAssertNil(error)
-        XCTAssertNotNil(schema)
-        XCTAssertFalse(schema!.isEmpty)
+        XCTAssertFalse(schema.isEmpty)
 
         // Verify it's valid JSON
-        let data = schema!.data(using: .utf8)!
+        let data = schema.data(using: .utf8)!
         let json = try JSONSerialization.jsonObject(with: data)
         XCTAssertNotNil(json)
     }
 
-    /// Test that getting schema for unknown provider returns error
+    /// Test that getting schema for unknown provider returns empty string
     func testGetUnknownDownloadClientSchema() throws {
-        var error: NSError?
-        let schema = SwiftargoGetDownloadClientSchema("unknown_provider", &error)
+        // GetDownloadClientSchema returns empty string for unknown provider
+        let schema = SwiftargoGetDownloadClientSchema("unknown_provider")
 
-        XCTAssertNotNil(error)
-        XCTAssertNil(schema)
+        XCTAssertTrue(schema.isEmpty)
     }
 
     /// Test that we can create a MarketDownloader instance
