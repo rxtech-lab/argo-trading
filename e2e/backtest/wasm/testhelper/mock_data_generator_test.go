@@ -18,6 +18,16 @@ func TestMockDataGeneratorSuite(t *testing.T) {
 	suite.Run(t, new(MockDataGeneratorTestSuite))
 }
 
+func (suite *MockDataGeneratorTestSuite) TestGenerateMockFilename() {
+	// Test that the filename is generated with mock_ prefix
+	filename := GenerateMockFilename("test_data")
+	suite.Equal("mock_test_data.parquet", filename)
+
+	// Test with different base names
+	suite.Equal("mock_btc_hourly.parquet", GenerateMockFilename("btc_hourly"))
+	suite.Equal("mock_spy.parquet", GenerateMockFilename("spy"))
+}
+
 func (suite *MockDataGeneratorTestSuite) TestNewMockDataGenerator() {
 	config := MockDataConfig{
 		Symbol:        "TEST",
@@ -242,9 +252,9 @@ func (suite *MockDataGeneratorTestSuite) TestWriteToParquet() {
 	data, err := generator.Generate()
 	suite.Require().NoError(err)
 
-	// Create temp file
+	// Create temp file with mock_ prefix
 	tmpDir := suite.T().TempDir()
-	outputPath := filepath.Join(tmpDir, "test_data.parquet")
+	outputPath := filepath.Join(tmpDir, GenerateMockFilename("test_data"))
 
 	// Write to parquet
 	err = WriteToParquet(data, outputPath)
@@ -267,7 +277,7 @@ func (suite *MockDataGeneratorTestSuite) TestGenerateAndWriteToParquet() {
 	}
 
 	tmpDir := suite.T().TempDir()
-	outputPath := filepath.Join(tmpDir, "btc_data.parquet")
+	outputPath := filepath.Join(tmpDir, GenerateMockFilename("btc_data"))
 
 	err := GenerateAndWriteToParquet(config, outputPath)
 	suite.Require().NoError(err)
@@ -344,7 +354,7 @@ func (suite *MockDataGeneratorTestSuite) TestDifferentIntervals() {
 
 func (suite *MockDataGeneratorTestSuite) TestWriteToParquetEmptyData() {
 	tmpDir := suite.T().TempDir()
-	outputPath := filepath.Join(tmpDir, "empty.parquet")
+	outputPath := filepath.Join(tmpDir, GenerateMockFilename("empty"))
 
 	err := WriteToParquet(nil, outputPath)
 	suite.Error(err)

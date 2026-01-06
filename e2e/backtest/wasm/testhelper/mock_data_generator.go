@@ -307,7 +307,8 @@ func WriteToParquet(data []types.MarketData, outputPath string) error {
 	return nil
 }
 
-// GenerateAndWriteToParquet is a convenience function that generates mock data and writes it to a parquet file
+// GenerateAndWriteToParquet is a convenience function that generates mock data and writes it to a parquet file.
+// The output filename should start with "mock_" prefix (e.g., "mock_btc_data.parquet") to ensure it is excluded from git.
 func GenerateAndWriteToParquet(config MockDataConfig, outputPath string) error {
 	generator := NewMockDataGenerator(config)
 	data, err := generator.Generate()
@@ -316,4 +317,11 @@ func GenerateAndWriteToParquet(config MockDataConfig, outputPath string) error {
 	}
 
 	return WriteToParquet(data, outputPath)
+}
+
+// GenerateMockFilename creates a filename with the required "mock_" prefix for generated parquet files.
+// This ensures generated files are excluded from git (see .gitignore).
+// Example: GenerateMockFilename("btc_data") returns "mock_btc_data.parquet"
+func GenerateMockFilename(baseName string) string {
+	return fmt.Sprintf("mock_%s.parquet", baseName)
 }
