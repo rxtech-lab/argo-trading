@@ -156,7 +156,8 @@ func (suite *BollingerBandsTestSuite) TestCalculateBandsInsufficientData() {
 
 	// Verify the error contains the expected values
 	var insufficientErr *errors.InsufficientDataError
-	suite.True(errors.As(err, &insufficientErr))
+	suite.Require().True(errors.As(err, &insufficientErr))
+	suite.Require().NotNil(insufficientErr)
 	suite.Equal(20, insufficientErr.Required)
 	suite.Equal(5, insufficientErr.Actual)
 }

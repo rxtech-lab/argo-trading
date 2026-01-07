@@ -120,6 +120,7 @@ func (suite *BacktestLogTestSuite) TestLogWithAllLevels() {
 
 	logs, err := suite.logStorage.GetLogs()
 	suite.Require().NoError(err)
+	suite.Require().NotNil(logs)
 	suite.Require().Equal(len(levels), len(logs))
 
 	for i, level := range levels {
