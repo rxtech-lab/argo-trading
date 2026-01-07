@@ -31,15 +31,21 @@ func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 		return nil, err
 	}
 
-	// Set DuckDB-specific optimizations
+	// Set DuckDB-specific optimizations for maximum performance
 	_, err = db.Exec(`
 		SET memory_limit='8GB';
 		SET threads=4;
 		SET temp_directory='./temp';
+		SET preserve_insertion_order=false;
+		SET enable_progress_bar=false;
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set DuckDB optimizations: %w", err)
 	}
+
+	// Enable connection pooling behavior by setting max connections
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(2)
 
 	return &DuckDBDataSource{
 		db:     db,
@@ -52,22 +58,35 @@ func NewDataSource(path string, logger *logger.Logger) (DataSource, error) {
 func (d *DuckDBDataSource) Initialize(path string) error {
 	d.logger.Debug("Initializing DuckDB data source", zap.String("path", path))
 
-	// First drop the view if it exists
-	_, err := d.db.Exec(`DROP VIEW IF EXISTS market_data;`)
+	// Drop existing table and view if they exist
+	_, err := d.db.Exec(`DROP TABLE IF EXISTS market_data;`)
+	if err != nil {
+		return fmt.Errorf("failed to drop existing table: %w", err)
+	}
+
+	_, err = d.db.Exec(`DROP VIEW IF EXISTS market_data;`)
 	if err != nil {
 		return fmt.Errorf("failed to drop existing view: %w", err)
 	}
 
-	// Create a view from the parquet file - using raw SQL as Squirrel doesn't support CREATE VIEW
-	// Use SELECT * to include all columns from the parquet file (including indicator columns for testing)
+	// Create a table from the parquet file for better query performance with indexes
+	// Using a table instead of a view allows us to create indexes for faster lookups
 	query := fmt.Sprintf(`
-		CREATE VIEW market_data AS
+		CREATE TABLE market_data AS
 		SELECT * FROM read_parquet('%s');
 	`, path)
 
 	_, err = d.db.Exec(query)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create market_data table: %w", err)
+	}
+
+	// Create indexes for common query patterns (symbol + time lookups)
+	// This significantly speeds up GetPreviousNumberOfDataPoints queries
+	_, err = d.db.Exec(`CREATE INDEX IF NOT EXISTS idx_market_data_symbol_time ON market_data(symbol, time);`)
+	if err != nil {
+		d.logger.Debug("Failed to create index, continuing without it", zap.Error(err))
+		// Don't fail if index creation fails - might not support indexes on all column types
 	}
 
 	return nil
