@@ -61,9 +61,18 @@ func BenchmarkMultipleIndicatorsWithoutCaching(b *testing.B) {
 		Cache:             cacheInstance,
 	}
 
-	ema, _ := registry.GetIndicator(types.IndicatorTypeEMA)
-	rsi, _ := registry.GetIndicator(types.IndicatorTypeRSI)
-	ma, _ := registry.GetIndicator(types.IndicatorTypeMA)
+	ema, err := registry.GetIndicator(types.IndicatorTypeEMA)
+	if err != nil {
+		b.Fatal(err)
+	}
+	rsi, err := registry.GetIndicator(types.IndicatorTypeRSI)
+	if err != nil {
+		b.Fatal(err)
+	}
+	ma, err := registry.GetIndicator(types.IndicatorTypeMA)
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -96,9 +105,18 @@ func BenchmarkMultipleIndicatorsWithCaching(b *testing.B) {
 		Cache:             cacheInstance,
 	}
 
-	ema, _ := registry.GetIndicator(types.IndicatorTypeEMA)
-	rsi, _ := registry.GetIndicator(types.IndicatorTypeRSI)
-	ma, _ := registry.GetIndicator(types.IndicatorTypeMA)
+	ema, err := registry.GetIndicator(types.IndicatorTypeEMA)
+	if err != nil {
+		b.Fatal(err)
+	}
+	rsi, err := registry.GetIndicator(types.IndicatorTypeRSI)
+	if err != nil {
+		b.Fatal(err)
+	}
+	ma, err := registry.GetIndicator(types.IndicatorTypeMA)
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -123,9 +141,15 @@ func BenchmarkCacheHitVsDBQuery(b *testing.B) {
 	zapLogger, _ := loggerConfig.Build()
 	log := &logger.Logger{Logger: zapLogger}
 
-	ds, _ := datasource.NewDataSource(":memory:", log)
+	ds, err := datasource.NewDataSource(":memory:", log)
+	if err != nil {
+		b.Fatal(err)
+	}
 	defer ds.Close()
-	ds.Initialize("./test_data/test_data.parquet")
+	err = ds.Initialize("./test_data/test_data.parquet")
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	cachedDS := datasource.NewCachedDataSource(ds)
 
