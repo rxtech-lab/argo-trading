@@ -37,3 +37,6 @@ test-swift-e2e-only:
 # Clean Swift build artifacts
 clean-swift:
 	swift package clean --package-path e2e/swift-pkg
+
+fmt:
+	go fmt ./...

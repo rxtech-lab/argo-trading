@@ -34,11 +34,12 @@ type Argo struct {
 // GetBacktestEngineConfigSchema returns the backtest engine config schema.
 func GetBacktestEngineConfigSchema() string {
 	schema, err := strategy.ToJSONSchema(engine_v1.BacktestEngineV1Config{
-		InitialCapital:   0,
-		Broker:           "",
-		StartTime:        optional.None[time.Time](),
-		EndTime:          optional.None[time.Time](),
-		DecimalPrecision: 0,
+		InitialCapital:      0,
+		Broker:              "",
+		StartTime:           optional.None[time.Time](),
+		EndTime:             optional.None[time.Time](),
+		DecimalPrecision:    0,
+		MarketDataCacheSize: 0,
 	})
 	if err != nil {
 		return ""

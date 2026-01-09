@@ -27,6 +27,7 @@ func (suite *ConfigTestSuite) TestEmptyConfig() {
 	suite.True(config.StartTime.IsNone())
 	suite.True(config.EndTime.IsNone())
 	suite.Equal(1, config.DecimalPrecision)
+	suite.Equal(1000, config.MarketDataCacheSize)
 }
 
 func (suite *ConfigTestSuite) TestTestConfig() {
@@ -43,6 +44,7 @@ func (suite *ConfigTestSuite) TestTestConfig() {
 	suite.Equal(startTime, config.StartTime.Unwrap())
 	suite.Equal(endTime, config.EndTime.Unwrap())
 	suite.Equal(1, config.DecimalPrecision)
+	suite.Equal(1000, config.MarketDataCacheSize)
 }
 
 func (suite *ConfigTestSuite) TestTestConfigWithInteractiveBroker() {
@@ -92,6 +94,7 @@ broker: interactive_broker
 start_time: 2023-01-01T00:00:00Z
 end_time: 2023-12-31T00:00:00Z
 decimal_precision: 2
+market_data_cache_size: 500
 `
 
 	var config BacktestEngineV1Config
@@ -103,6 +106,7 @@ decimal_precision: 2
 	suite.True(config.StartTime.IsSome())
 	suite.True(config.EndTime.IsSome())
 	suite.Equal(2, config.DecimalPrecision)
+	suite.Equal(500, config.MarketDataCacheSize)
 
 	// Check dates
 	startTime := config.StartTime.Unwrap()
@@ -179,25 +183,28 @@ initial_capital: not_a_number
 
 func (suite *ConfigTestSuite) TestConfigStructFields() {
 	config := BacktestEngineV1Config{
-		InitialCapital:   100000.0,
-		Broker:           commission_fee.BrokerInteractiveBroker,
-		StartTime:        optional.Some(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)),
-		EndTime:          optional.Some(time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC)),
-		DecimalPrecision: 3,
+		InitialCapital:      100000.0,
+		Broker:              commission_fee.BrokerInteractiveBroker,
+		StartTime:           optional.Some(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)),
+		EndTime:             optional.Some(time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC)),
+		DecimalPrecision:    3,
+		MarketDataCacheSize: 2000,
 	}
 
 	suite.Equal(100000.0, config.InitialCapital)
 	suite.Equal(commission_fee.BrokerInteractiveBroker, config.Broker)
 	suite.Equal(3, config.DecimalPrecision)
+	suite.Equal(2000, config.MarketDataCacheSize)
 	suite.True(config.StartTime.IsSome())
 	suite.True(config.EndTime.IsSome())
 }
 
 func (suite *ConfigTestSuite) TestGenerateSchemaWithValues() {
 	config := &BacktestEngineV1Config{
-		InitialCapital:   50000.0,
-		Broker:           commission_fee.BrokerZero,
-		DecimalPrecision: 2,
+		InitialCapital:      50000.0,
+		Broker:              commission_fee.BrokerZero,
+		DecimalPrecision:    2,
+		MarketDataCacheSize: 500,
 	}
 
 	schema, err := config.GenerateSchema()

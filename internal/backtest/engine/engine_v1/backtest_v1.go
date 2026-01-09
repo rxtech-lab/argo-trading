@@ -457,9 +457,14 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize state", err)
 	}
 
-	// Wrap the datasource with a caching layer to improve performance
-	// when multiple indicators query similar historical data within the same bar
-	cachedDataSource := datasource.NewCachedDataSource(b.datasource)
+	// Wrap the datasource with a sliding window cache to improve performance
+	// when multiple indicators query similar historical data within the same bar.
+	// The sliding window cache stores market data as it's processed, allowing
+	// strategies to access recent data without hitting DuckDB.
+	slidingWindowDS := datasource.NewSlidingWindowDataSource(b.datasource, b.config.MarketDataCacheSize)
+
+	// Also wrap with the per-bar cache for query deduplication within the same bar
+	cachedDataSource := datasource.NewCachedDataSource(slidingWindowDS)
 
 	strategyContext := runtime.RuntimeContext{
 		DataSource:        cachedDataSource,
@@ -520,7 +525,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	}
 
 	// Process data points
-	if err := b.processDataPoints(params, &strategyContext, count); err != nil {
+	if err := b.processDataPoints(params, &strategyContext, slidingWindowDS, count); err != nil {
 		return err
 	}
 
@@ -550,7 +555,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 }
 
 // processDataPoints processes all data points for a single run iteration.
-func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext *runtime.RuntimeContext, count int) error {
+func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext *runtime.RuntimeContext, slidingWindowDS *datasource.SlidingWindowDataSource, count int) error {
 	currentCount := 0
 
 	// Track insufficient data error state for marker boundaries
@@ -576,6 +581,10 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		if err != nil {
 			return errors.Wrap(errors.ErrCodeDataNotFound, "failed to read data", err)
 		}
+
+		// Add market data to the sliding window cache for future lookups
+		slidingWindowDS.AddToCache(data)
+
 		// run the strategy
 		if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
 			backtestTrading.UpdateCurrentMarketData(data)
@@ -587,8 +596,9 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		// Process data and track insufficient data errors for markers
 		processErr := params.strategy.ProcessData(data)
 
-		// Clear the datasource cache after processing each bar to prevent stale data
-		// and manage memory. The cache is only useful within a single bar's processing.
+		// Clear the per-bar datasource cache after processing each bar to prevent stale data
+		// and manage memory. The per-bar cache is only useful within a single bar's processing.
+		// Note: The sliding window cache persists across bars to provide historical data access.
 		if cachedDS, ok := strategyContext.DataSource.(*datasource.CachedDataSource); ok {
 			cachedDS.ClearCache()
 		}
