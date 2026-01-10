@@ -1,152 +1,532 @@
-# Trading System Architecture
+# Trading System Provider Architecture
 
-This document outlines the architecture and implementation plan for the trading system in Argo Trading. The design supports multiple trading system implementations (backtesting, paper trading, live trading) through a unified interface.
+This document outlines the architecture and implementation plan for the trading system in Argo Trading. The design follows the same **provider pattern** as the existing market data system, where each trading system is a registered provider with its own configuration schema.
 
 ## Overview
 
-The trading system is designed with a **provider pattern** that allows strategies to interact with different execution environments through a common interface. This abstraction enables:
+The trading system uses a **provider-based architecture** identical to the market data provider pattern. Key design principles:
 
-- **Backtesting**: Simulate trades against historical data
-- **Paper Trading**: Simulate trades against live market data without real money
-- **Live Trading**: Execute real trades through broker APIs (Interactive Brokers, Alpaca, Binance, etc.)
+- Each broker/exchange is a separate **provider** (e.g., `binance-paper`, `binance-live`, `ibkr-paper`, `ibkr-live`)
+- Providers are registered in a **registry** with metadata and configuration schemas
+- **Data provider** and **trading provider** are independent - you can trade via IBKR while getting data from Polygon
+- Each provider has an `IsPaperTrading` attribute to indicate simulation mode
 
-## Core Interface
+## Provider Registry
 
-The `TradingSystem` interface defines all trading operations. All implementations must satisfy this contract:
+### Provider Type Definition
 
 ```go
 package trading
 
-import "github.com/rxtech-lab/argo-trading/internal/types"
+// ProviderType defines the type of trading provider.
+type ProviderType string
 
-type TradingSystem interface {
-    // PlaceOrder places a single order
+const (
+    // Binance providers
+    ProviderBinancePaper ProviderType = "binance-paper"
+    ProviderBinanceLive  ProviderType = "binance-live"
+
+    // Interactive Brokers providers
+    ProviderIBKRPaper ProviderType = "ibkr-paper"
+    ProviderIBKRLive  ProviderType = "ibkr-live"
+
+    // Alpaca providers
+    ProviderAlpacaPaper ProviderType = "alpaca-paper"
+    ProviderAlpacaLive  ProviderType = "alpaca-live"
+
+    // Backtest provider (always paper/simulated)
+    ProviderBacktest ProviderType = "backtest"
+)
+```
+
+### Provider Info Structure
+
+```go
+// ProviderInfo holds metadata about a trading provider.
+type ProviderInfo struct {
+    Name           string `json:"name"`
+    DisplayName    string `json:"displayName"`
+    Description    string `json:"description"`
+    IsPaperTrading bool   `json:"isPaperTrading"`
+    RequiresAuth   bool   `json:"requiresAuth"`
+    SupportedAssets []string `json:"supportedAssets"` // e.g., ["stocks", "crypto", "futures"]
+}
+```
+
+### Provider Registry
+
+```go
+// providerRegistry holds metadata about all supported trading providers.
+var providerRegistry = map[ProviderType]ProviderInfo{
+    ProviderBacktest: {
+        Name:           string(ProviderBacktest),
+        DisplayName:    "Backtest",
+        Description:    "Simulated trading against historical data for strategy testing",
+        IsPaperTrading: true,
+        RequiresAuth:   false,
+        SupportedAssets: []string{"stocks", "crypto", "futures", "forex"},
+    },
+    ProviderBinancePaper: {
+        Name:           string(ProviderBinancePaper),
+        DisplayName:    "Binance Testnet",
+        Description:    "Binance testnet for paper trading cryptocurrency without real funds",
+        IsPaperTrading: true,
+        RequiresAuth:   true,
+        SupportedAssets: []string{"crypto"},
+    },
+    ProviderBinanceLive: {
+        Name:           string(ProviderBinanceLive),
+        DisplayName:    "Binance",
+        Description:    "Binance exchange for live cryptocurrency trading",
+        IsPaperTrading: false,
+        RequiresAuth:   true,
+        SupportedAssets: []string{"crypto"},
+    },
+    ProviderIBKRPaper: {
+        Name:           string(ProviderIBKRPaper),
+        DisplayName:    "Interactive Brokers Paper",
+        Description:    "Interactive Brokers paper trading account for simulation",
+        IsPaperTrading: true,
+        RequiresAuth:   true,
+        SupportedAssets: []string{"stocks", "options", "futures", "forex"},
+    },
+    ProviderIBKRLive: {
+        Name:           string(ProviderIBKRLive),
+        DisplayName:    "Interactive Brokers",
+        Description:    "Interactive Brokers live trading account",
+        IsPaperTrading: false,
+        RequiresAuth:   true,
+        SupportedAssets: []string{"stocks", "options", "futures", "forex"},
+    },
+    ProviderAlpacaPaper: {
+        Name:           string(ProviderAlpacaPaper),
+        DisplayName:    "Alpaca Paper",
+        Description:    "Alpaca paper trading for US stocks simulation",
+        IsPaperTrading: true,
+        RequiresAuth:   true,
+        SupportedAssets: []string{"stocks"},
+    },
+    ProviderAlpacaLive: {
+        Name:           string(ProviderAlpacaLive),
+        DisplayName:    "Alpaca",
+        Description:    "Alpaca live trading for US stocks",
+        IsPaperTrading: false,
+        RequiresAuth:   true,
+        SupportedAssets: []string{"stocks"},
+    },
+}
+```
+
+### Registry Functions
+
+```go
+// GetSupportedProviders returns a list of all supported trading provider names.
+func GetSupportedProviders() []string {
+    providers := make([]string, 0, len(providerRegistry))
+    for providerType := range providerRegistry {
+        providers = append(providers, string(providerType))
+    }
+    return providers
+}
+
+// GetProviderInfo returns metadata for a specific trading provider.
+func GetProviderInfo(providerName string) (ProviderInfo, error) {
+    info, exists := providerRegistry[ProviderType(providerName)]
+    if !exists {
+        return ProviderInfo{}, fmt.Errorf("unsupported trading provider: %s", providerName)
+    }
+    return info, nil
+}
+
+// GetProviderConfigSchema returns the JSON schema for a provider's configuration.
+func GetProviderConfigSchema(providerName string) (string, error) {
+    switch ProviderType(providerName) {
+    case ProviderBacktest:
+        return strategy.ToJSONSchema(BacktestProviderConfig{})
+    case ProviderBinancePaper, ProviderBinanceLive:
+        return strategy.ToJSONSchema(BinanceProviderConfig{})
+    case ProviderIBKRPaper, ProviderIBKRLive:
+        return strategy.ToJSONSchema(IBKRProviderConfig{})
+    case ProviderAlpacaPaper, ProviderAlpacaLive:
+        return strategy.ToJSONSchema(AlpacaProviderConfig{})
+    default:
+        return "", fmt.Errorf("unsupported trading provider: %s", providerName)
+    }
+}
+
+// ParseProviderConfig parses a JSON configuration string for the given provider.
+func ParseProviderConfig(providerName string, jsonConfig string) (interface{}, error) {
+    switch ProviderType(providerName) {
+    case ProviderBacktest:
+        return parseBacktestConfig(jsonConfig)
+    case ProviderBinancePaper, ProviderBinanceLive:
+        return parseBinanceConfig(jsonConfig)
+    case ProviderIBKRPaper, ProviderIBKRLive:
+        return parseIBKRConfig(jsonConfig)
+    case ProviderAlpacaPaper, ProviderAlpacaLive:
+        return parseAlpacaConfig(jsonConfig)
+    default:
+        return nil, fmt.Errorf("unsupported trading provider: %s", providerName)
+    }
+}
+```
+
+## Provider Configuration Schemas
+
+### Base Configuration
+
+```go
+// BaseTradingConfig contains common fields for all trading configurations.
+type BaseTradingConfig struct {
+    InitialCapital   float64 `json:"initialCapital" jsonschema:"description=Starting capital for trading,minimum=0" validate:"required,gt=0"`
+    DecimalPrecision int     `json:"decimalPrecision" jsonschema:"description=Decimal precision for quantity calculations,minimum=0,maximum=8,default=2"`
+}
+```
+
+### Backtest Provider Configuration
+
+```go
+// BacktestProviderConfig contains configuration for backtesting.
+type BacktestProviderConfig struct {
+    BaseTradingConfig
+    CommissionType string  `json:"commissionType" jsonschema:"description=Commission calculation type,enum=fixed,enum=percentage,enum=tiered" validate:"required,oneof=fixed percentage tiered"`
+    FixedFee       float64 `json:"fixedFee,omitempty" jsonschema:"description=Fixed fee per trade (when commissionType=fixed),minimum=0"`
+    Percentage     float64 `json:"percentage,omitempty" jsonschema:"description=Percentage of trade value (when commissionType=percentage),minimum=0,maximum=1"`
+    MinFee         float64 `json:"minFee,omitempty" jsonschema:"description=Minimum commission fee,minimum=0"`
+    MaxFee         float64 `json:"maxFee,omitempty" jsonschema:"description=Maximum commission fee (0=no max),minimum=0"`
+}
+```
+
+### Binance Provider Configuration
+
+```go
+// BinanceProviderConfig contains configuration for Binance trading.
+type BinanceProviderConfig struct {
+    BaseTradingConfig
+    ApiKey    string `json:"apiKey" jsonschema:"description=Binance API key" validate:"required"`
+    SecretKey string `json:"secretKey" jsonschema:"description=Binance API secret" validate:"required"`
+}
+```
+
+### IBKR Provider Configuration
+
+```go
+// IBKRProviderConfig contains configuration for Interactive Brokers trading.
+type IBKRProviderConfig struct {
+    BaseTradingConfig
+    Host      string `json:"host" jsonschema:"description=TWS/Gateway host address,default=127.0.0.1" validate:"required"`
+    Port      int    `json:"port" jsonschema:"description=TWS/Gateway port (7496=live 7497=paper for TWS; 4001=live 4002=paper for Gateway),default=7497" validate:"required"`
+    ClientID  int    `json:"clientId" jsonschema:"description=Unique client ID for this connection,minimum=0" validate:"required"`
+    AccountID string `json:"accountId" jsonschema:"description=IB account ID" validate:"required"`
+}
+```
+
+### Alpaca Provider Configuration
+
+```go
+// AlpacaProviderConfig contains configuration for Alpaca trading.
+type AlpacaProviderConfig struct {
+    BaseTradingConfig
+    ApiKey    string `json:"apiKey" jsonschema:"description=Alpaca API key" validate:"required"`
+    SecretKey string `json:"secretKey" jsonschema:"description=Alpaca API secret" validate:"required"`
+    DataFeed  string `json:"dataFeed" jsonschema:"description=Market data feed source,enum=iex,enum=sip,default=iex"`
+}
+```
+
+## Trading Provider Interface
+
+### Core Interface
+
+```go
+package trading
+
+import (
+    "context"
+    "github.com/rxtech-lab/argo-trading/internal/types"
+)
+
+// Provider defines the interface for all trading providers.
+type Provider interface {
+    // Lifecycle methods
+    Initialize(ctx context.Context) error
+    Start(ctx context.Context) error
+    Stop(ctx context.Context) error
+    IsConnected() bool
+
+    // Order management
     PlaceOrder(order types.ExecuteOrder) error
-
-    // PlaceMultipleOrders places multiple orders atomically
     PlaceMultipleOrders(orders []types.ExecuteOrder) error
-
-    // GetPositions returns all current positions
-    GetPositions() ([]types.Position, error)
-
-    // GetPosition returns the current position for a specific symbol
-    GetPosition(symbol string) (types.Position, error)
-
-    // CancelOrder cancels an order by ID
     CancelOrder(orderID string) error
-
-    // CancelAllOrders cancels all pending orders
     CancelAllOrders() error
-
-    // GetOrderStatus returns the status of an order
     GetOrderStatus(orderID string) (types.OrderStatus, error)
-
-    // GetAccountInfo returns the current account state including balance, equity, and P&L
-    GetAccountInfo() (types.AccountInfo, error)
-
-    // GetOpenOrders returns all pending/open orders that have not been executed yet
     GetOpenOrders() ([]types.ExecuteOrder, error)
 
-    // GetTrades returns executed trades with optional filtering
+    // Position and account
+    GetPositions() ([]types.Position, error)
+    GetPosition(symbol string) (types.Position, error)
+    GetAccountInfo() (types.AccountInfo, error)
     GetTrades(filter types.TradeFilter) ([]types.Trade, error)
 
-    // GetMaxBuyQuantity returns the maximum quantity that can be bought at the given price
-    // It takes into account the current balance and commission fees
+    // Buying/selling power
     GetMaxBuyQuantity(symbol string, price float64) (float64, error)
-
-    // GetMaxSellQuantity returns the maximum quantity that can be sold for a symbol
-    // This is the total long position quantity for the symbol
     GetMaxSellQuantity(symbol string) (float64, error)
+
+    // Provider info
+    GetProviderType() ProviderType
+    GetProviderInfo() ProviderInfo
 }
+```
+
+### Provider Factory
+
+```go
+// NewProvider creates a new trading provider based on the provider type.
+func NewProvider(providerType ProviderType, config interface{}) (Provider, error) {
+    switch providerType {
+    case ProviderBacktest:
+        cfg, ok := config.(BacktestProviderConfig)
+        if !ok {
+            return nil, fmt.Errorf("invalid config type for backtest provider")
+        }
+        return NewBacktestProvider(cfg)
+
+    case ProviderBinancePaper:
+        cfg, ok := config.(BinanceProviderConfig)
+        if !ok {
+            return nil, fmt.Errorf("invalid config type for binance provider")
+        }
+        return NewBinanceProvider(cfg, true) // testnet=true
+
+    case ProviderBinanceLive:
+        cfg, ok := config.(BinanceProviderConfig)
+        if !ok {
+            return nil, fmt.Errorf("invalid config type for binance provider")
+        }
+        return NewBinanceProvider(cfg, false) // testnet=false
+
+    case ProviderIBKRPaper, ProviderIBKRLive:
+        cfg, ok := config.(IBKRProviderConfig)
+        if !ok {
+            return nil, fmt.Errorf("invalid config type for ibkr provider")
+        }
+        isPaper := providerType == ProviderIBKRPaper
+        return NewIBKRProvider(cfg, isPaper)
+
+    case ProviderAlpacaPaper:
+        cfg, ok := config.(AlpacaProviderConfig)
+        if !ok {
+            return nil, fmt.Errorf("invalid config type for alpaca provider")
+        }
+        return NewAlpacaProvider(cfg, "https://paper-api.alpaca.markets")
+
+    case ProviderAlpacaLive:
+        cfg, ok := config.(AlpacaProviderConfig)
+        if !ok {
+            return nil, fmt.Errorf("invalid config type for alpaca provider")
+        }
+        return NewAlpacaProvider(cfg, "https://api.alpaca.markets")
+
+    default:
+        return nil, fmt.Errorf("unsupported trading provider: %s", providerType)
+    }
+}
+```
+
+## Data Provider and Trading Provider Separation
+
+A key design feature is the separation of **data provider** and **trading provider**. This allows flexible configurations like:
+
+- Trade via IBKR, get data from Polygon
+- Trade via Alpaca, get data from Binance
+- Backtest with Polygon data, using IBKR commission structure
+
+### Trading Session Configuration
+
+```go
+// TradingSessionConfig defines the configuration for a trading session.
+type TradingSessionConfig struct {
+    // Trading provider configuration
+    TradingProvider     ProviderType `json:"tradingProvider" jsonschema:"description=Trading provider for order execution" validate:"required"`
+    TradingProviderConfig interface{} `json:"tradingProviderConfig" jsonschema:"description=Provider-specific configuration" validate:"required"`
+
+    // Data provider configuration (optional - can use trading provider's data)
+    DataProvider       *marketdata.ProviderType `json:"dataProvider,omitempty" jsonschema:"description=Market data provider (optional - defaults to trading provider if supported)"`
+    DataProviderConfig interface{}              `json:"dataProviderConfig,omitempty" jsonschema:"description=Data provider configuration"`
+
+    // Session settings
+    Symbols []string `json:"symbols" jsonschema:"description=Symbols to trade" validate:"required,min=1"`
+}
+```
+
+### Example Configurations
+
+#### Trade via IBKR with Polygon Data
+
+```yaml
+session:
+  trading_provider: ibkr-paper
+  trading_provider_config:
+    initial_capital: 100000.0
+    decimal_precision: 2
+    host: "127.0.0.1"
+    port: 7497
+    client_id: 1
+    account_id: "DU123456"
+
+  data_provider: polygon
+  data_provider_config:
+    api_key: ${POLYGON_API_KEY}
+
+  symbols:
+    - AAPL
+    - GOOGL
+    - MSFT
+```
+
+#### Trade via Binance (Paper) with Built-in Data
+
+```yaml
+session:
+  trading_provider: binance-paper
+  trading_provider_config:
+    initial_capital: 10000.0
+    decimal_precision: 8
+    api_key: ${BINANCE_TESTNET_API_KEY}
+    secret_key: ${BINANCE_TESTNET_SECRET_KEY}
+
+  # No data_provider specified - uses Binance's built-in market data
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+```
+
+#### Backtest with Polygon Historical Data
+
+```yaml
+session:
+  trading_provider: backtest
+  trading_provider_config:
+    initial_capital: 100000.0
+    decimal_precision: 2
+    commission_type: fixed
+    fixed_fee: 1.0
+
+  data_provider: polygon
+  data_provider_config:
+    api_key: ${POLYGON_API_KEY}
+
+  symbols:
+    - SPY
+```
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            Strategy (WASM)                               │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ gRPC (go-plugin)
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Strategy Host Service                             │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────────┐   │
+│  │      Data Operations        │  │      Trading Operations         │   │
+│  │  - GetRange                 │  │  - PlaceOrder                   │   │
+│  │  - ReadLastData             │  │  - GetPositions                 │   │
+│  │  - ExecuteSQL               │  │  - CancelOrder                  │   │
+│  │  - ConfigureIndicator       │  │  - GetAccountInfo               │   │
+│  │  - GetSignal                │  │  - GetTrades                    │   │
+│  └──────────────┬──────────────┘  └──────────────┬──────────────────┘   │
+└─────────────────┼────────────────────────────────┼──────────────────────┘
+                  │                                │
+                  ▼                                ▼
+┌─────────────────────────────────┐  ┌─────────────────────────────────────┐
+│     Data Provider Registry      │  │     Trading Provider Registry       │
+│                                 │  │                                     │
+│  ┌───────────┐ ┌───────────┐   │  │  ┌─────────────┐ ┌─────────────┐    │
+│  │  Polygon  │ │  Binance  │   │  │  │  backtest   │ │binance-paper│    │
+│  └───────────┘ └───────────┘   │  │  └─────────────┘ └─────────────┘    │
+│                                 │  │  ┌─────────────┐ ┌─────────────┐    │
+│                                 │  │  │binance-live │ │ ibkr-paper  │    │
+│                                 │  │  └─────────────┘ └─────────────┘    │
+│                                 │  │  ┌─────────────┐ ┌─────────────┐    │
+│                                 │  │  │  ibkr-live  │ │alpaca-paper │    │
+│                                 │  │  └─────────────┘ └─────────────┘    │
+│                                 │  │  ┌─────────────┐                    │
+│                                 │  │  │ alpaca-live │                    │
+│                                 │  │  └─────────────┘                    │
+└─────────────────────────────────┘  └─────────────────────────────────────┘
+                  │                                │
+                  ▼                                ▼
+┌─────────────────────────────────┐  ┌─────────────────────────────────────┐
+│      External Data Sources      │  │         Broker/Exchange APIs        │
+│  - Polygon.io API               │  │  - Binance API / Testnet            │
+│  - Binance Public API           │  │  - IBKR TWS / Gateway               │
+│  - Historical Parquet files     │  │  - Alpaca API                       │
+└─────────────────────────────────┘  └─────────────────────────────────────┘
 ```
 
 ## Core Types
 
 ### ExecuteOrder
 
-Request structure sent from strategies to place orders:
-
 ```go
 type ExecuteOrder struct {
-    ID           string                                          // UUID for the order
-    Symbol       string                                          // Trading symbol (e.g., "AAPL", "BTC-USD")
-    Side         PurchaseType                                    // BUY or SELL
-    OrderType    OrderType                                       // MARKET or LIMIT
-    Reason       Reason                                          // Why this order was placed
-    Price        float64                                         // Execution price (limit price for LIMIT orders)
-    StrategyName string                                          // Strategy that created this order
-    Quantity     float64                                         // Amount to trade
-    PositionType PositionType                                    // LONG or SHORT
-    TakeProfit   optional.Option[ExecuteOrderTakeProfitOrStopLoss] // Optional take profit
-    StopLoss     optional.Option[ExecuteOrderTakeProfitOrStopLoss] // Optional stop loss
-}
-```
-
-### Order
-
-Internal representation of an order after processing:
-
-```go
-type Order struct {
-    OrderID      string       // Unique identifier
-    Symbol       string       // Trading symbol
-    Side         PurchaseType // BUY or SELL
-    Quantity     float64      // Order quantity
-    Price        float64      // Order price
-    Timestamp    time.Time    // When the order was created
-    IsCompleted  bool         // Whether the order is complete
-    Status       OrderStatus  // PENDING, FILLED, CANCELLED, REJECTED, FAILED
-    Reason       Reason       // Reason for the order
-    StrategyName string       // Strategy that created this order
-    Fee          float64      // Commission fee
-    PositionType PositionType // LONG or SHORT
+    ID           string                                            `json:"id"`
+    Symbol       string                                            `json:"symbol"`
+    Side         PurchaseType                                      `json:"side"`          // BUY or SELL
+    OrderType    OrderType                                         `json:"orderType"`     // MARKET or LIMIT
+    Reason       Reason                                            `json:"reason"`
+    Price        float64                                           `json:"price"`
+    StrategyName string                                            `json:"strategyName"`
+    Quantity     float64                                           `json:"quantity"`
+    PositionType PositionType                                      `json:"positionType"`  // LONG or SHORT
+    TakeProfit   optional.Option[ExecuteOrderTakeProfitOrStopLoss] `json:"takeProfit"`
+    StopLoss     optional.Option[ExecuteOrderTakeProfitOrStopLoss] `json:"stopLoss"`
 }
 ```
 
 ### Position
 
-Represents current holdings of an asset:
-
 ```go
 type Position struct {
-    Symbol                     string    // Trading symbol
-    TotalLongPositionQuantity  float64   // Current long holdings
-    TotalShortPositionQuantity float64   // Current short holdings
+    Symbol                       string    `json:"symbol"`
+    TotalLongPositionQuantity    float64   `json:"totalLongPositionQuantity"`
+    TotalShortPositionQuantity   float64   `json:"totalShortPositionQuantity"`
 
     // Long position tracking
-    TotalLongInPositionQuantity  float64 // Total quantity bought (long)
-    TotalLongOutPositionQuantity float64 // Total quantity sold (long)
-    TotalLongInPositionAmount    float64 // Total amount spent buying
-    TotalLongOutPositionAmount   float64 // Total amount received selling
-    TotalLongInFee               float64 // Fees paid on long buys
-    TotalLongOutFee              float64 // Fees paid on long sells
+    TotalLongInPositionQuantity  float64   `json:"totalLongInPositionQuantity"`
+    TotalLongOutPositionQuantity float64   `json:"totalLongOutPositionQuantity"`
+    TotalLongInPositionAmount    float64   `json:"totalLongInPositionAmount"`
+    TotalLongOutPositionAmount   float64   `json:"totalLongOutPositionAmount"`
+    TotalLongInFee               float64   `json:"totalLongInFee"`
+    TotalLongOutFee              float64   `json:"totalLongOutFee"`
 
     // Short position tracking
-    TotalShortInPositionQuantity  float64 // Total quantity sold (short)
-    TotalShortOutPositionQuantity float64 // Total quantity covered
-    TotalShortInPositionAmount    float64 // Total amount received shorting
-    TotalShortOutPositionAmount   float64 // Total amount spent covering
-    TotalShortInFee               float64 // Fees paid on short sells
-    TotalShortOutFee              float64 // Fees paid on covering
+    TotalShortInPositionQuantity  float64  `json:"totalShortInPositionQuantity"`
+    TotalShortOutPositionQuantity float64  `json:"totalShortOutPositionQuantity"`
+    TotalShortInPositionAmount    float64  `json:"totalShortInPositionAmount"`
+    TotalShortOutPositionAmount   float64  `json:"totalShortOutPositionAmount"`
+    TotalShortInFee               float64  `json:"totalShortInFee"`
+    TotalShortOutFee              float64  `json:"totalShortOutFee"`
 
-    OpenTimestamp time.Time // When position was opened
-    StrategyName  string    // Strategy managing this position
+    OpenTimestamp time.Time `json:"openTimestamp"`
+    StrategyName  string    `json:"strategyName"`
 }
 ```
 
 ### AccountInfo
 
-Current account state:
-
 ```go
 type AccountInfo struct {
-    Balance       float64 // Cash balance (excluding unrealized P&L)
-    Equity        float64 // Total account value (balance + unrealized P&L)
-    BuyingPower   float64 // Available amount for new purchases
-    RealizedPnL   float64 // Total realized profit/loss from closed positions
-    UnrealizedPnL float64 // Total unrealized profit/loss from open positions
-    TotalFees     float64 // Total fees paid
-    MarginUsed    float64 // Margin currently in use (for margin trading)
+    Balance       float64 `json:"balance"`
+    Equity        float64 `json:"equity"`
+    BuyingPower   float64 `json:"buyingPower"`
+    RealizedPnL   float64 `json:"realizedPnL"`
+    UnrealizedPnL float64 `json:"unrealizedPnL"`
+    TotalFees     float64 `json:"totalFees"`
+    MarginUsed    float64 `json:"marginUsed"`
 }
 ```
 
@@ -183,307 +563,84 @@ const (
 
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure
+### Phase 1: Provider Registry Infrastructure
 
-1. **Define Extended Interface** - Extend the base `TradingSystem` interface with lifecycle methods:
+1. Create `pkg/trading/provider_registry.go` with:
+   - Provider type constants
+   - Provider info registry
+   - `GetSupportedProviders()`, `GetProviderInfo()`, `GetProviderConfigSchema()`
 
-```go
-type TradingSystemLifecycle interface {
-    TradingSystem
+2. Create `pkg/trading/provider_config.go` with:
+   - Base and provider-specific config structs
+   - JSON schema tags for schema generation
+   - Config parsing functions
 
-    // Initialize sets up the trading system with configuration
-    Initialize(config TradingSystemConfig) error
+3. Create `pkg/trading/provider.go` with:
+   - `Provider` interface definition
+   - `NewProvider()` factory function
 
-    // Start begins the trading system (connect to broker, start data feeds, etc.)
-    Start(ctx context.Context) error
+### Phase 2: Backtest Provider
 
-    // Stop gracefully shuts down the trading system
-    Stop(ctx context.Context) error
+1. Refactor existing `BacktestTrading` to implement `Provider` interface
+2. Add lifecycle methods (`Initialize`, `Start`, `Stop`, `IsConnected`)
+3. Implement `GetProviderType()` and `GetProviderInfo()`
 
-    // IsConnected returns whether the system is connected and ready
-    IsConnected() bool
+### Phase 3: Binance Providers
 
-    // GetSystemType returns the type of trading system
-    GetSystemType() TradingSystemType
-}
+1. Create `pkg/trading/provider/binance.go`:
+   - `BinanceProvider` struct implementing `Provider`
+   - Support for both testnet (paper) and mainnet (live)
+   - WebSocket connection for real-time updates
 
-type TradingSystemType string
+2. Implement order management via Binance API
+3. Implement position tracking and account info
 
-const (
-    TradingSystemTypeBacktest TradingSystemType = "backtest"
-    TradingSystemTypePaper    TradingSystemType = "paper"
-    TradingSystemTypeLive     TradingSystemType = "live"
-)
-```
+### Phase 4: IBKR Providers
 
-2. **Create Configuration Structure**:
+1. Create `pkg/trading/provider/ibkr.go`:
+   - `IBKRProvider` struct implementing `Provider`
+   - TWS/Gateway connection handling
+   - Paper vs live account detection
 
-```go
-type TradingSystemConfig struct {
-    Type             TradingSystemType
-    InitialCapital   float64
-    Commission       CommissionConfig
-    DecimalPrecision int
+2. Implement order management via IBKR API
+3. Implement position sync and account info
 
-    // Broker-specific configuration
-    BrokerConfig     map[string]interface{}
-}
+### Phase 5: Alpaca Providers
 
-type CommissionConfig struct {
-    Type       string  // "fixed", "percentage", "tiered"
-    FixedFee   float64 // Fixed fee per trade
-    Percentage float64 // Percentage of trade value
-    MinFee     float64 // Minimum fee
-    MaxFee     float64 // Maximum fee (0 = no max)
-}
-```
+1. Create `pkg/trading/provider/alpaca.go`:
+   - `AlpacaProvider` struct implementing `Provider`
+   - Paper vs live URL configuration
 
-3. **Implement Factory Pattern**:
+2. Implement order management via Alpaca API
+3. Implement position tracking and account info
 
-```go
-type TradingSystemFactory interface {
-    Create(config TradingSystemConfig) (TradingSystemLifecycle, error)
-}
+### Phase 6: Trading Session Manager
 
-// Registry for trading system implementations
-var tradingSystemRegistry = make(map[TradingSystemType]TradingSystemFactory)
+1. Create `TradingSessionManager` that:
+   - Initializes both data and trading providers
+   - Routes data requests to data provider
+   - Routes trading requests to trading provider
+   - Handles provider lifecycle
 
-func RegisterTradingSystem(systemType TradingSystemType, factory TradingSystemFactory) {
-    tradingSystemRegistry[systemType] = factory
-}
-
-func CreateTradingSystem(config TradingSystemConfig) (TradingSystemLifecycle, error) {
-    factory, ok := tradingSystemRegistry[config.Type]
-    if !ok {
-        return nil, fmt.Errorf("unknown trading system type: %s", config.Type)
-    }
-    return factory.Create(config)
-}
-```
-
-### Phase 2: Backtest Implementation (Existing)
-
-The backtest trading system is already implemented in `internal/backtest/engine/engine_v1/backtest_trading.go`. Key features:
-
-- Simulates order execution against historical data
-- Supports market and limit orders
-- Tracks pending orders and executes when price conditions are met
-- Calculates P&L and position tracking via DuckDB
-
-### Phase 3: Paper Trading Implementation
-
-Paper trading simulates trades against live market data without real money:
-
-```go
-type PaperTradingSystem struct {
-    config        TradingSystemConfig
-    dataFeed      MarketDataFeed       // Live market data source
-    state         *TradingState        // Order/position state
-    commission    CommissionCalculator
-    ctx           context.Context
-    cancel        context.CancelFunc
-    mu            sync.RWMutex
-}
-
-func (p *PaperTradingSystem) Initialize(config TradingSystemConfig) error {
-    // Set up data feed connection
-    // Initialize state storage
-    // Configure commission calculator
-}
-
-func (p *PaperTradingSystem) Start(ctx context.Context) error {
-    // Connect to live data feed
-    // Start order processing goroutine
-    // Begin monitoring pending orders
-}
-
-func (p *PaperTradingSystem) PlaceOrder(order types.ExecuteOrder) error {
-    // Validate order
-    // Check buying/selling power against current market price
-    // For market orders: execute immediately at current price
-    // For limit orders: add to pending queue
-}
-```
-
-### Phase 4: Live Trading Implementation
-
-Live trading executes real orders through broker APIs:
-
-```go
-type LiveTradingSystem struct {
-    config       TradingSystemConfig
-    broker       BrokerClient          // Broker API client
-    dataFeed     MarketDataFeed        // Market data source
-    orderStore   OrderStore            // Persistent order storage
-    positionSync PositionSynchronizer  // Sync positions with broker
-    ctx          context.Context
-    cancel       context.CancelFunc
-}
-
-// BrokerClient interface for broker implementations
-type BrokerClient interface {
-    Connect(ctx context.Context) error
-    Disconnect(ctx context.Context) error
-
-    SubmitOrder(order types.ExecuteOrder) (string, error)
-    CancelOrder(orderID string) error
-    GetOrderStatus(orderID string) (types.OrderStatus, error)
-
-    GetPositions() ([]types.Position, error)
-    GetAccountInfo() (types.AccountInfo, error)
-
-    SubscribeOrderUpdates(handler OrderUpdateHandler) error
-    SubscribePositionUpdates(handler PositionUpdateHandler) error
-}
-```
-
-## Architecture Diagram
+## File Structure
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Strategy (WASM)                          │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                │ gRPC (go-plugin)
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Strategy Host Service                         │
-│  - Data Access (GetRange, ReadLastData, ExecuteSQL)             │
-│  - Indicators (ConfigureIndicator, GetSignal)                   │
-│  - Cache (GetCache, SetCache)                                   │
-│  - Trading (PlaceOrder, GetPositions, etc.)                     │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                │ TradingSystem Interface
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Trading System Factory                        │
-│                                                                  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │  Backtest   │  │   Paper     │  │         Live            │  │
-│  │   Trading   │  │   Trading   │  │        Trading          │  │
-│  │   System    │  │   System    │  │        System           │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-│         │                │                      │                │
-│         ▼                ▼                      ▼                │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │  Historical │  │    Live     │  │     Broker API          │  │
-│  │    Data     │  │ Data Feed   │  │ (IB, Alpaca, Binance)   │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        State Storage                             │
-│           (DuckDB for backtest, PostgreSQL for live)            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Order Flow
-
-### Market Order Flow
-
-```
-1. Strategy creates ExecuteOrder
-   └─> Validates order fields (UUID, symbol, quantity, price)
-
-2. TradingSystem.PlaceOrder() called
-   └─> Validates buying/selling power
-   └─> Checks current market price
-
-3. Order Execution
-   ├─> Backtest: Execute at (High + Low) / 2
-   ├─> Paper: Execute at current market price
-   └─> Live: Submit to broker, wait for fill
-
-4. Post-Execution
-   └─> Update balance
-   └─> Update position
-   └─> Calculate and store P&L
-   └─> Deduct commission fees
-```
-
-### Limit Order Flow
-
-```
-1. Strategy creates ExecuteOrder with OrderType = LIMIT
-   └─> Specifies desired execution price
-
-2. TradingSystem.PlaceOrder() called
-   └─> Validates buying/selling power at limit price
-
-3. Order Queuing
-   ├─> If price condition met: execute immediately
-   └─> Otherwise: add to pending orders queue
-
-4. Pending Order Monitoring
-   └─> On each market data update:
-       ├─> Buy: If market Low <= limit price → execute
-       └─> Sell: If market High >= limit price → execute
-
-5. Order Expiration (optional)
-   └─> Cancel pending orders based on expiration policy
-```
-
-## Broker Integration Plan
-
-### Interactive Brokers
-
-```go
-type IBBrokerClient struct {
-    config     IBConfig
-    gateway    *IBGateway    // TWS or IB Gateway connection
-    orderStore map[string]types.Order
-}
-
-type IBConfig struct {
-    Host       string // TWS/Gateway host
-    Port       int    // TWS/Gateway port
-    ClientID   int    // Unique client ID
-    AccountID  string // IB account ID
-    PaperTrade bool   // Use paper trading account
-}
-```
-
-### Alpaca
-
-```go
-type AlpacaBrokerClient struct {
-    config   AlpacaConfig
-    client   *alpaca.Client
-    stream   *alpaca.Stream
-}
-
-type AlpacaConfig struct {
-    APIKey    string
-    SecretKey string
-    BaseURL   string // Paper or live URL
-    DataFeed  string // "iex" or "sip"
-}
-```
-
-### Binance
-
-```go
-type BinanceBrokerClient struct {
-    config BinanceConfig
-    client *binance.Client
-    stream *binance.UserDataStream
-}
-
-type BinanceConfig struct {
-    APIKey    string
-    SecretKey string
-    Testnet   bool // Use testnet for paper trading
-}
+pkg/
+└── trading/
+    ├── provider_registry.go    # Registry with GetSupportedProviders(), GetProviderInfo()
+    ├── provider_config.go      # Config structs with JSON schema tags
+    ├── provider.go             # Provider interface and NewProvider factory
+    ├── session.go              # TradingSessionConfig and TradingSessionManager
+    └── provider/
+        ├── backtest.go         # BacktestProvider implementation
+        ├── binance.go          # BinanceProvider implementation
+        ├── ibkr.go             # IBKRProvider implementation
+        └── alpaca.go           # AlpacaProvider implementation
 ```
 
 ## Error Handling
 
-All trading operations should return structured errors:
-
 ```go
-// Error codes for trading operations
 const (
     ErrCodeInsufficientFunds    = "INSUFFICIENT_FUNDS"
     ErrCodeInsufficientPosition = "INSUFFICIENT_POSITION"
@@ -493,13 +650,15 @@ const (
     ErrCodeBrokerRejected       = "BROKER_REJECTED"
     ErrCodeConnectionLost       = "CONNECTION_LOST"
     ErrCodeRateLimited          = "RATE_LIMITED"
+    ErrCodeProviderNotConnected = "PROVIDER_NOT_CONNECTED"
 )
 
 type TradingError struct {
-    Code    string
-    Message string
-    Details map[string]interface{}
-    Cause   error
+    Code     string                 `json:"code"`
+    Message  string                 `json:"message"`
+    Provider ProviderType           `json:"provider"`
+    Details  map[string]interface{} `json:"details,omitempty"`
+    Cause    error                  `json:"-"`
 }
 ```
 
@@ -507,92 +666,18 @@ type TradingError struct {
 
 ### Unit Tests
 
-- Test each trading system implementation in isolation
-- Mock broker clients for live trading tests
-- Test order validation, position calculations, P&L
+- Test provider registry functions
+- Test config parsing and validation
+- Mock external APIs for provider implementations
 
 ### Integration Tests
 
-- Test backtest trading with real historical data
-- Test paper trading with simulated market data feeds
-- Test broker client connections (using paper/testnet accounts)
+- Test each provider with real/testnet APIs
+- Test data provider + trading provider combinations
+- Test order lifecycle (place → fill → position update)
 
 ### End-to-End Tests
 
-- Run complete backtest simulations
+- Run backtests with different commission structures
 - Run paper trading sessions with sample strategies
-- Validate P&L calculations match expected results
-
-## Configuration Examples
-
-### Backtest Configuration
-
-```yaml
-trading_system:
-  type: backtest
-  initial_capital: 100000.0
-  decimal_precision: 2
-  commission:
-    type: fixed
-    fixed_fee: 1.0
-```
-
-### Paper Trading Configuration
-
-```yaml
-trading_system:
-  type: paper
-  initial_capital: 100000.0
-  decimal_precision: 2
-  commission:
-    type: percentage
-    percentage: 0.001
-    min_fee: 1.0
-  data_feed:
-    provider: polygon
-    symbols:
-      - AAPL
-      - GOOGL
-      - MSFT
-```
-
-### Live Trading Configuration
-
-```yaml
-trading_system:
-  type: live
-  decimal_precision: 2
-  broker:
-    name: alpaca
-    api_key: ${ALPACA_API_KEY}
-    secret_key: ${ALPACA_SECRET_KEY}
-    base_url: https://api.alpaca.markets
-    data_feed: sip
-```
-
-## Future Enhancements
-
-1. **Risk Management Integration**
-   - Position sizing limits
-   - Maximum drawdown protection
-   - Exposure limits per symbol/sector
-
-2. **Order Types**
-   - Stop orders
-   - Stop-limit orders
-   - Trailing stop orders
-   - OCO (One-Cancels-Other) orders
-
-3. **Multi-Account Support**
-   - Trade across multiple broker accounts
-   - Aggregate position tracking
-
-4. **Event System**
-   - Order fill notifications
-   - Position change events
-   - Account balance updates
-
-5. **Audit Trail**
-   - Complete order history
-   - Execution reports
-   - Compliance logging
+- Validate P&L calculations across providers
