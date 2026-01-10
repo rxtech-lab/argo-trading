@@ -125,22 +125,11 @@ func ParseProviderConfig(providerName string, jsonConfig string) (interface{}, e
 
 ## Provider Configuration Schemas
 
-### Base Configuration
-
-```go
-// BaseTradingConfig contains common fields for all trading configurations.
-type BaseTradingConfig struct {
-    InitialCapital   float64 `json:"initialCapital" jsonschema:"description=Starting capital for trading,minimum=0" validate:"required,gt=0"`
-    DecimalPrecision int     `json:"decimalPrecision" jsonschema:"description=Decimal precision for quantity calculations,minimum=0,maximum=8,default=2"`
-}
-```
-
 ### Binance Provider Configuration
 
 ```go
 // BinanceProviderConfig contains configuration for Binance trading.
 type BinanceProviderConfig struct {
-    BaseTradingConfig
     ApiKey    string `json:"apiKey" jsonschema:"description=Binance API key" validate:"required"`
     SecretKey string `json:"secretKey" jsonschema:"description=Binance API secret" validate:"required"`
 }
@@ -151,7 +140,6 @@ type BinanceProviderConfig struct {
 ```go
 // IBKRProviderConfig contains configuration for Interactive Brokers trading.
 type IBKRProviderConfig struct {
-    BaseTradingConfig
     Host      string `json:"host" jsonschema:"description=TWS/Gateway host address,default=127.0.0.1" validate:"required"`
     Port      int    `json:"port" jsonschema:"description=TWS/Gateway port (7496=live 7497=paper for TWS; 4001=live 4002=paper for Gateway),default=7497" validate:"required"`
     ClientID  int    `json:"clientId" jsonschema:"description=Unique client ID for this connection,minimum=0" validate:"required"`
@@ -271,8 +259,6 @@ type TradingSessionConfig struct {
 session:
   trading_provider: ibkr-paper
   trading_provider_config:
-    initial_capital: 100000.0
-    decimal_precision: 2
     host: "127.0.0.1"
     port: 7497
     client_id: 1
@@ -294,8 +280,6 @@ session:
 session:
   trading_provider: binance-paper
   trading_provider_config:
-    initial_capital: 10000.0
-    decimal_precision: 8
     api_key: ${BINANCE_TESTNET_API_KEY}
     secret_key: ${BINANCE_TESTNET_SECRET_KEY}
 
@@ -311,8 +295,6 @@ session:
 session:
   trading_provider: ibkr-live
   trading_provider_config:
-    initial_capital: 50000.0
-    decimal_precision: 2
     host: "127.0.0.1"
     port: 7496
     client_id: 1
