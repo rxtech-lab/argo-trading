@@ -10,6 +10,7 @@ The trading system uses a **provider-based architecture** identical to the marke
 - Providers are registered in a **registry** with metadata and configuration schemas
 - **Data provider** and **trading provider** are independent - you can trade via IBKR while getting data from Polygon
 - Each provider has an `IsPaperTrading` attribute to indicate simulation mode
+- Backtesting uses its own engine and is not part of the trading provider system
 
 ## Provider Registry
 
@@ -29,13 +30,6 @@ const (
     // Interactive Brokers providers
     ProviderIBKRPaper ProviderType = "ibkr-paper"
     ProviderIBKRLive  ProviderType = "ibkr-live"
-
-    // Alpaca providers
-    ProviderAlpacaPaper ProviderType = "alpaca-paper"
-    ProviderAlpacaLive  ProviderType = "alpaca-live"
-
-    // Backtest provider (always paper/simulated)
-    ProviderBacktest ProviderType = "backtest"
 )
 ```
 
@@ -48,8 +42,6 @@ type ProviderInfo struct {
     DisplayName    string `json:"displayName"`
     Description    string `json:"description"`
     IsPaperTrading bool   `json:"isPaperTrading"`
-    RequiresAuth   bool   `json:"requiresAuth"`
-    SupportedAssets []string `json:"supportedAssets"` // e.g., ["stocks", "crypto", "futures"]
 }
 ```
 
@@ -58,61 +50,29 @@ type ProviderInfo struct {
 ```go
 // providerRegistry holds metadata about all supported trading providers.
 var providerRegistry = map[ProviderType]ProviderInfo{
-    ProviderBacktest: {
-        Name:           string(ProviderBacktest),
-        DisplayName:    "Backtest",
-        Description:    "Simulated trading against historical data for strategy testing",
-        IsPaperTrading: true,
-        RequiresAuth:   false,
-        SupportedAssets: []string{"stocks", "crypto", "futures", "forex"},
-    },
     ProviderBinancePaper: {
         Name:           string(ProviderBinancePaper),
         DisplayName:    "Binance Testnet",
         Description:    "Binance testnet for paper trading cryptocurrency without real funds",
         IsPaperTrading: true,
-        RequiresAuth:   true,
-        SupportedAssets: []string{"crypto"},
     },
     ProviderBinanceLive: {
         Name:           string(ProviderBinanceLive),
         DisplayName:    "Binance",
         Description:    "Binance exchange for live cryptocurrency trading",
         IsPaperTrading: false,
-        RequiresAuth:   true,
-        SupportedAssets: []string{"crypto"},
     },
     ProviderIBKRPaper: {
         Name:           string(ProviderIBKRPaper),
         DisplayName:    "Interactive Brokers Paper",
         Description:    "Interactive Brokers paper trading account for simulation",
         IsPaperTrading: true,
-        RequiresAuth:   true,
-        SupportedAssets: []string{"stocks", "options", "futures", "forex"},
     },
     ProviderIBKRLive: {
         Name:           string(ProviderIBKRLive),
         DisplayName:    "Interactive Brokers",
         Description:    "Interactive Brokers live trading account",
         IsPaperTrading: false,
-        RequiresAuth:   true,
-        SupportedAssets: []string{"stocks", "options", "futures", "forex"},
-    },
-    ProviderAlpacaPaper: {
-        Name:           string(ProviderAlpacaPaper),
-        DisplayName:    "Alpaca Paper",
-        Description:    "Alpaca paper trading for US stocks simulation",
-        IsPaperTrading: true,
-        RequiresAuth:   true,
-        SupportedAssets: []string{"stocks"},
-    },
-    ProviderAlpacaLive: {
-        Name:           string(ProviderAlpacaLive),
-        DisplayName:    "Alpaca",
-        Description:    "Alpaca live trading for US stocks",
-        IsPaperTrading: false,
-        RequiresAuth:   true,
-        SupportedAssets: []string{"stocks"},
     },
 }
 ```
@@ -141,14 +101,10 @@ func GetProviderInfo(providerName string) (ProviderInfo, error) {
 // GetProviderConfigSchema returns the JSON schema for a provider's configuration.
 func GetProviderConfigSchema(providerName string) (string, error) {
     switch ProviderType(providerName) {
-    case ProviderBacktest:
-        return strategy.ToJSONSchema(BacktestProviderConfig{})
     case ProviderBinancePaper, ProviderBinanceLive:
         return strategy.ToJSONSchema(BinanceProviderConfig{})
     case ProviderIBKRPaper, ProviderIBKRLive:
         return strategy.ToJSONSchema(IBKRProviderConfig{})
-    case ProviderAlpacaPaper, ProviderAlpacaLive:
-        return strategy.ToJSONSchema(AlpacaProviderConfig{})
     default:
         return "", fmt.Errorf("unsupported trading provider: %s", providerName)
     }
@@ -157,14 +113,10 @@ func GetProviderConfigSchema(providerName string) (string, error) {
 // ParseProviderConfig parses a JSON configuration string for the given provider.
 func ParseProviderConfig(providerName string, jsonConfig string) (interface{}, error) {
     switch ProviderType(providerName) {
-    case ProviderBacktest:
-        return parseBacktestConfig(jsonConfig)
     case ProviderBinancePaper, ProviderBinanceLive:
         return parseBinanceConfig(jsonConfig)
     case ProviderIBKRPaper, ProviderIBKRLive:
         return parseIBKRConfig(jsonConfig)
-    case ProviderAlpacaPaper, ProviderAlpacaLive:
-        return parseAlpacaConfig(jsonConfig)
     default:
         return nil, fmt.Errorf("unsupported trading provider: %s", providerName)
     }
@@ -180,20 +132,6 @@ func ParseProviderConfig(providerName string, jsonConfig string) (interface{}, e
 type BaseTradingConfig struct {
     InitialCapital   float64 `json:"initialCapital" jsonschema:"description=Starting capital for trading,minimum=0" validate:"required,gt=0"`
     DecimalPrecision int     `json:"decimalPrecision" jsonschema:"description=Decimal precision for quantity calculations,minimum=0,maximum=8,default=2"`
-}
-```
-
-### Backtest Provider Configuration
-
-```go
-// BacktestProviderConfig contains configuration for backtesting.
-type BacktestProviderConfig struct {
-    BaseTradingConfig
-    CommissionType string  `json:"commissionType" jsonschema:"description=Commission calculation type,enum=fixed,enum=percentage,enum=tiered" validate:"required,oneof=fixed percentage tiered"`
-    FixedFee       float64 `json:"fixedFee,omitempty" jsonschema:"description=Fixed fee per trade (when commissionType=fixed),minimum=0"`
-    Percentage     float64 `json:"percentage,omitempty" jsonschema:"description=Percentage of trade value (when commissionType=percentage),minimum=0,maximum=1"`
-    MinFee         float64 `json:"minFee,omitempty" jsonschema:"description=Minimum commission fee,minimum=0"`
-    MaxFee         float64 `json:"maxFee,omitempty" jsonschema:"description=Maximum commission fee (0=no max),minimum=0"`
 }
 ```
 
@@ -218,18 +156,6 @@ type IBKRProviderConfig struct {
     Port      int    `json:"port" jsonschema:"description=TWS/Gateway port (7496=live 7497=paper for TWS; 4001=live 4002=paper for Gateway),default=7497" validate:"required"`
     ClientID  int    `json:"clientId" jsonschema:"description=Unique client ID for this connection,minimum=0" validate:"required"`
     AccountID string `json:"accountId" jsonschema:"description=IB account ID" validate:"required"`
-}
-```
-
-### Alpaca Provider Configuration
-
-```go
-// AlpacaProviderConfig contains configuration for Alpaca trading.
-type AlpacaProviderConfig struct {
-    BaseTradingConfig
-    ApiKey    string `json:"apiKey" jsonschema:"description=Alpaca API key" validate:"required"`
-    SecretKey string `json:"secretKey" jsonschema:"description=Alpaca API secret" validate:"required"`
-    DataFeed  string `json:"dataFeed" jsonschema:"description=Market data feed source,enum=iex,enum=sip,default=iex"`
 }
 ```
 
@@ -283,13 +209,6 @@ type Provider interface {
 // NewProvider creates a new trading provider based on the provider type.
 func NewProvider(providerType ProviderType, config interface{}) (Provider, error) {
     switch providerType {
-    case ProviderBacktest:
-        cfg, ok := config.(BacktestProviderConfig)
-        if !ok {
-            return nil, fmt.Errorf("invalid config type for backtest provider")
-        }
-        return NewBacktestProvider(cfg)
-
     case ProviderBinancePaper:
         cfg, ok := config.(BinanceProviderConfig)
         if !ok {
@@ -312,20 +231,6 @@ func NewProvider(providerType ProviderType, config interface{}) (Provider, error
         isPaper := providerType == ProviderIBKRPaper
         return NewIBKRProvider(cfg, isPaper)
 
-    case ProviderAlpacaPaper:
-        cfg, ok := config.(AlpacaProviderConfig)
-        if !ok {
-            return nil, fmt.Errorf("invalid config type for alpaca provider")
-        }
-        return NewAlpacaProvider(cfg, "https://paper-api.alpaca.markets")
-
-    case ProviderAlpacaLive:
-        cfg, ok := config.(AlpacaProviderConfig)
-        if !ok {
-            return nil, fmt.Errorf("invalid config type for alpaca provider")
-        }
-        return NewAlpacaProvider(cfg, "https://api.alpaca.markets")
-
     default:
         return nil, fmt.Errorf("unsupported trading provider: %s", providerType)
     }
@@ -337,8 +242,8 @@ func NewProvider(providerType ProviderType, config interface{}) (Provider, error
 A key design feature is the separation of **data provider** and **trading provider**. This allows flexible configurations like:
 
 - Trade via IBKR, get data from Polygon
-- Trade via Alpaca, get data from Binance
-- Backtest with Polygon data, using IBKR commission structure
+- Trade via Binance, get data from a different source
+- Use the same strategy with different broker/data combinations
 
 ### Trading Session Configuration
 
@@ -400,23 +305,24 @@ session:
     - ETHUSDT
 ```
 
-#### Backtest with Polygon Historical Data
+#### Trade via IBKR Live with Binance Data
 
 ```yaml
 session:
-  trading_provider: backtest
+  trading_provider: ibkr-live
   trading_provider_config:
-    initial_capital: 100000.0
+    initial_capital: 50000.0
     decimal_precision: 2
-    commission_type: fixed
-    fixed_fee: 1.0
+    host: "127.0.0.1"
+    port: 7496
+    client_id: 1
+    account_id: "U123456"
 
-  data_provider: polygon
-  data_provider_config:
-    api_key: ${POLYGON_API_KEY}
+  data_provider: binance
+  data_provider_config: {}
 
   symbols:
-    - SPY
+    - AAPL
 ```
 
 ## Architecture Diagram
@@ -445,17 +351,11 @@ session:
 │     Data Provider Registry      │  │     Trading Provider Registry       │
 │                                 │  │                                     │
 │  ┌───────────┐ ┌───────────┐   │  │  ┌─────────────┐ ┌─────────────┐    │
-│  │  Polygon  │ │  Binance  │   │  │  │  backtest   │ │binance-paper│    │
+│  │  Polygon  │ │  Binance  │   │  │  │binance-paper│ │binance-live │    │
 │  └───────────┘ └───────────┘   │  │  └─────────────┘ └─────────────┘    │
 │                                 │  │  ┌─────────────┐ ┌─────────────┐    │
-│                                 │  │  │binance-live │ │ ibkr-paper  │    │
+│                                 │  │  │ ibkr-paper  │ │  ibkr-live  │    │
 │                                 │  │  └─────────────┘ └─────────────┘    │
-│                                 │  │  ┌─────────────┐ ┌─────────────┐    │
-│                                 │  │  │  ibkr-live  │ │alpaca-paper │    │
-│                                 │  │  └─────────────┘ └─────────────┘    │
-│                                 │  │  ┌─────────────┐                    │
-│                                 │  │  │ alpaca-live │                    │
-│                                 │  │  └─────────────┘                    │
 └─────────────────────────────────┘  └─────────────────────────────────────┘
                   │                                │
                   ▼                                ▼
@@ -463,7 +363,7 @@ session:
 │      External Data Sources      │  │         Broker/Exchange APIs        │
 │  - Polygon.io API               │  │  - Binance API / Testnet            │
 │  - Binance Public API           │  │  - IBKR TWS / Gateway               │
-│  - Historical Parquet files     │  │  - Alpaca API                       │
+│  - Historical Parquet files     │  │                                     │
 └─────────────────────────────────┘  └─────────────────────────────────────┘
 ```
 
@@ -579,13 +479,7 @@ const (
    - `Provider` interface definition
    - `NewProvider()` factory function
 
-### Phase 2: Backtest Provider
-
-1. Refactor existing `BacktestTrading` to implement `Provider` interface
-2. Add lifecycle methods (`Initialize`, `Start`, `Stop`, `IsConnected`)
-3. Implement `GetProviderType()` and `GetProviderInfo()`
-
-### Phase 3: Binance Providers
+### Phase 2: Binance Providers
 
 1. Create `pkg/trading/provider/binance.go`:
    - `BinanceProvider` struct implementing `Provider`
@@ -595,7 +489,7 @@ const (
 2. Implement order management via Binance API
 3. Implement position tracking and account info
 
-### Phase 4: IBKR Providers
+### Phase 3: IBKR Providers
 
 1. Create `pkg/trading/provider/ibkr.go`:
    - `IBKRProvider` struct implementing `Provider`
@@ -605,16 +499,7 @@ const (
 2. Implement order management via IBKR API
 3. Implement position sync and account info
 
-### Phase 5: Alpaca Providers
-
-1. Create `pkg/trading/provider/alpaca.go`:
-   - `AlpacaProvider` struct implementing `Provider`
-   - Paper vs live URL configuration
-
-2. Implement order management via Alpaca API
-3. Implement position tracking and account info
-
-### Phase 6: Trading Session Manager
+### Phase 4: Trading Session Manager
 
 1. Create `TradingSessionManager` that:
    - Initializes both data and trading providers
@@ -632,10 +517,8 @@ pkg/
     ├── provider.go             # Provider interface and NewProvider factory
     ├── session.go              # TradingSessionConfig and TradingSessionManager
     └── provider/
-        ├── backtest.go         # BacktestProvider implementation
         ├── binance.go          # BinanceProvider implementation
-        ├── ibkr.go             # IBKRProvider implementation
-        └── alpaca.go           # AlpacaProvider implementation
+        └── ibkr.go             # IBKRProvider implementation
 ```
 
 ## Error Handling
@@ -678,6 +561,5 @@ type TradingError struct {
 
 ### End-to-End Tests
 
-- Run backtests with different commission structures
 - Run paper trading sessions with sample strategies
 - Validate P&L calculations across providers
