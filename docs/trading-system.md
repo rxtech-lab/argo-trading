@@ -405,20 +405,20 @@ const (
 
 ### Phase 1: Provider Registry Infrastructure
 
-1. Create `pkg/trading/provider_registry.go` with:
+1. Create `internal/trading/provider_registry.go` with:
    - Provider type constants
    - Provider info registry
    - `GetSupportedProviders()`, `GetProviderInfo()`, `GetProviderConfigSchema()`
    - `NewTradingSystem()` factory function
 
-2. Create `pkg/trading/provider_config.go` with:
+2. Create `internal/trading/provider_config.go` with:
    - Provider-specific config structs
    - JSON schema tags for schema generation
    - Config parsing functions
 
 ### Phase 2: Binance Implementation
 
-1. Create `pkg/trading/binance.go`:
+1. Create `internal/trading/binance.go`:
    - `BinanceTradingSystem` struct implementing `TradingSystem`
    - Support for both testnet (paper) and mainnet (live)
    - WebSocket connection for real-time updates
@@ -428,7 +428,7 @@ const (
 
 ### Phase 3: IBKR Implementation
 
-1. Create `pkg/trading/ibkr.go`:
+1. Create `internal/trading/ibkr.go`:
    - `IBKRTradingSystem` struct implementing `TradingSystem`
    - TWS/Gateway connection handling
    - Paper vs live account detection
@@ -446,7 +446,7 @@ const (
 ## File Structure
 
 ```
-pkg/
+internal/
 └── trading/
     ├── provider_registry.go    # Registry with GetSupportedProviders(), GetProviderInfo(), NewTradingSystem()
     ├── provider_config.go      # Config structs with JSON schema tags
