@@ -170,7 +170,6 @@ func TestCheckVersionCompatibility(t *testing.T) {
 }
 
 func TestGetVersion(t *testing.T) {
-	// The default version should be "main"
 	v := GetVersion()
-	assert.Equal(t, "main", v)
+	assert.Equal(t, Version, v)
 }

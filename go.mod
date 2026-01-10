@@ -25,7 +25,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require golang.org/x/mobile v0.0.0-20251209145715-2553ed8ce294 // indirect
+require github.com/stretchr/objx v0.5.2 // indirect
 
 require (
 	github.com/apache/arrow-go/v18 v18.2.0 // indirect

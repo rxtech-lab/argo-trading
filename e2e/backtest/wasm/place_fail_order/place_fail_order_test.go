@@ -14,7 +14,6 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
 	"github.com/rxtech-lab/argo-trading/internal/types"
-	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -37,11 +36,6 @@ initial_capital: 10000
 
 // runTestWithConfig runs the backtest with a specific test case configuration
 func (s *PlaceFailOrderTestSuite) runTestWithConfig(testCase string) string {
-	// Set a compatible version for e2e tests (both engine and WASM strategy use "main" in dev)
-	originalVersion := version.Version
-	version.Version = "1.0.0"
-	defer func() { version.Version = originalVersion }()
-
 	type config struct {
 		Symbol   string `json:"symbol"`
 		TestCase string `json:"testCase"`
