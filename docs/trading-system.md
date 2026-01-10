@@ -147,69 +147,27 @@ type IBKRProviderConfig struct {
 }
 ```
 
-## Trading Provider Interface
+## Trading Provider Factory
 
-### Core Interface
-
-```go
-package trading
-
-import (
-    "context"
-    "github.com/rxtech-lab/argo-trading/internal/types"
-)
-
-// Provider defines the interface for all trading providers.
-type Provider interface {
-    // Lifecycle methods
-    Initialize(ctx context.Context) error
-    Start(ctx context.Context) error
-    Stop(ctx context.Context) error
-    IsConnected() bool
-
-    // Order management
-    PlaceOrder(order types.ExecuteOrder) error
-    PlaceMultipleOrders(orders []types.ExecuteOrder) error
-    CancelOrder(orderID string) error
-    CancelAllOrders() error
-    GetOrderStatus(orderID string) (types.OrderStatus, error)
-    GetOpenOrders() ([]types.ExecuteOrder, error)
-
-    // Position and account
-    GetPositions() ([]types.Position, error)
-    GetPosition(symbol string) (types.Position, error)
-    GetAccountInfo() (types.AccountInfo, error)
-    GetTrades(filter types.TradeFilter) ([]types.Trade, error)
-
-    // Buying/selling power
-    GetMaxBuyQuantity(symbol string, price float64) (float64, error)
-    GetMaxSellQuantity(symbol string) (float64, error)
-
-    // Provider info
-    GetProviderType() ProviderType
-    GetProviderInfo() ProviderInfo
-}
-```
-
-### Provider Factory
+Each provider implements the existing `TradingSystem` interface defined in `internal/trading/trading.go`. The factory creates provider instances based on the provider type:
 
 ```go
-// NewProvider creates a new trading provider based on the provider type.
-func NewProvider(providerType ProviderType, config interface{}) (Provider, error) {
+// NewTradingSystem creates a new trading system based on the provider type.
+func NewTradingSystem(providerType ProviderType, config interface{}) (TradingSystem, error) {
     switch providerType {
     case ProviderBinancePaper:
         cfg, ok := config.(BinanceProviderConfig)
         if !ok {
             return nil, fmt.Errorf("invalid config type for binance provider")
         }
-        return NewBinanceProvider(cfg, true) // testnet=true
+        return NewBinanceTradingSystem(cfg, true) // testnet=true
 
     case ProviderBinanceLive:
         cfg, ok := config.(BinanceProviderConfig)
         if !ok {
             return nil, fmt.Errorf("invalid config type for binance provider")
         }
-        return NewBinanceProvider(cfg, false) // testnet=false
+        return NewBinanceTradingSystem(cfg, false) // testnet=false
 
     case ProviderIBKRPaper, ProviderIBKRLive:
         cfg, ok := config.(IBKRProviderConfig)
@@ -217,7 +175,7 @@ func NewProvider(providerType ProviderType, config interface{}) (Provider, error
             return nil, fmt.Errorf("invalid config type for ibkr provider")
         }
         isPaper := providerType == ProviderIBKRPaper
-        return NewIBKRProvider(cfg, isPaper)
+        return NewIBKRTradingSystem(cfg, isPaper)
 
     default:
         return nil, fmt.Errorf("unsupported trading provider: %s", providerType)
@@ -451,30 +409,27 @@ const (
    - Provider type constants
    - Provider info registry
    - `GetSupportedProviders()`, `GetProviderInfo()`, `GetProviderConfigSchema()`
+   - `NewTradingSystem()` factory function
 
 2. Create `pkg/trading/provider_config.go` with:
-   - Base and provider-specific config structs
+   - Provider-specific config structs
    - JSON schema tags for schema generation
    - Config parsing functions
 
-3. Create `pkg/trading/provider.go` with:
-   - `Provider` interface definition
-   - `NewProvider()` factory function
+### Phase 2: Binance Implementation
 
-### Phase 2: Binance Providers
-
-1. Create `pkg/trading/provider/binance.go`:
-   - `BinanceProvider` struct implementing `Provider`
+1. Create `pkg/trading/binance.go`:
+   - `BinanceTradingSystem` struct implementing `TradingSystem`
    - Support for both testnet (paper) and mainnet (live)
    - WebSocket connection for real-time updates
 
 2. Implement order management via Binance API
 3. Implement position tracking and account info
 
-### Phase 3: IBKR Providers
+### Phase 3: IBKR Implementation
 
-1. Create `pkg/trading/provider/ibkr.go`:
-   - `IBKRProvider` struct implementing `Provider`
+1. Create `pkg/trading/ibkr.go`:
+   - `IBKRTradingSystem` struct implementing `TradingSystem`
    - TWS/Gateway connection handling
    - Paper vs live account detection
 
@@ -487,20 +442,17 @@ const (
    - Initializes both data and trading providers
    - Routes data requests to data provider
    - Routes trading requests to trading provider
-   - Handles provider lifecycle
 
 ## File Structure
 
 ```
 pkg/
 └── trading/
-    ├── provider_registry.go    # Registry with GetSupportedProviders(), GetProviderInfo()
+    ├── provider_registry.go    # Registry with GetSupportedProviders(), GetProviderInfo(), NewTradingSystem()
     ├── provider_config.go      # Config structs with JSON schema tags
-    ├── provider.go             # Provider interface and NewProvider factory
     ├── session.go              # TradingSessionConfig and TradingSessionManager
-    └── provider/
-        ├── binance.go          # BinanceProvider implementation
-        └── ibkr.go             # IBKRProvider implementation
+    ├── binance.go              # BinanceTradingSystem implementing TradingSystem
+    └── ibkr.go                 # IBKRTradingSystem implementing TradingSystem
 ```
 
 ## Error Handling
