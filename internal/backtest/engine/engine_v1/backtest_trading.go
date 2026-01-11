@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
-	"github.com/rxtech-lab/argo-trading/internal/trading"
+	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/utils"
 	"github.com/rxtech-lab/argo-trading/pkg/errors"
@@ -35,14 +35,14 @@ func (b *BacktestTrading) UpdateBalance(balance float64) {
 	b.balance = balance
 }
 
-// CancelAllOrders implements trading.TradingSystem.
+// CancelAllOrders implements tradingprovider.TradingSystemProvider.
 func (b *BacktestTrading) CancelAllOrders() error {
 	b.pendingOrders = []types.ExecuteOrder{}
 
 	return nil
 }
 
-// CancelOrder implements trading.TradingSystem.
+// CancelOrder implements tradingprovider.TradingSystemProvider.
 func (b *BacktestTrading) CancelOrder(orderID string) error {
 	for i, order := range b.pendingOrders {
 		if order.ID == orderID {
@@ -55,7 +55,7 @@ func (b *BacktestTrading) CancelOrder(orderID string) error {
 	return nil
 }
 
-// GetOrderStatus implements trading.TradingSystem.
+// GetOrderStatus implements tradingprovider.TradingSystemProvider.
 func (b *BacktestTrading) GetOrderStatus(orderID string) (types.OrderStatus, error) {
 	order, err := b.state.GetOrderById(orderID)
 	if err != nil {
@@ -85,7 +85,7 @@ func (b *BacktestTrading) GetOrderStatus(orderID string) (types.OrderStatus, err
 	return types.OrderStatusFailed, nil
 }
 
-// GetPosition implements trading.TradingSystem.
+// GetPosition implements tradingprovider.TradingSystemProvider.
 func (b *BacktestTrading) GetPosition(symbol string) (types.Position, error) {
 	position, err := b.state.GetPosition(symbol)
 	if err != nil {
@@ -95,7 +95,7 @@ func (b *BacktestTrading) GetPosition(symbol string) (types.Position, error) {
 	return position, nil
 }
 
-// GetPositions implements trading.TradingSystem.
+// GetPositions implements tradingprovider.TradingSystemProvider.
 func (b *BacktestTrading) GetPositions() ([]types.Position, error) {
 	positions, err := b.state.GetAllPositions()
 	if err != nil {
@@ -105,7 +105,7 @@ func (b *BacktestTrading) GetPositions() ([]types.Position, error) {
 	return positions, nil
 }
 
-// PlaceMultipleOrders implements trading.TradingSystem.
+// PlaceMultipleOrders implements tradingprovider.TradingSystemProvider.
 func (b *BacktestTrading) PlaceMultipleOrders(orders []types.ExecuteOrder) error {
 	for _, order := range orders {
 		err := b.PlaceOrder(order)
@@ -117,7 +117,7 @@ func (b *BacktestTrading) PlaceMultipleOrders(orders []types.ExecuteOrder) error
 	return nil
 }
 
-// PlaceOrder implements trading.TradingSystem.
+// PlaceOrder implements tradingprovider.TradingSystemProvider.
 // Market orders:
 //   - Always use the average price of the market data.
 //   - Fail if AVG price * quantity > buying power for buy orders.
@@ -323,7 +323,7 @@ func (b *BacktestTrading) Reset(initialBalance float64) {
 	}
 }
 
-// GetAccountInfo implements trading.TradingSystem.
+// GetAccountInfo implements tradingprovider.TradingSystemProvider.
 // Returns the current account state including balance, equity, and P&L information.
 func (b *BacktestTrading) GetAccountInfo() (types.AccountInfo, error) {
 	positions, err := b.state.GetAllPositions()
@@ -377,7 +377,7 @@ func (b *BacktestTrading) GetAccountInfo() (types.AccountInfo, error) {
 	}, nil
 }
 
-// GetOpenOrders implements trading.TradingSystem.
+// GetOpenOrders implements tradingprovider.TradingSystemProvider.
 // Returns all pending/open orders that have not been executed yet.
 func (b *BacktestTrading) GetOpenOrders() ([]types.ExecuteOrder, error) {
 	// Return a copy to prevent external modification
@@ -387,7 +387,7 @@ func (b *BacktestTrading) GetOpenOrders() ([]types.ExecuteOrder, error) {
 	return orders, nil
 }
 
-// GetTrades implements trading.TradingSystem.
+// GetTrades implements tradingprovider.TradingSystemProvider.
 // Returns executed trades with optional filtering by symbol, time range, and limit.
 func (b *BacktestTrading) GetTrades(filter types.TradeFilter) ([]types.Trade, error) {
 	allTrades, err := b.state.GetAllTrades()
@@ -424,7 +424,7 @@ func (b *BacktestTrading) GetTrades(filter types.TradeFilter) ([]types.Trade, er
 	return filteredTrades, nil
 }
 
-func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) trading.TradingSystem {
+func NewBacktestTrading(state *BacktestState, initialBalance float64, commission commission_fee.CommissionFee, decimalPrecision int) tradingprovider.TradingSystemProvider {
 	return &BacktestTrading{
 		state:   state,
 		balance: initialBalance,
@@ -444,7 +444,7 @@ func NewBacktestTrading(state *BacktestState, initialBalance float64, commission
 	}
 }
 
-// GetMaxBuyQuantity implements trading.TradingSystem.
+// GetMaxBuyQuantity implements tradingprovider.TradingSystemProvider.
 // Returns the maximum quantity that can be bought for a symbol at the given price.
 func (b *BacktestTrading) GetMaxBuyQuantity(symbol string, price float64) (float64, error) {
 	if price <= 0 {
@@ -460,7 +460,7 @@ func (b *BacktestTrading) GetMaxBuyQuantity(symbol string, price float64) (float
 	return utils.RoundToDecimalPrecision(maxQty, b.decimalPrecision), nil
 }
 
-// GetMaxSellQuantity implements trading.TradingSystem.
+// GetMaxSellQuantity implements tradingprovider.TradingSystemProvider.
 // Returns the maximum quantity that can be sold for a symbol (total long position quantity).
 func (b *BacktestTrading) GetMaxSellQuantity(symbol string) (float64, error) {
 	position, err := b.state.GetPosition(symbol)

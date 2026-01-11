@@ -9,7 +9,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/commission_fee"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
-	"github.com/rxtech-lab/argo-trading/internal/trading"
+	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
 )
@@ -94,7 +94,7 @@ type StrategyTestSuite struct {
 	suite.Suite
 	strategy      *SimpleConsecutiveStrategy
 	cache         *cache.Cache
-	tradingSystem trading.TradingSystem
+	tradingSystem tradingprovider.TradingSystemProvider
 	logger        *logger.Logger
 	state         *engine.BacktestState
 	commission    commission_fee.CommissionFee
