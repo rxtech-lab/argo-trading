@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
@@ -86,21 +87,27 @@ func BenchmarkMultipleIndicatorsWithoutCaching(b *testing.B) {
 	}
 }
 
-// BenchmarkMultipleIndicatorsWithCaching benchmarks multiple indicator calls with caching.
-// This simulates the new behavior where repeated calls to the same data are cached.
-func BenchmarkMultipleIndicatorsWithCaching(b *testing.B) {
+// BenchmarkMultipleIndicatorsWithSlidingWindow benchmarks multiple indicator calls with sliding window caching.
+// This simulates the behavior where repeated calls to the same data are served from the sliding window cache.
+func BenchmarkMultipleIndicatorsWithSlidingWindow(b *testing.B) {
 	ds, registry, cacheInstance := setupBenchmarkEnvironment(b)
 	defer ds.Close()
 
-	// Wrap with cached datasource
-	cachedDS := datasource.NewCachedDataSource(ds)
+	// Wrap with sliding window datasource with large cache size to ensure cache hits
+	slidingWindowDS := datasource.NewSlidingWindowDataSource(ds, 1000)
 
 	// Simulate a time point where indicators would be calculated
 	endTime := time.Date(2024, 1, 5, 10, 0, 0, 0, time.UTC)
 	symbol := "AAPL"
 
+	// Populate the sliding window cache with data (simulating backtest data feed)
+	startTime := endTime.Add(-100 * time.Minute)
+	for data := range ds.ReadAll(optional.Some(startTime), optional.Some(endTime)) {
+		slidingWindowDS.AddToCache(data)
+	}
+
 	ctx := IndicatorContext{
-		DataSource:        cachedDS,
+		DataSource:        slidingWindowDS,
 		IndicatorRegistry: registry,
 		Cache:             cacheInstance,
 	}
@@ -120,21 +127,18 @@ func BenchmarkMultipleIndicatorsWithCaching(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Simulate calling multiple indicators on the same bar (with caching)
-		// Duplicate queries are served from cache
+		// Simulate calling multiple indicators on the same bar (with sliding window caching)
+		// Queries are served from cache when data is available
 		ema.RawValue(symbol, endTime, ctx, 20)
 		ema.RawValue(symbol, endTime, ctx, 12) // Fast EMA for MACD
 		ema.RawValue(symbol, endTime, ctx, 26) // Slow EMA for MACD
 		rsi.RawValue(symbol, endTime, ctx, 14) // RSI 14
 		ma.RawValue(symbol, endTime, ctx, 20)  // MA 20
-
-		// Clear cache at end of bar (simulating bar transition)
-		cachedDS.ClearCache()
 	}
 }
 
-// BenchmarkCacheHitVsDBQuery directly compares cache hit vs DB query performance.
-func BenchmarkCacheHitVsDBQuery(b *testing.B) {
+// BenchmarkSlidingWindowCacheHitVsDBQuery directly compares cache hit vs DB query performance.
+func BenchmarkSlidingWindowCacheHitVsDBQuery(b *testing.B) {
 	loggerConfig := zap.NewDevelopmentConfig()
 	loggerConfig.OutputPaths = []string{}
 	loggerConfig.ErrorOutputPaths = []string{}
@@ -151,18 +155,21 @@ func BenchmarkCacheHitVsDBQuery(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	cachedDS := datasource.NewCachedDataSource(ds)
+	slidingWindowDS := datasource.NewSlidingWindowDataSource(ds, 1000)
 
 	endTime := time.Date(2024, 1, 5, 10, 0, 0, 0, time.UTC)
 	symbol := "AAPL"
 
-	// Warm up cache
-	cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+	// Populate the sliding window cache with data
+	startTime := endTime.Add(-100 * time.Minute)
+	for data := range ds.ReadAll(optional.Some(startTime), optional.Some(endTime)) {
+		slidingWindowDS.AddToCache(data)
+	}
 
 	b.Run("CacheHit", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			// This should be served from cache
-			cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+			// This should be served from sliding window cache
+			slidingWindowDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
 		}
 	})
 
@@ -174,9 +181,9 @@ func BenchmarkCacheHitVsDBQuery(b *testing.B) {
 	})
 }
 
-// TestCachePerformanceImprovement verifies that caching provides a measurable speedup.
+// TestSlidingWindowPerformanceImprovement verifies that sliding window caching provides a measurable speedup.
 // This test runs both cached and uncached queries and asserts cache is faster.
-func TestCachePerformanceImprovement(t *testing.T) {
+func TestSlidingWindowPerformanceImprovement(t *testing.T) {
 	loggerConfig := zap.NewDevelopmentConfig()
 	loggerConfig.OutputPaths = []string{}
 	loggerConfig.ErrorOutputPaths = []string{}
@@ -197,15 +204,15 @@ func TestCachePerformanceImprovement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cachedDS := datasource.NewCachedDataSource(ds)
+	slidingWindowDS := datasource.NewSlidingWindowDataSource(ds, 1000)
 	endTime := time.Date(2025, 1, 2, 10, 0, 0, 0, time.UTC)
 	symbol := "AAPL"
 	iterations := 100
 
-	// Warm up cache
-	_, err = cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
-	if err != nil {
-		t.Fatal(err)
+	// Populate the sliding window cache with data
+	startTime := endTime.Add(-100 * time.Minute)
+	for data := range ds.ReadAll(optional.Some(startTime), optional.Some(endTime)) {
+		slidingWindowDS.AddToCache(data)
 	}
 
 	// Measure uncached queries
@@ -215,10 +222,10 @@ func TestCachePerformanceImprovement(t *testing.T) {
 	}
 	uncachedDuration := time.Since(uncachedStart)
 
-	// Measure cached queries
+	// Measure cached queries (from sliding window)
 	cachedStart := time.Now()
 	for i := 0; i < iterations; i++ {
-		cachedDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
+		slidingWindowDS.GetPreviousNumberOfDataPoints(endTime, symbol, 20)
 	}
 	cachedDuration := time.Since(cachedStart)
 
@@ -229,7 +236,7 @@ func TestCachePerformanceImprovement(t *testing.T) {
 
 	// Assert cache is faster
 	if cachedDuration >= uncachedDuration {
-		t.Errorf("Cache should be faster: cached=%v, uncached=%v",
+		t.Errorf("Sliding window cache should be faster: cached=%v, uncached=%v",
 			cachedDuration, uncachedDuration)
 	}
 }

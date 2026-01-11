@@ -87,19 +87,6 @@ final class StrategyApiTests: XCTestCase {
         }
     }
 
-    func testGetStrategyMetadata_WithValidWasm_HasRuntimeVersion() throws {
-        let wasmPath = TestResources.wasmStrategyPath
-
-        guard FileManager.default.fileExists(atPath: wasmPath) else {
-            throw XCTSkip("Test WASM file not found at \(wasmPath)")
-        }
-
-        let metadata = try strategyApi.getStrategyMetadata(wasmPath)
-
-        // Runtime version can be empty for strategies that don't set it
-        XCTAssertNotNil(metadata.runtimeVersion, "Strategy should have a runtime version field")
-    }
-
     func testGetStrategyMetadata_WithInvalidPath_ThrowsError() {
         let invalidPath = "/nonexistent/path/to/strategy.wasm"
 

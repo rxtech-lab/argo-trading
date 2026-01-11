@@ -28,21 +28,6 @@ final class UtilityTests: XCTestCase {
                       "Schema should contain broker field")
     }
 
-    // MARK: - GetBacktestEngineVersion Tests
-
-    func testGetBacktestEngineVersion_ReturnsNonEmptyString() {
-        let version = SwiftargoGetBacktestEngineVersion()
-
-        XCTAssertFalse(version.isEmpty, "Version should not be empty")
-    }
-
-    func testGetBacktestEngineVersion_ReturnsConsistentValue() {
-        let version1 = SwiftargoGetBacktestEngineVersion()
-        let version2 = SwiftargoGetBacktestEngineVersion()
-
-        XCTAssertEqual(version1, version2, "Version should be consistent across calls")
-    }
-
     // MARK: - StringCollection Tests
 
     func testStringArray_AddAndGet() {

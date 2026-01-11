@@ -21,7 +21,7 @@ clean:
 
 # run golangci-lint
 lint:
-	golangci-lint run ./...
+	./scripts/lint.sh
 
 test:
 	go test ./...

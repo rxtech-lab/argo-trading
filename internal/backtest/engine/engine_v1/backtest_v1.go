@@ -463,11 +463,8 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	// strategies to access recent data without hitting DuckDB.
 	slidingWindowDS := datasource.NewSlidingWindowDataSource(b.datasource, b.config.MarketDataCacheSize)
 
-	// Also wrap with the per-bar cache for query deduplication within the same bar
-	cachedDataSource := datasource.NewCachedDataSource(slidingWindowDS)
-
 	strategyContext := runtime.RuntimeContext{
-		DataSource:        cachedDataSource,
+		DataSource:        slidingWindowDS,
 		IndicatorRegistry: b.indicatorRegistry,
 		Marker:            b.marker,
 		TradingSystem:     b.tradingSystem,
@@ -595,13 +592,6 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 
 		// Process data and track insufficient data errors for markers
 		processErr := params.strategy.ProcessData(data)
-
-		// Clear the per-bar datasource cache after processing each bar to prevent stale data
-		// and manage memory. The per-bar cache is only useful within a single bar's processing.
-		// Note: The sliding window cache persists across bars to provide historical data access.
-		if cachedDS, ok := strategyContext.DataSource.(*datasource.CachedDataSource); ok {
-			cachedDS.ClearCache()
-		}
 
 		if errors.IsInsufficientDataError(processErr) {
 			if !inInsufficientDataError {
