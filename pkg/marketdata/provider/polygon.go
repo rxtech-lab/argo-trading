@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	goiter "iter"
 	"log"
 	"os"
 	"time"
@@ -170,6 +171,14 @@ func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate t
 	}
 
 	return outputPath, nil
+}
+
+// Stream implements Provider.Stream but is not yet supported for Polygon.
+func (c *PolygonClient) Stream(ctx context.Context, symbols []string, interval string) goiter.Seq2[types.MarketData, error] {
+	return func(yield func(types.MarketData, error) bool) {
+		//nolint:exhaustruct // empty struct for error case
+		yield(types.MarketData{}, fmt.Errorf("streaming is not yet implemented for Polygon provider"))
+	}
 }
 
 // cleanupFileIfExists removes the output file if it exists.
