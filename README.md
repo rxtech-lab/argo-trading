@@ -4,7 +4,7 @@ A powerful framework for developing, testing, and implementing algorithmic tradi
 
 ## Documents
 
-Documents are located in [`Docs folder`](/docs)
+Documents are located in [`Docs folder`](./docs)
 
 ## Prerequisites
 

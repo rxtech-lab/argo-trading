@@ -3,9 +3,11 @@ package provider
 import (
 	"context"
 	"fmt"
+	"iter"
 	"log"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	binance "github.com/adshao/go-binance/v2"
@@ -70,8 +72,72 @@ func (w *binanceKlinesServiceWrapper) Do(ctx context.Context) ([]*binance.Kline,
 	return w.service.Do(ctx)
 }
 
+// BinanceWsKline represents the kline data within a WebSocket event.
+type BinanceWsKline struct {
+	StartTime int64
+	EndTime   int64
+	Symbol    string
+	Interval  string
+	Open      string
+	Close     string
+	High      string
+	Low       string
+	Volume    string
+	IsFinal   bool
+}
+
+// BinanceWsKlineEvent represents a WebSocket kline event.
+type BinanceWsKlineEvent struct {
+	Symbol string
+	Kline  BinanceWsKline
+}
+
+// WsKlineHandler is a handler function for WebSocket kline events.
+type WsKlineHandler func(event *BinanceWsKlineEvent)
+
+// WsErrorHandler is a handler function for WebSocket errors.
+type WsErrorHandler func(err error)
+
+// BinanceWebSocketService defines the interface for Binance WebSocket operations.
+type BinanceWebSocketService interface {
+	// WsKlineServe starts a WebSocket connection for kline data.
+	// Returns: doneC (closes when connection ends), stopC (send to stop), error
+	WsKlineServe(symbol string, interval string, handler WsKlineHandler, errHandler WsErrorHandler) (doneC chan struct{}, stopC chan struct{}, err error)
+}
+
+// binanceWebSocketServiceWrapper wraps the real binance WebSocket functions.
+type binanceWebSocketServiceWrapper struct{}
+
+func (w *binanceWebSocketServiceWrapper) WsKlineServe(symbol string, interval string, handler WsKlineHandler, errHandler WsErrorHandler) (chan struct{}, chan struct{}, error) {
+	// Convert our handler types to binance handler types
+	binanceHandler := func(event *binance.WsKlineEvent) {
+		handler(&BinanceWsKlineEvent{
+			Symbol: event.Symbol,
+			Kline: BinanceWsKline{
+				StartTime: event.Kline.StartTime,
+				EndTime:   event.Kline.EndTime,
+				Symbol:    event.Kline.Symbol,
+				Interval:  event.Kline.Interval,
+				Open:      event.Kline.Open,
+				Close:     event.Kline.Close,
+				High:      event.Kline.High,
+				Low:       event.Kline.Low,
+				Volume:    event.Kline.Volume,
+				IsFinal:   event.Kline.IsFinal,
+			},
+		})
+	}
+
+	binanceErrHandler := func(err error) {
+		errHandler(err)
+	}
+
+	return binance.WsKlineServe(symbol, interval, binanceHandler, binanceErrHandler)
+}
+
 type BinanceClient struct {
 	apiClient BinanceAPIClient
+	wsService BinanceWebSocketService
 	writer    writer.MarketDataWriter
 }
 
@@ -80,6 +146,7 @@ func NewBinanceClient() (Provider, error) {
 
 	return &BinanceClient{
 		apiClient: &binanceClientWrapper{client: client},
+		wsService: &binanceWebSocketServiceWrapper{},
 		writer:    nil,
 	}, nil
 }
@@ -88,6 +155,16 @@ func NewBinanceClient() (Provider, error) {
 func NewBinanceClientWithAPI(apiClient BinanceAPIClient) *BinanceClient {
 	return &BinanceClient{
 		apiClient: apiClient,
+		wsService: &binanceWebSocketServiceWrapper{},
+		writer:    nil,
+	}
+}
+
+// NewBinanceClientWithWebSocket creates a BinanceClient with custom API and WebSocket services (for testing).
+func NewBinanceClientWithWebSocket(apiClient BinanceAPIClient, wsService BinanceWebSocketService) *BinanceClient {
+	return &BinanceClient{
+		apiClient: apiClient,
+		wsService: wsService,
 		writer:    nil,
 	}
 }
@@ -282,6 +359,215 @@ func convertTimespanToBinanceInterval(timespan models.Timespan, multiplier int) 
 	default:
 		return "", fmt.Errorf("unsupported timespan for Binance: %s", timespan)
 	}
+}
+
+// Stream implements Provider.Stream for real-time WebSocket market data.
+// It subscribes to kline streams for all specified symbols and yields data as it arrives.
+// The iterator terminates when the context is cancelled or an unrecoverable error occurs.
+func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error] {
+	return func(yield func(types.MarketData, error) bool) {
+		if len(symbols) == 0 {
+			//nolint:exhaustruct // empty struct for error case
+			yield(types.MarketData{}, fmt.Errorf("no symbols provided for streaming"))
+
+			return
+		}
+
+		if !isValidBinanceInterval(interval) {
+			//nolint:exhaustruct // empty struct for error case
+			yield(types.MarketData{}, fmt.Errorf("invalid interval: %s", interval))
+
+			return
+		}
+
+		// Channel for market data from all WebSocket connections
+		dataChan := make(chan types.MarketData, 100)
+		errChan := make(chan error, len(symbols)*2)
+
+		// Track all stop channels for cleanup with their close state
+		type stopChanEntry struct {
+			ch     chan struct{}
+			closed bool
+		}
+
+		var stopChannels []*stopChanEntry
+
+		var mu sync.Mutex
+
+		var wg sync.WaitGroup
+
+		// Helper to safely stop a channel
+		safeStop := func(entry *stopChanEntry) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			if !entry.closed {
+				entry.closed = true
+				close(entry.ch)
+			}
+		}
+
+		// Start WebSocket connection for each symbol
+		for _, symbol := range symbols {
+			wg.Add(1)
+
+			go func(sym string) {
+				defer wg.Done()
+
+				handler := func(event *BinanceWsKlineEvent) {
+					marketData := convertWsKlineToMarketData(event)
+
+					select {
+					case dataChan <- marketData:
+					case <-ctx.Done():
+						return
+					}
+				}
+
+				errHandler := func(err error) {
+					select {
+					case errChan <- fmt.Errorf("websocket error for %s: %w", sym, err):
+					case <-ctx.Done():
+					default:
+					}
+				}
+
+				doneC, stopC, err := c.wsService.WsKlineServe(sym, interval, handler, errHandler)
+				if err != nil {
+					select {
+					case errChan <- fmt.Errorf("failed to start websocket for %s: %w", sym, err):
+					default:
+					}
+
+					return
+				}
+
+				entry := &stopChanEntry{ch: stopC, closed: false}
+
+				mu.Lock()
+				stopChannels = append(stopChannels, entry)
+				mu.Unlock()
+
+				// Wait for context cancellation or connection close
+				select {
+				case <-ctx.Done():
+					safeStop(entry)
+				case <-doneC:
+				}
+			}(symbol)
+		}
+
+		// Cleanup function - stops all connections and closes channels
+		cleanup := func() {
+			mu.Lock()
+			channels := make([]*stopChanEntry, len(stopChannels))
+			copy(channels, stopChannels)
+			mu.Unlock()
+
+			for _, entry := range channels {
+				safeStop(entry)
+			}
+
+			// Wait for all WebSocket goroutines to finish
+			wg.Wait()
+
+			// Close channels to signal completion
+			close(dataChan)
+			close(errChan)
+		}
+
+		// Cleanup goroutine - ensures all connections are stopped when context is cancelled
+		var cleanupWg sync.WaitGroup
+
+		cleanupWg.Add(1)
+
+		go func() {
+			defer cleanupWg.Done()
+			<-ctx.Done()
+
+			// Wait for all symbol goroutines to finish registering their stop channels
+			wg.Wait()
+
+			mu.Lock()
+			channels := make([]*stopChanEntry, len(stopChannels))
+			copy(channels, stopChannels)
+			mu.Unlock()
+
+			for _, entry := range channels {
+				safeStop(entry)
+			}
+		}()
+
+		// Main loop - yield data to the iterator
+		defer func() {
+			// If we exit early (yield returned false), trigger cleanup
+			// Cancel context would have already triggered cleanup goroutine
+			select {
+			case <-ctx.Done():
+				// Context cancelled, cleanup goroutine handles it
+				cleanupWg.Wait()
+			default:
+				// Early exit from iterator, need to cleanup manually
+				cleanup()
+			}
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case err, ok := <-errChan:
+				if !ok {
+					return
+				}
+				//nolint:exhaustruct // empty struct for error case
+				if !yield(types.MarketData{}, err) {
+					return
+				}
+
+			case data, ok := <-dataChan:
+				if !ok {
+					return
+				}
+
+				if !yield(data, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// convertWsKlineToMarketData converts a WebSocket kline event to MarketData.
+func convertWsKlineToMarketData(event *BinanceWsKlineEvent) types.MarketData {
+	open, _ := strconv.ParseFloat(event.Kline.Open, 64)
+	high, _ := strconv.ParseFloat(event.Kline.High, 64)
+	low, _ := strconv.ParseFloat(event.Kline.Low, 64)
+	closePrice, _ := strconv.ParseFloat(event.Kline.Close, 64)
+	volume, _ := strconv.ParseFloat(event.Kline.Volume, 64)
+
+	return types.MarketData{
+		Id:     "",
+		Symbol: event.Symbol,
+		Time:   time.UnixMilli(event.Kline.StartTime),
+		Open:   open,
+		High:   high,
+		Low:    low,
+		Close:  closePrice,
+		Volume: volume,
+	}
+}
+
+// isValidBinanceInterval validates that the interval is supported by Binance.
+func isValidBinanceInterval(interval string) bool {
+	validIntervals := map[string]bool{
+		"1m": true, "3m": true, "5m": true, "15m": true, "30m": true,
+		"1h": true, "2h": true, "4h": true, "6h": true, "8h": true, "12h": true,
+		"1d": true, "3d": true, "1w": true, "1M": true,
+	}
+
+	return validIntervals[interval]
 }
 
 // cleanupFileIfExists removes the output file if it exists.
