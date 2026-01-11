@@ -1,3 +1,8 @@
+---
+title: Trading System Provider Architecture
+description: Architecture and implementation plan for the trading system provider pattern
+---
+
 # Trading System Provider Architecture
 
 This document outlines the architecture and implementation plan for the trading system in Argo Trading. The design follows the same **provider pattern** as the existing market data system, where each trading system is a registered provider with its own configuration schema.
