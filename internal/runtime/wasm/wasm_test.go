@@ -15,7 +15,7 @@ type StrategyTestSuite struct {
 	suite.Suite
 	runtime               runtime.StrategyRuntime
 	mockCache             *mocks.MockCache
-	mockTradingSystem     *mocks.MockTradingSystem
+	mockTradingSystem     *mocks.MockTradingSystemProvider
 	logger                *logger.Logger
 	ctrl                  *gomock.Controller
 	mockIndicatorRegistry *mocks.MockIndicatorRegistry
@@ -38,7 +38,7 @@ func (suite *StrategyTestSuite) SetupTest() {
 
 	// Create mock objects
 	suite.mockCache = mocks.NewMockCache(suite.ctrl)
-	suite.mockTradingSystem = mocks.NewMockTradingSystem(suite.ctrl)
+	suite.mockTradingSystem = mocks.NewMockTradingSystemProvider(suite.ctrl)
 	suite.mockIndicatorRegistry = mocks.NewMockIndicatorRegistry(suite.ctrl)
 
 	// Initialize strategy runtime with mocks

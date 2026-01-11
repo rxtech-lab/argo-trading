@@ -18,7 +18,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/marker"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
-	"github.com/rxtech-lab/argo-trading/internal/trading"
+	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/rxtech-lab/argo-trading/pkg/errors"
@@ -37,7 +37,7 @@ type BacktestEngineV1 struct {
 	log                 *logger.Logger
 	indicatorRegistry   indicator.IndicatorRegistry
 	marker              marker.Marker
-	tradingSystem       trading.TradingSystem
+	tradingSystem       tradingprovider.TradingSystemProvider
 	state               *BacktestState
 	datasource          datasource.DataSource
 	balance             float64

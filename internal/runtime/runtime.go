@@ -7,7 +7,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/log"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/rxtech-lab/argo-trading/internal/marker"
-	"github.com/rxtech-lab/argo-trading/internal/trading"
+	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
@@ -39,7 +39,7 @@ type RuntimeContext struct {
 	// Cache is the cache of the strategy
 	Cache cache.Cache
 	// Trading System is used to place orders
-	TradingSystem trading.TradingSystem
+	TradingSystem tradingprovider.TradingSystemProvider
 	// Marker is used to mark a point in time with a signal and a reason
 	Marker marker.Marker
 	// Logger is used for strategy logging output

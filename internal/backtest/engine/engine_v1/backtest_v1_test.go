@@ -51,7 +51,7 @@ func TestBacktestEngineV1_Run(t *testing.T) {
 		mockDatasource := mocks.NewMockDataSource(ctrl)
 		mockIndicatorRegistry := mocks.NewMockIndicatorRegistry(ctrl)
 		mockMarker := mocks.NewMockMarker(ctrl)
-		mockTradingSystem := mocks.NewMockTradingSystem(ctrl)
+		mockTradingSystem := mocks.NewMockTradingSystemProvider(ctrl)
 
 		// Create temporary directory for results using t.TempDir()
 		tempDir := t.TempDir()
@@ -149,7 +149,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockDatasource := mocks.NewMockDataSource(ctrl)
 		mockIndicatorRegistry := mocks.NewMockIndicatorRegistry(ctrl)
 		mockMarker := mocks.NewMockMarker(ctrl)
-		mockTradingSystem := mocks.NewMockTradingSystem(ctrl)
+		mockTradingSystem := mocks.NewMockTradingSystemProvider(ctrl)
 
 		// Create temporary directories using t.TempDir()
 		tempDir := t.TempDir()
@@ -241,7 +241,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockDatasource := mocks.NewMockDataSource(ctrl)
 		mockIndicatorRegistry := mocks.NewMockIndicatorRegistry(ctrl)
 		mockMarker := mocks.NewMockMarker(ctrl)
-		mockTradingSystem := mocks.NewMockTradingSystem(ctrl)
+		mockTradingSystem := mocks.NewMockTradingSystemProvider(ctrl)
 
 		// Create temporary directories using t.TempDir()
 		tempDir := t.TempDir()
@@ -345,7 +345,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockDatasource := mocks.NewMockDataSource(ctrl)
 		mockIndicatorRegistry := mocks.NewMockIndicatorRegistry(ctrl)
 		mockMarker := mocks.NewMockMarker(ctrl)
-		mockTradingSystem := mocks.NewMockTradingSystem(ctrl)
+		mockTradingSystem := mocks.NewMockTradingSystemProvider(ctrl)
 
 		// Create temporary directories using t.TempDir()
 		tempDir := t.TempDir()
@@ -436,7 +436,7 @@ endTime: "2023-01-31T23:59:59Z"
 		mockDatasource := mocks.NewMockDataSource(ctrl)
 		mockIndicatorRegistry := mocks.NewMockIndicatorRegistry(ctrl)
 		mockMarker := mocks.NewMockMarker(ctrl)
-		mockTradingSystem := mocks.NewMockTradingSystem(ctrl)
+		mockTradingSystem := mocks.NewMockTradingSystemProvider(ctrl)
 
 		// Create temporary directories using t.TempDir()
 		tempDir := t.TempDir()

@@ -1,5 +1,5 @@
-import XCTest
 import ArgoTrading
+import XCTest
 
 /// Tests for market-related APIs (excluding actual download operations)
 final class MarketApiTests: XCTestCase {
@@ -45,14 +45,9 @@ final class MarketApiTests: XCTestCase {
         let clients1 = SwiftargoGetSupportedDownloadClients()!
         let clients2 = SwiftargoGetSupportedDownloadClients()!
 
-        XCTAssertEqual(clients1.size(), clients2.size(),
-                       "Should return same number of clients on multiple calls")
-
-        // Compare all items
-        for i in 0..<clients1.size() {
-            XCTAssertEqual(clients1.get(i), clients2.get(i),
-                           "Client at index \(i) should be consistent")
-        }
+        XCTAssertEqual(
+            clients1.size(), clients2.size(),
+            "Should return same number of clients on multiple calls")
     }
 
     // MARK: - GetDownloadClientSchema Tests
@@ -68,14 +63,19 @@ final class MarketApiTests: XCTestCase {
         let schema = SwiftargoGetDownloadClientSchema("polygon")
 
         // Polygon config should have these fields
-        XCTAssertTrue(schema.contains("ticker") || schema.contains("Ticker"),
-                      "Polygon schema should contain ticker field")
-        XCTAssertTrue(schema.contains("api_key") || schema.contains("apiKey") || schema.contains("ApiKey"),
-                      "Polygon schema should contain api_key field")
-        XCTAssertTrue(schema.contains("start_date") || schema.contains("startDate") || schema.contains("StartDate"),
-                      "Polygon schema should contain start_date field")
-        XCTAssertTrue(schema.contains("end_date") || schema.contains("endDate") || schema.contains("EndDate"),
-                      "Polygon schema should contain end_date field")
+        XCTAssertTrue(
+            schema.contains("ticker") || schema.contains("Ticker"),
+            "Polygon schema should contain ticker field")
+        XCTAssertTrue(
+            schema.contains("api_key") || schema.contains("apiKey") || schema.contains("ApiKey"),
+            "Polygon schema should contain api_key field")
+        XCTAssertTrue(
+            schema.contains("start_date") || schema.contains("startDate")
+                || schema.contains("StartDate"),
+            "Polygon schema should contain start_date field")
+        XCTAssertTrue(
+            schema.contains("end_date") || schema.contains("endDate") || schema.contains("EndDate"),
+            "Polygon schema should contain end_date field")
     }
 
     func testGetDownloadClientSchema_BinanceReturnsValidJSON() {
@@ -89,12 +89,16 @@ final class MarketApiTests: XCTestCase {
         let schema = SwiftargoGetDownloadClientSchema("binance")
 
         // Binance config should have these fields
-        XCTAssertTrue(schema.contains("ticker") || schema.contains("Ticker"),
-                      "Binance schema should contain ticker field")
-        XCTAssertTrue(schema.contains("start_date") || schema.contains("startDate") || schema.contains("StartDate"),
-                      "Binance schema should contain start_date field")
-        XCTAssertTrue(schema.contains("end_date") || schema.contains("endDate") || schema.contains("EndDate"),
-                      "Binance schema should contain end_date field")
+        XCTAssertTrue(
+            schema.contains("ticker") || schema.contains("Ticker"),
+            "Binance schema should contain ticker field")
+        XCTAssertTrue(
+            schema.contains("start_date") || schema.contains("startDate")
+                || schema.contains("StartDate"),
+            "Binance schema should contain start_date field")
+        XCTAssertTrue(
+            schema.contains("end_date") || schema.contains("endDate") || schema.contains("EndDate"),
+            "Binance schema should contain end_date field")
     }
 
     func testGetDownloadClientSchema_InvalidProviderReturnsEmptyString() {

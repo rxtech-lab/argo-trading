@@ -23,7 +23,7 @@ import (
 type StrategyApiTestSuite struct {
 	suite.Suite
 	ctrl           *gomock.Controller
-	mockTrading    *mocks.MockTradingSystem
+	mockTrading    *mocks.MockTradingSystemProvider
 	mockIndicators *mocks.MockIndicatorRegistry
 	mockDataSource *mocks.MockDataSource
 	mockCache      *mocks.MockCache
@@ -35,7 +35,7 @@ type StrategyApiTestSuite struct {
 // SetupTest runs before each test
 func (suite *StrategyApiTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.mockTrading = mocks.NewMockTradingSystem(suite.ctrl)
+	suite.mockTrading = mocks.NewMockTradingSystemProvider(suite.ctrl)
 	suite.mockIndicators = mocks.NewMockIndicatorRegistry(suite.ctrl)
 	suite.mockDataSource = mocks.NewMockDataSource(suite.ctrl)
 	suite.mockCache = mocks.NewMockCache(suite.ctrl)

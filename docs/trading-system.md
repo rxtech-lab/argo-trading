@@ -153,7 +153,7 @@ Each provider implements the existing `TradingSystem` interface defined in `inte
 
 ```go
 // NewTradingSystem creates a new trading system based on the provider type.
-func NewTradingSystem(providerType ProviderType, config interface{}) (TradingSystem, error) {
+func NewTradingSystemProvider(providerType ProviderType, config any) (TradingSystem, error) {
     switch providerType {
     case ProviderBinancePaper:
         cfg, ok := config.(BinanceProviderConfig)

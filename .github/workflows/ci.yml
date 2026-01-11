@@ -133,7 +133,7 @@ jobs:
         run: cd e2e/backtest/wasm && make build
 
       - name: Build xcframework
-        run: make build-swift-argo VERSION=test
+        run: make build-swift-argo VERSION=main
 
       - name: Run Swift E2E tests
         run: make test-swift-e2e-only
