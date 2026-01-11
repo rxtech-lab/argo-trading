@@ -2,6 +2,10 @@
 
 A powerful framework for developing, testing, and implementing algorithmic trading strategies.
 
+## Documents
+
+Documents are located in [`Docs folder`](/docs)
+
 ## Prerequisites
 
 - **Go 1.24+** required
