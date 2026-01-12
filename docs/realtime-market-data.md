@@ -80,11 +80,13 @@ func main() {
 - **WebSocket**: `wss://stream.binance.com:9443/ws`
 - **Authentication**: Not required
 
-### Polygon (TODO)
+### Polygon (Planned)
 
 - **Symbols**: US stocks (e.g., `AAPL`, `GOOGL`)
-- **WebSocket**: `wss://socket.polygon.io/stocks`
+- **Intervals**: `1s` (second aggregates), `1m` (minute aggregates)
+- **WebSocket**: `wss://socket.polygon.io/stocks` (real-time), `wss://delayed.polygon.io/stocks` (15-min delayed)
 - **Authentication**: API key required
+- **Implementation Plan**: See [Polygon WebSocket Implementation Plan](./polygon-websocket-implementation.md)
 
 ## WebSocket Endpoints
 
