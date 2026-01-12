@@ -1,5 +1,5 @@
-import Foundation
 import ArgoTrading
+import Foundation
 
 /// Mock implementation of ArgoHelper for testing backtest callbacks
 class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
@@ -41,7 +41,9 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         lastTotalDataFiles = totalDataFiles
 
         if shouldFailOnBacktestStart {
-            throw NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error in onBacktestStart"])
+            throw NSError(
+                domain: "TestError", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onBacktestStart"])
         }
     }
 
@@ -50,22 +52,32 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         processDataCount += 1
 
         if shouldFailOnProcessData {
-            throw NSError(domain: "TestError", code: 4, userInfo: [NSLocalizedDescriptionKey: "Test error in onProcessData"])
+            throw NSError(
+                domain: "TestError", code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onProcessData"])
         }
     }
 
-    func onRunEnd(_ configIndex: Int, configName: String?, dataFileIndex: Int, dataFilePath: String?, resultFolderPath: String?) {
+    func onRunEnd(
+        _ configIndex: Int, configName: String?, dataFileIndex: Int, dataFilePath: String?,
+        resultFolderPath: String?
+    ) {
         runEndCalled = true
         lastResultFolderPath = resultFolderPath ?? ""
     }
 
-    func onRunStart(_ runID: String?, configIndex: Int, configName: String?, dataFileIndex: Int, dataFilePath: String?, totalDataPoints: Int) throws {
+    func onRunStart(
+        _ runID: String?, configIndex: Int, configName: String?, dataFileIndex: Int,
+        dataFilePath: String?, totalDataPoints: Int
+    ) throws {
         runStartCalled = true
         lastRunID = runID ?? ""
         lastDataFilePath = dataFilePath ?? ""
 
         if shouldFailOnRunStart {
-            throw NSError(domain: "TestError", code: 3, userInfo: [NSLocalizedDescriptionKey: "Test error in onRunStart"])
+            throw NSError(
+                domain: "TestError", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onRunStart"])
         }
     }
 
@@ -78,7 +90,9 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         lastStrategyName = strategyName ?? ""
 
         if shouldFailOnStrategyStart {
-            throw NSError(domain: "TestError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Test error in onStrategyStart"])
+            throw NSError(
+                domain: "TestError", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onStrategyStart"])
         }
     }
 
@@ -200,6 +214,7 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     // Store callback parameters for verification
     var lastSymbols: [String] = []
     var lastInterval: String = ""
+    var lastPreviousDataPath: String = ""
     var lastError: Error?
     var marketDataCount: Int = 0
     var orderPlacedCount: Int = 0
@@ -212,9 +227,13 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var shouldFailOnOrderPlaced = false
     var shouldFailOnOrderFilled = false
 
-    func onEngineStart(_ symbols: (any SwiftargoStringCollectionProtocol)?, interval: String?) throws {
+    func onEngineStart(
+        _ symbols: (any SwiftargoStringCollectionProtocol)?, interval: String?,
+        previousDataPath: String?
+    ) throws {
         engineStartCalled = true
         lastInterval = interval ?? ""
+        lastPreviousDataPath = previousDataPath ?? ""
         if let syms = symbols {
             lastSymbols = []
             for i in 0..<syms.size() {
@@ -223,7 +242,9 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         }
 
         if shouldFailOnEngineStart {
-            throw NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error in onEngineStart"])
+            throw NSError(
+                domain: "TestError", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onEngineStart"])
         }
     }
 
@@ -232,12 +253,17 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastError = err
     }
 
-    func onMarketData(_ symbol: String?, timestamp: Int64, open: Double, high: Double, low: Double, close: Double, volume: Double) throws {
+    func onMarketData(
+        _ symbol: String?, timestamp: Int64, open: Double, high: Double, low: Double, close: Double,
+        volume: Double
+    ) throws {
         marketDataCalled = true
         marketDataCount += 1
 
         if shouldFailOnMarketData {
-            throw NSError(domain: "TestError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Test error in onMarketData"])
+            throw NSError(
+                domain: "TestError", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onMarketData"])
         }
     }
 
@@ -247,7 +273,9 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastOrderJSON = orderJSON ?? ""
 
         if shouldFailOnOrderPlaced {
-            throw NSError(domain: "TestError", code: 3, userInfo: [NSLocalizedDescriptionKey: "Test error in onOrderPlaced"])
+            throw NSError(
+                domain: "TestError", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onOrderPlaced"])
         }
     }
 
@@ -257,7 +285,9 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastOrderJSON = orderJSON ?? ""
 
         if shouldFailOnOrderFilled {
-            throw NSError(domain: "TestError", code: 4, userInfo: [NSLocalizedDescriptionKey: "Test error in onOrderFilled"])
+            throw NSError(
+                domain: "TestError", code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onOrderFilled"])
         }
     }
 
@@ -282,6 +312,7 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         strategyErrorCalled = false
         lastSymbols = []
         lastInterval = ""
+        lastPreviousDataPath = ""
         lastError = nil
         marketDataCount = 0
         orderPlacedCount = 0

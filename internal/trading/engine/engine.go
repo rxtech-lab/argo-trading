@@ -14,7 +14,9 @@ import (
 // All callbacks with error return can abort execution if they return an error.
 
 // OnEngineStartCallback is called when the engine starts successfully.
-type OnEngineStartCallback func(symbols []string, interval string) error
+// previousDataPath contains the path to the parquet file with historical data if persistence is enabled,
+// or an empty string if persistence is disabled.
+type OnEngineStartCallback func(symbols []string, interval string, previousDataPath string) error
 
 // OnEngineStopCallback is called when the engine stops (always called via defer).
 type OnEngineStopCallback func(err error)

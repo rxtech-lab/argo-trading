@@ -281,7 +281,13 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 
 	// Call OnEngineStart callback
 	if callbacks.OnEngineStart != nil {
-		if err := (*callbacks.OnEngineStart)(e.config.Symbols, e.config.Interval); err != nil {
+		// Determine previousDataPath - if persistence is enabled, provide the parquet file path
+		previousDataPath := ""
+		if e.streamingWriter != nil {
+			previousDataPath = e.streamingWriter.GetOutputPath()
+		}
+
+		if err := (*callbacks.OnEngineStart)(e.config.Symbols, e.config.Interval, previousDataPath); err != nil {
 			runErr = errors.Wrap(errors.ErrCodeCallbackFailed, "OnEngineStart callback failed", err)
 
 			return runErr

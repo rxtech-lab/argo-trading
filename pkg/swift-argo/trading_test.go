@@ -18,20 +18,21 @@ func TestTradingTestSuite(t *testing.T) {
 
 // mockTradingHelper implements TradingEngineHelper for testing.
 type mockTradingHelper struct {
-	mu               sync.Mutex
-	startCalled      bool
-	stopCalled       bool
-	marketDataCalls  int
-	orderPlacedCalls int
-	orderFilledCalls int
-	errorCalls       int
-	strategyErrors   int
-	lastSymbols      []string
-	lastInterval     string
-	lastError        error
+	mu                   sync.Mutex
+	startCalled          bool
+	stopCalled           bool
+	marketDataCalls      int
+	orderPlacedCalls     int
+	orderFilledCalls     int
+	errorCalls           int
+	strategyErrors       int
+	lastSymbols          []string
+	lastInterval         string
+	lastPreviousDataPath string
+	lastError            error
 }
 
-func (m *mockTradingHelper) OnEngineStart(symbols StringCollection, interval string) error {
+func (m *mockTradingHelper) OnEngineStart(symbols StringCollection, interval string, previousDataPath string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.startCalled = true
@@ -40,6 +41,7 @@ func (m *mockTradingHelper) OnEngineStart(symbols StringCollection, interval str
 		m.lastSymbols[i] = symbols.Get(i)
 	}
 	m.lastInterval = interval
+	m.lastPreviousDataPath = previousDataPath
 	return nil
 }
 

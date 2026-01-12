@@ -717,7 +717,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnEngineStartCallbackError() {
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
-	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string) error {
+	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string, previousDataPath string) error {
 		return errors.New("start callback failed")
 	})
 
@@ -774,12 +774,13 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_SuccessfulExecution() {
 	var stopCalled bool
 	var stopErr error
 
-	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string) error {
+	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string, previousDataPath string) error {
 		mu.Lock()
 		defer mu.Unlock()
 		startCalled = true
 		s.Equal([]string{"BTCUSDT"}, symbols)
 		s.Equal("1m", interval)
+		// previousDataPath will be empty string since persistence is not enabled in this test
 		return nil
 	})
 

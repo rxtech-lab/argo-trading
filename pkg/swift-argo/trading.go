@@ -19,7 +19,8 @@ type TradingEngineHelper interface {
 	// OnEngineStart is called when the engine starts successfully.
 	// symbols: list of symbols being traded
 	// interval: the candlestick interval (e.g., "1m", "5m")
-	OnEngineStart(symbols StringCollection, interval string) error
+	// previousDataPath: path to parquet file with historical data if persistence is enabled, empty string otherwise
+	OnEngineStart(symbols StringCollection, interval string, previousDataPath string) error
 
 	// OnEngineStop is called when the engine stops (always called via defer).
 	OnEngineStop(err error)
@@ -257,10 +258,10 @@ func (t *TradingEngine) createCallbacks() engine.LiveTradingCallbacks {
 	}
 
 	// OnEngineStart callback
-	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string) error {
+	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string, previousDataPath string) error {
 		symbolsCollection := &StringArray{items: symbols}
 
-		return t.helper.OnEngineStart(symbolsCollection, interval)
+		return t.helper.OnEngineStart(symbolsCollection, interval, previousDataPath)
 	})
 	callbacks.OnEngineStart = &onStart
 
