@@ -141,9 +141,6 @@ type LiveTradingEngineConfig struct {
     // for indicator calculations (default: 1000)
     MarketDataCacheSize int `json:"market_data_cache_size" yaml:"market_data_cache_size" jsonschema:"description=Number of market data points to cache per symbol,default=1000"`
 
-    // DecimalPrecision for order quantities (0 = integers only)
-    DecimalPrecision int `json:"decimal_precision" yaml:"decimal_precision" jsonschema:"description=Decimal precision for order quantities,default=8"`
-
     // EnableLogging enables strategy log storage
     EnableLogging bool `json:"enable_logging" yaml:"enable_logging" jsonschema:"description=Enable strategy log storage,default=true"`
 
@@ -205,26 +202,6 @@ type MarketDataProviderConfig struct {
 }
 ```
 
-#### Binance Market Data Configuration
-
-```go
-// BinanceMarketDataConfig for Binance streaming.
-type BinanceMarketDataConfig struct {
-    // UseTestnet uses the Binance testnet WebSocket endpoint
-    UseTestnet bool `json:"use_testnet" yaml:"use_testnet" jsonschema:"description=Use Binance testnet for streaming,default=false"`
-}
-```
-
-#### Polygon Market Data Configuration
-
-```go
-// PolygonMarketDataConfig for Polygon streaming.
-type PolygonMarketDataConfig struct {
-    // ApiKey is the Polygon.io API key (required)
-    ApiKey string `json:"api_key" yaml:"api_key" jsonschema:"description=Polygon.io API key" validate:"required"`
-}
-```
-
 ### Trading Provider Configuration
 
 Trading providers follow the existing pattern in [trading-system.md](./trading-system.md):
@@ -239,12 +216,6 @@ type TradingProviderConfig struct {
     Config any `json:"config" yaml:"config" validate:"required"`
 }
 ```
-
-Existing trading provider configurations:
-
-- **BinanceProviderConfig**: `ApiKey`, `SecretKey`
-- **IBKRProviderConfig**: `Host`, `Port`, `ClientID`, `AccountID`
-
 ## Implementation Plan
 
 ### Phase 1: Core Engine Structure
@@ -253,7 +224,7 @@ Existing trading provider configurations:
 
 ```
 internal/
-└── live/
+└── trading/
     └── engine/
         ├── engine.go           # LiveTradingEngine interface
         ├── engine_v1/
@@ -275,34 +246,11 @@ internal/
 
 **Tasks:**
 
-1. Create `SetMarketDataProvider()` implementation that:
+Create `SetMarketDataProvider()` implementation that:
    - Accepts provider type and configuration
    - Creates the appropriate provider instance using the existing factory
    - Validates the provider supports streaming
 
-2. Create `StreamingDataSource` adapter that:
-   - Wraps the `iter.Seq2[MarketData, error]` from `Provider.Stream()`
-   - Implements `datasource.DataSource` interface for strategy compatibility
-   - Maintains a sliding window cache of recent data for indicators
-   - Provides `GetRange()`, `GetPreviousNumberOfDataPoints()`, etc.
-
-```go
-// StreamingDataSource adapts real-time streaming data to the DataSource interface.
-type StreamingDataSource struct {
-    provider      provider.Provider
-    symbols       []string
-    interval      string
-    cache         *SlidingWindowCache
-    currentData   map[string]types.MarketData // Latest data per symbol
-    mu            sync.RWMutex
-}
-
-func (s *StreamingDataSource) Initialize(ctx context.Context) error
-func (s *StreamingDataSource) GetRange(start, end time.Time, interval optional.Option[Interval]) ([]types.MarketData, error)
-func (s *StreamingDataSource) GetPreviousNumberOfDataPoints(end time.Time, symbol string, count int) ([]types.MarketData, error)
-func (s *StreamingDataSource) ReadLastData(symbol string) (types.MarketData, error)
-func (s *StreamingDataSource) AddToCache(data types.MarketData)
-```
 
 ### Phase 3: Trading Provider Integration
 
@@ -421,7 +369,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks LiveTradingCall
 
 ```
 cmd/
-└── live/
+└── trading/
     └── main.go    # CLI entry point for live trading
 ```
 
@@ -429,7 +377,7 @@ cmd/
 
 ```bash
 # Live trading with Binance
-go run cmd/live/main.go \
+go run cmd/trading/main.go \
     --strategy-wasm ./examples/strategy/strategy.wasm \
     --strategy-config ./config/strategy/my-strategy.yaml \
     --market-data-provider binance \
@@ -439,7 +387,7 @@ go run cmd/live/main.go \
     --interval 1m
 
 # Live trading with IBKR + Polygon data
-go run cmd/live/main.go \
+go run cmd/trading/main.go \
     --strategy-wasm ./examples/strategy/strategy.wasm \
     --strategy-config ./config/strategy/my-strategy.yaml \
     --market-data-provider polygon \
@@ -452,23 +400,797 @@ go run cmd/live/main.go \
 
 ### Phase 7: Testing
 
-**Test Categories:**
+The testing strategy for the Live Trading Engine uses mock providers to simulate real-time market data and trading without connecting to actual exchanges. This enables fast, reproducible, and deterministic E2E tests.
 
-1. **Unit Tests**
-   - Configuration parsing and validation
-   - Provider initialization
-   - Streaming data source caching
-   - Lifecycle callback invocation
+#### 7.1 Test Architecture Overview
 
-2. **Integration Tests**
-   - End-to-end with mock providers
-   - Strategy execution with simulated market data
-   - Order flow testing
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              E2E Test Setup                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────┐      ┌─────────────────────────────────────────┐  │
+│  │  Test Suite         │      │  LiveTradingEngineV1                    │  │
+│  │  (testify/suite)    │─────▶│                                         │  │
+│  └─────────────────────┘      │  ┌─────────────────────────────────┐    │  │
+│                               │  │  WASM Strategy                  │    │  │
+│                               │  │  (Same as production)           │    │  │
+│                               │  └─────────────────────────────────┘    │  │
+│                               └──────────────┬──────────────────────────┘  │
+│                                              │                              │
+│                    ┌─────────────────────────┴─────────────────────────┐   │
+│                    │                                                   │   │
+│                    ▼                                                   ▼   │
+│  ┌─────────────────────────────────────┐   ┌────────────────────────────┐ │
+│  │  MockMarketDataProvider             │   │  MockTradingProvider       │ │
+│  │  ┌───────────────────────────────┐  │   │  ┌──────────────────────┐  │ │
+│  │  │ MockDataGenerator             │  │   │  │ In-memory positions  │  │ │
+│  │  │ - PatternIncreasing           │  │   │  │ In-memory balance    │  │ │
+│  │  │ - PatternDecreasing           │  │   │  │ Trade recording      │  │ │
+│  │  │ - PatternVolatile             │  │   │  │ Instant execution    │  │ │
+│  │  └───────────────────────────────┘  │   │  └──────────────────────┘  │ │
+│  └─────────────────────────────────────┘   └────────────────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-3. **Paper Trading Tests**
-   - Connect to Binance testnet
-   - Execute sample strategy
-   - Verify order placement and position tracking
+**Key Testing Principles:**
+
+- **Fast execution**: Mock data yields as fast as possible (no artificial delays)
+- **Reproducible**: Seed-based random generation ensures deterministic results
+- **Isolated**: Each test gets fresh mock instances
+- **Pattern-based**: Test strategy behavior under different market conditions
+
+#### 7.2 Mock Market Data Provider
+
+The `MockMarketDataProvider` implements the `Provider` interface using the existing `MockDataGenerator` from the backtest test helpers.
+
+```go
+package testhelper
+
+import (
+    "context"
+    "iter"
+
+    "github.com/rxtech-lab/argo-trading/internal/types"
+)
+
+// MockMarketDataProvider implements provider.Provider for testing
+type MockMarketDataProvider struct {
+    configs map[string]MockMarketDataConfig  // Config per symbol
+}
+
+// MockMarketDataConfig extends MockDataConfig for streaming with error injection
+type MockMarketDataConfig struct {
+    // Symbol for this configuration
+    Symbol string
+
+    // Pattern determines price movement (increasing, decreasing, volatile)
+    Pattern SimulationPattern
+
+    // InitialPrice is the starting price
+    InitialPrice float64
+
+    // NumDataPoints is the total number of data points to generate
+    NumDataPoints int
+
+    // TrendStrength controls how strong the trend is (0.0-1.0)
+    TrendStrength float64
+
+    // VolatilityPercent controls price volatility
+    VolatilityPercent float64
+
+    // MaxDrawdownPercent limits drawdown for volatile pattern
+    MaxDrawdownPercent float64
+
+    // Seed for reproducible random generation
+    Seed int64
+
+    // ErrorAfterN injects an error after N data points (0 = no error)
+    ErrorAfterN int
+
+    // ErrorToReturn is the error to inject
+    ErrorToReturn error
+}
+
+// NewMockMarketDataProvider creates a new mock provider with the given configurations
+func NewMockMarketDataProvider(configs ...MockMarketDataConfig) *MockMarketDataProvider {
+    p := &MockMarketDataProvider{
+        configs: make(map[string]MockMarketDataConfig),
+    }
+    for _, c := range configs {
+        p.configs[c.Symbol] = c
+    }
+    return p
+}
+
+// Stream implements provider.Provider.Stream
+// Yields generated market data as fast as possible for quick test execution
+func (p *MockMarketDataProvider) Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error] {
+    return func(yield func(types.MarketData, error) bool) {
+        // Generate data for each symbol using MockDataGenerator
+        for _, symbol := range symbols {
+            config, ok := p.configs[symbol]
+            if !ok {
+                yield(types.MarketData{}, fmt.Errorf("no config for symbol: %s", symbol))
+                return
+            }
+
+            generator := NewMockDataGenerator(MockDataConfig{
+                Symbol:             config.Symbol,
+                Pattern:            config.Pattern,
+                InitialPrice:       config.InitialPrice,
+                NumDataPoints:      config.NumDataPoints,
+                TrendStrength:      config.TrendStrength,
+                VolatilityPercent:  config.VolatilityPercent,
+                MaxDrawdownPercent: config.MaxDrawdownPercent,
+                Seed:               config.Seed,
+            })
+
+            data, err := generator.Generate()
+            if err != nil {
+                yield(types.MarketData{}, err)
+                return
+            }
+
+            for i, d := range data {
+                // Check for context cancellation
+                select {
+                case <-ctx.Done():
+                    return
+                default:
+                }
+
+                // Inject error if configured
+                if config.ErrorAfterN > 0 && i >= config.ErrorAfterN {
+                    yield(types.MarketData{}, config.ErrorToReturn)
+                    return
+                }
+
+                if !yield(d, nil) {
+                    return
+                }
+            }
+        }
+    }
+}
+
+// ConfigWriter implements provider.Provider (no-op for mock)
+func (p *MockMarketDataProvider) ConfigWriter(writer writer.MarketDataWriter) {}
+
+// Download implements provider.Provider (not used in live trading)
+func (p *MockMarketDataProvider) Download(ctx context.Context, ticker string, startDate time.Time, endDate time.Time,
+    multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (string, error) {
+    return "", fmt.Errorf("download not supported in mock provider")
+}
+```
+
+#### 7.3 Mock Trading Provider
+
+The `MockTradingProvider` implements `TradingSystemProvider` with instant order execution and in-memory state tracking.
+
+```go
+package testhelper
+
+import (
+    "fmt"
+    "sync"
+    "time"
+
+    "github.com/rxtech-lab/argo-trading/internal/types"
+)
+
+// MockTradingProvider implements TradingSystemProvider for testing
+type MockTradingProvider struct {
+    mu sync.RWMutex
+
+    // State
+    balance   float64
+    positions map[string]*types.Position
+    orders    []types.ExecuteOrder
+    trades    []types.Trade
+    openOrders []types.ExecuteOrder
+
+    // Current market data (updated by engine)
+    currentPrice map[string]float64
+
+    // Behavior configuration
+    FailAllOrders bool
+    FailReason    string
+}
+
+// NewMockTradingProvider creates a new mock trading provider
+func NewMockTradingProvider(initialBalance float64) *MockTradingProvider {
+    return &MockTradingProvider{
+        balance:      initialBalance,
+        positions:    make(map[string]*types.Position),
+        orders:       make([]types.ExecuteOrder, 0),
+        trades:       make([]types.Trade, 0),
+        openOrders:   make([]types.ExecuteOrder, 0),
+        currentPrice: make(map[string]float64),
+    }
+}
+
+// SetCurrentPrice updates the current price for a symbol (called by test or engine)
+func (m *MockTradingProvider) SetCurrentPrice(symbol string, price float64) {
+    m.mu.Lock()
+    defer m.mu.Unlock()
+    m.currentPrice[symbol] = price
+}
+
+// PlaceOrder executes an order instantly at the current price
+func (m *MockTradingProvider) PlaceOrder(order types.ExecuteOrder) error {
+    m.mu.Lock()
+    defer m.mu.Unlock()
+
+    // Check for configured failure
+    if m.FailAllOrders {
+        return fmt.Errorf("order failed: %s", m.FailReason)
+    }
+
+    // Record order
+    m.orders = append(m.orders, order)
+
+    // Get execution price
+    price := order.Price
+    if price == 0 {
+        price = m.currentPrice[order.Symbol]
+    }
+    if price == 0 {
+        return fmt.Errorf("no price available for %s", order.Symbol)
+    }
+
+    // Calculate cost
+    cost := price * order.Quantity
+
+    // Execute based on side
+    if order.Side == types.SideBuy {
+        if cost > m.balance {
+            return fmt.Errorf("insufficient balance: need %.2f, have %.2f", cost, m.balance)
+        }
+        m.balance -= cost
+
+        // Update position
+        pos := m.getOrCreatePosition(order.Symbol)
+        pos.TotalLongPositionQuantity += order.Quantity
+        pos.TotalLongInPositionQuantity += order.Quantity
+        pos.TotalLongInPositionAmount += cost
+    } else {
+        // Sell
+        pos := m.getOrCreatePosition(order.Symbol)
+        if order.Quantity > pos.TotalLongPositionQuantity {
+            return fmt.Errorf("insufficient position: need %.2f, have %.2f",
+                order.Quantity, pos.TotalLongPositionQuantity)
+        }
+
+        m.balance += cost
+        pos.TotalLongPositionQuantity -= order.Quantity
+        pos.TotalLongOutPositionQuantity += order.Quantity
+        pos.TotalLongOutPositionAmount += cost
+    }
+
+    // Record trade
+    trade := types.Trade{
+        Order: types.Order{
+            OrderID:      order.ID,
+            Symbol:       order.Symbol,
+            Side:         order.Side,
+            Quantity:     order.Quantity,
+            Price:        price,
+            Timestamp:    time.Now(),
+            IsCompleted:  true,
+            Status:       types.OrderStatusFilled,
+            StrategyName: order.StrategyName,
+        },
+        ExecutedAt:    time.Now(),
+        ExecutedQty:   order.Quantity,
+        ExecutedPrice: price,
+    }
+    m.trades = append(m.trades, trade)
+
+    return nil
+}
+
+func (m *MockTradingProvider) getOrCreatePosition(symbol string) *types.Position {
+    if pos, ok := m.positions[symbol]; ok {
+        return pos
+    }
+    pos := &types.Position{Symbol: symbol}
+    m.positions[symbol] = pos
+    return pos
+}
+
+// GetPositions returns all positions
+func (m *MockTradingProvider) GetPositions() ([]types.Position, error) {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+
+    result := make([]types.Position, 0, len(m.positions))
+    for _, pos := range m.positions {
+        result = append(result, *pos)
+    }
+    return result, nil
+}
+
+// GetPosition returns a specific position
+func (m *MockTradingProvider) GetPosition(symbol string) (types.Position, error) {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+
+    if pos, ok := m.positions[symbol]; ok {
+        return *pos, nil
+    }
+    return types.Position{Symbol: symbol}, nil
+}
+
+// GetAccountInfo returns account information
+func (m *MockTradingProvider) GetAccountInfo() (types.AccountInfo, error) {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+
+    return types.AccountInfo{
+        Balance:     m.balance,
+        Equity:      m.balance, // Simplified
+        BuyingPower: m.balance,
+    }, nil
+}
+
+// GetTrades returns all executed trades (for test assertions)
+func (m *MockTradingProvider) GetTrades(filter types.TradeFilter) ([]types.Trade, error) {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+
+    return m.trades, nil
+}
+
+// GetAllTrades returns all trades without filter (convenience for tests)
+func (m *MockTradingProvider) GetAllTrades() []types.Trade {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+
+    result := make([]types.Trade, len(m.trades))
+    copy(result, m.trades)
+    return result
+}
+
+// Additional TradingSystemProvider methods...
+func (m *MockTradingProvider) PlaceMultipleOrders(orders []types.ExecuteOrder) error {
+    for _, o := range orders {
+        if err := m.PlaceOrder(o); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func (m *MockTradingProvider) CancelOrder(orderID string) error { return nil }
+func (m *MockTradingProvider) CancelAllOrders() error { return nil }
+func (m *MockTradingProvider) GetOrderStatus(orderID string) (types.OrderStatus, error) {
+    return types.OrderStatusFilled, nil
+}
+func (m *MockTradingProvider) GetOpenOrders() ([]types.ExecuteOrder, error) { return nil, nil }
+func (m *MockTradingProvider) GetMaxBuyQuantity(symbol string, price float64) (float64, error) {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+    return m.balance / price, nil
+}
+func (m *MockTradingProvider) GetMaxSellQuantity(symbol string) (float64, error) {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+    if pos, ok := m.positions[symbol]; ok {
+        return pos.TotalLongPositionQuantity, nil
+    }
+    return 0, nil
+}
+```
+
+#### 7.4 E2E Test Scenarios
+
+##### Test Scenario 1: Strategy Execution in Increasing Market
+
+Tests that a strategy correctly identifies and profits from an upward trend.
+
+```go
+func (s *LiveTradingE2ETestSuite) TestStrategyInIncreasingMarket() {
+    // Setup: Generate increasing price data
+    mockMarketData := testhelper.NewMockMarketDataProvider(
+        testhelper.MockMarketDataConfig{
+            Symbol:        "BTCUSDT",
+            Pattern:       testhelper.PatternIncreasing,
+            InitialPrice:  50000.0,
+            TrendStrength: 0.02,  // 2% increase per candle
+            NumDataPoints: 100,
+            Seed:          42,    // Reproducible
+        },
+    )
+
+    mockTrading := testhelper.NewMockTradingProvider(10000.0)
+
+    // Configure engine
+    s.engine.SetMockMarketDataProvider(mockMarketData)
+    s.engine.SetMockTradingProvider(mockTrading)
+    s.engine.LoadStrategyFromFile("./trend_following_strategy.wasm")
+
+    // Run
+    err := s.engine.Run(context.Background(), engine.LiveTradingCallbacks{})
+    s.Require().NoError(err)
+
+    // Assertions
+    trades := mockTrading.GetAllTrades()
+    s.Greater(len(trades), 0, "Strategy should place trades in increasing market")
+
+    // Verify profitability
+    accountInfo, _ := mockTrading.GetAccountInfo()
+    s.Greater(accountInfo.Balance, 10000.0, "Balance should increase in uptrend")
+}
+```
+
+##### Test Scenario 2: Strategy Execution in Decreasing Market
+
+Tests that a strategy limits losses or avoids trades in a downward trend.
+
+```go
+func (s *LiveTradingE2ETestSuite) TestStrategyInDecreasingMarket() {
+    mockMarketData := testhelper.NewMockMarketDataProvider(
+        testhelper.MockMarketDataConfig{
+            Symbol:        "BTCUSDT",
+            Pattern:       testhelper.PatternDecreasing,
+            InitialPrice:  50000.0,
+            TrendStrength: 0.02,  // 2% decrease per candle
+            NumDataPoints: 100,
+            Seed:          42,
+        },
+    )
+
+    mockTrading := testhelper.NewMockTradingProvider(10000.0)
+    s.engine.SetMockMarketDataProvider(mockMarketData)
+    s.engine.SetMockTradingProvider(mockTrading)
+    s.engine.LoadStrategyFromFile("./trend_following_strategy.wasm")
+
+    err := s.engine.Run(context.Background(), engine.LiveTradingCallbacks{})
+    s.Require().NoError(err)
+
+    // A good strategy should either:
+    // 1. Not trade (wait for uptrend)
+    // 2. Trade but exit quickly to limit losses
+    accountInfo, _ := mockTrading.GetAccountInfo()
+
+    // Allow some loss but not catastrophic
+    s.GreaterOrEqual(accountInfo.Balance, 8000.0, "Strategy should limit losses in downtrend")
+}
+```
+
+##### Test Scenario 3: Strategy Execution in Volatile Market
+
+Tests strategy behavior with high volatility and drawdown constraints.
+
+```go
+func (s *LiveTradingE2ETestSuite) TestStrategyInVolatileMarket() {
+    mockMarketData := testhelper.NewMockMarketDataProvider(
+        testhelper.MockMarketDataConfig{
+            Symbol:             "BTCUSDT",
+            Pattern:            testhelper.PatternVolatile,
+            InitialPrice:       50000.0,
+            MaxDrawdownPercent: 10.0,  // Max 10% drawdown from peak
+            VolatilityPercent:  3.0,   // 3% volatility per candle
+            NumDataPoints:      200,
+            Seed:               42,
+        },
+    )
+
+    mockTrading := testhelper.NewMockTradingProvider(10000.0)
+    s.engine.SetMockMarketDataProvider(mockMarketData)
+    s.engine.SetMockTradingProvider(mockTrading)
+    s.engine.LoadStrategyFromFile("./volatility_strategy.wasm")
+
+    err := s.engine.Run(context.Background(), engine.LiveTradingCallbacks{})
+    s.Require().NoError(err)
+
+    // Verify strategy handles volatility
+    trades := mockTrading.GetAllTrades()
+    s.NotEmpty(trades, "Strategy should trade in volatile market")
+
+    // Check that stop-losses were respected (no single trade > 5% loss)
+    for _, trade := range trades {
+        if trade.PnL < 0 {
+            lossPct := (trade.PnL / trade.ExecutedPrice) * 100
+            s.GreaterOrEqual(lossPct, -5.0, "Individual trade loss should be limited")
+        }
+    }
+}
+```
+
+##### Test Scenario 4: Multi-Symbol Streaming
+
+Tests engine handling multiple symbols with different market conditions.
+
+```go
+func (s *LiveTradingE2ETestSuite) TestMultiSymbolStreaming() {
+    mockMarketData := testhelper.NewMockMarketDataProvider(
+        testhelper.MockMarketDataConfig{
+            Symbol:        "BTCUSDT",
+            Pattern:       testhelper.PatternIncreasing,
+            InitialPrice:  50000.0,
+            NumDataPoints: 50,
+            Seed:          42,
+        },
+        testhelper.MockMarketDataConfig{
+            Symbol:             "ETHUSDT",
+            Pattern:            testhelper.PatternVolatile,
+            InitialPrice:       3000.0,
+            MaxDrawdownPercent: 15.0,
+            NumDataPoints:      50,
+            Seed:               43,
+        },
+    )
+
+    symbolsSeen := make(map[string]int)
+    var mu sync.Mutex
+
+    callbacks := engine.LiveTradingCallbacks{
+        OnMarketData: func(data types.MarketData) error {
+            mu.Lock()
+            symbolsSeen[data.Symbol]++
+            mu.Unlock()
+            return nil
+        },
+    }
+
+    mockTrading := testhelper.NewMockTradingProvider(20000.0)
+    s.engine.SetMockMarketDataProvider(mockMarketData)
+    s.engine.SetMockTradingProvider(mockTrading)
+    s.engine.LoadStrategyFromFile("./multi_symbol_strategy.wasm")
+
+    err := s.engine.Run(context.Background(), callbacks)
+    s.Require().NoError(err)
+
+    // Verify both symbols were processed
+    s.Equal(50, symbolsSeen["BTCUSDT"], "Should process all BTCUSDT data points")
+    s.Equal(50, symbolsSeen["ETHUSDT"], "Should process all ETHUSDT data points")
+}
+```
+
+##### Test Scenario 5: Error Handling
+
+Tests engine behavior when stream errors occur.
+
+```go
+func (s *LiveTradingE2ETestSuite) TestStreamErrorHandling() {
+    expectedErr := errors.New("simulated connection lost")
+
+    mockMarketData := testhelper.NewMockMarketDataProvider(
+        testhelper.MockMarketDataConfig{
+            Symbol:        "BTCUSDT",
+            Pattern:       testhelper.PatternIncreasing,
+            InitialPrice:  50000.0,
+            NumDataPoints: 100,
+            Seed:          42,
+            ErrorAfterN:   50,  // Inject error after 50 data points
+            ErrorToReturn: expectedErr,
+        },
+    )
+
+    var errorReceived error
+    var dataCountBeforeError int
+
+    callbacks := engine.LiveTradingCallbacks{
+        OnMarketData: func(data types.MarketData) error {
+            dataCountBeforeError++
+            return nil
+        },
+        OnError: func(err error) {
+            errorReceived = err
+        },
+    }
+
+    mockTrading := testhelper.NewMockTradingProvider(10000.0)
+    s.engine.SetMockMarketDataProvider(mockMarketData)
+    s.engine.SetMockTradingProvider(mockTrading)
+    s.engine.LoadStrategyFromFile("./simple_strategy.wasm")
+
+    err := s.engine.Run(context.Background(), callbacks)
+
+    // Verify error handling
+    s.Equal(50, dataCountBeforeError, "Should process data until error")
+    s.NotNil(errorReceived, "OnError callback should be invoked")
+    s.Contains(errorReceived.Error(), "connection lost")
+}
+```
+
+##### Test Scenario 6: Graceful Shutdown
+
+Tests that engine shuts down cleanly when context is cancelled.
+
+```go
+func (s *LiveTradingE2ETestSuite) TestGracefulShutdown() {
+    mockMarketData := testhelper.NewMockMarketDataProvider(
+        testhelper.MockMarketDataConfig{
+            Symbol:        "BTCUSDT",
+            Pattern:       testhelper.PatternIncreasing,
+            InitialPrice:  50000.0,
+            NumDataPoints: 1000,  // Many data points
+            Seed:          42,
+        },
+    )
+
+    var dataCount int
+    var engineStopped bool
+
+    ctx, cancel := context.WithCancel(context.Background())
+
+    callbacks := engine.LiveTradingCallbacks{
+        OnMarketData: func(data types.MarketData) error {
+            dataCount++
+            if dataCount >= 100 {
+                cancel()  // Cancel after 100 data points
+            }
+            return nil
+        },
+        OnEngineStop: func(err error) {
+            engineStopped = true
+        },
+    }
+
+    mockTrading := testhelper.NewMockTradingProvider(10000.0)
+    s.engine.SetMockMarketDataProvider(mockMarketData)
+    s.engine.SetMockTradingProvider(mockTrading)
+    s.engine.LoadStrategyFromFile("./simple_strategy.wasm")
+
+    err := s.engine.Run(ctx, callbacks)
+
+    // Verify graceful shutdown
+    s.Equal(context.Canceled, err, "Should return context.Canceled")
+    s.True(engineStopped, "OnEngineStop should be called")
+    s.Less(dataCount, 1000, "Should stop before processing all data")
+}
+```
+
+#### 7.5 Test File Structure
+
+```
+e2e/
+└── trading/
+    ├── testhelper/
+    │   ├── mock_market_data_provider.go   # MockMarketDataProvider implementation
+    │   ├── mock_trading_provider.go       # MockTradingProvider implementation
+    │   └── test_strategies/               # Pre-compiled WASM strategies for testing
+    │       ├── simple_strategy.wasm
+    │       ├── trend_following_strategy.wasm
+    │       ├── volatility_strategy.wasm
+    │       └── multi_symbol_strategy.wasm
+    └── engine/
+        ├── suite_test.go                  # Test suite setup
+        ├── basic_strategy_test.go         # Basic execution tests
+        ├── market_patterns_test.go        # Pattern-specific tests (increasing/decreasing/volatile)
+        ├── multi_symbol_test.go           # Multi-symbol streaming tests
+        ├── error_handling_test.go         # Error scenario tests
+        └── shutdown_test.go               # Graceful shutdown tests
+```
+
+#### 7.6 Example Full E2E Test Suite
+
+```go
+package engine_test
+
+import (
+    "context"
+    "testing"
+
+    "github.com/stretchr/testify/suite"
+    "github.com/rxtech-lab/argo-trading/e2e/trading/testhelper"
+    "github.com/rxtech-lab/argo-trading/internal/trading/engine"
+    "github.com/rxtech-lab/argo-trading/internal/types"
+)
+
+type LiveTradingE2ETestSuite struct {
+    suite.Suite
+    engine engine.LiveTradingEngine
+}
+
+func TestLiveTradingE2E(t *testing.T) {
+    suite.Run(t, new(LiveTradingE2ETestSuite))
+}
+
+func (s *LiveTradingE2ETestSuite) SetupTest() {
+    var err error
+    s.engine, err = engine.NewLiveTradingEngineV1()
+    s.Require().NoError(err)
+
+    // Initialize with default config
+    err = s.engine.Initialize(engine.LiveTradingEngineConfig{
+        Symbols:             []string{"BTCUSDT"},
+        Interval:            "1m",
+        MarketDataCacheSize: 100,
+        EnableLogging:       false,
+    })
+    s.Require().NoError(err)
+}
+
+func (s *LiveTradingE2ETestSuite) TestBasicStrategyExecution() {
+    // Setup mock providers
+    mockMarketData := testhelper.NewMockMarketDataProvider(
+        testhelper.MockMarketDataConfig{
+            Symbol:        "BTCUSDT",
+            Pattern:       testhelper.PatternIncreasing,
+            InitialPrice:  50000.0,
+            TrendStrength: 0.01,
+            NumDataPoints: 100,
+            Seed:          42,
+        },
+    )
+
+    mockTrading := testhelper.NewMockTradingProvider(10000.0)
+
+    // Configure engine with mocks
+    err := s.engine.SetMockMarketDataProvider(mockMarketData)
+    s.Require().NoError(err)
+
+    err = s.engine.SetMockTradingProvider(mockTrading)
+    s.Require().NoError(err)
+
+    // Load strategy
+    err = s.engine.LoadStrategyFromFile("./testhelper/test_strategies/simple_strategy.wasm")
+    s.Require().NoError(err)
+
+    // Track execution
+    var dataPointsProcessed int
+    var engineStarted, engineStopped bool
+
+    onStart := func(symbols []string, interval string) error {
+        engineStarted = true
+        s.Equal([]string{"BTCUSDT"}, symbols)
+        s.Equal("1m", interval)
+        return nil
+    }
+
+    onStop := func(err error) {
+        engineStopped = true
+    }
+
+    onData := func(data types.MarketData) error {
+        dataPointsProcessed++
+        // Update mock trading provider with current price
+        mockTrading.SetCurrentPrice(data.Symbol, data.Close)
+        return nil
+    }
+
+    callbacks := engine.LiveTradingCallbacks{
+        OnEngineStart: &onStart,
+        OnEngineStop:  &onStop,
+        OnMarketData:  &onData,
+    }
+
+    // Run engine
+    err = s.engine.Run(context.Background(), callbacks)
+    s.Require().NoError(err)
+
+    // Assertions
+    s.True(engineStarted, "Engine should have started")
+    s.True(engineStopped, "Engine should have stopped")
+    s.Equal(100, dataPointsProcessed, "Should process all data points")
+
+    // Verify trading activity
+    trades := mockTrading.GetAllTrades()
+    s.NotEmpty(trades, "Strategy should have placed trades")
+
+    // Verify final account state
+    accountInfo, err := mockTrading.GetAccountInfo()
+    s.Require().NoError(err)
+    s.NotZero(accountInfo.Balance, "Account should have balance")
+}
+
+// Additional test methods for each scenario...
+```
+
+#### 7.7 Test Categories Summary
+
+| Category | Description | Mock Providers Used |
+|----------|-------------|---------------------|
+| **Unit Tests** | Configuration parsing, provider initialization, callback invocation | None (pure unit tests) |
+| **E2E Tests** | Full engine execution with mock data and trading | MockMarketDataProvider + MockTradingProvider |
+| **Pattern Tests** | Strategy behavior under different market conditions | MockMarketDataProvider with different patterns |
+| **Error Tests** | Error injection and handling verification | MockMarketDataProvider with ErrorAfterN |
+| **Integration Tests** | Real provider connection tests (optional) | Real Binance testnet providers |
 
 ## Configuration Examples
 
@@ -514,7 +1236,7 @@ import (
     "os/signal"
     "syscall"
 
-    "github.com/rxtech-lab/argo-trading/internal/live/engine"
+    "github.com/rxtech-lab/argo-trading/internal/trading/engine"
     "github.com/rxtech-lab/argo-trading/pkg/marketdata/provider"
     tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 )
@@ -637,7 +1359,7 @@ const (
 
 ```
 internal/
-└── live/
+└── trading/
     └── engine/
         ├── engine.go                    # Interface definitions
         ├── engine_v1/
@@ -649,7 +1371,7 @@ internal/
         └── engine_test.go               # Engine tests
 
 cmd/
-└── live/
+└── trading/
     └── main.go                          # CLI entry point
 
 config/
