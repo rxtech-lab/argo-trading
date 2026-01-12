@@ -26,8 +26,9 @@ require (
 )
 
 require (
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	golang.org/x/mobile v0.0.0-20251209145715-2553ed8ce294 // indirect
+	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 )
 
 require (
