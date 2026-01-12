@@ -139,8 +139,11 @@ func main() {
 	}
 
 	// Setup callbacks
-	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string) error {
+	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string, previousDataPath string) error {
 		fmt.Printf("Engine started: symbols=%v, interval=%s\n", symbols, interval)
+		if previousDataPath != "" {
+			fmt.Printf("Previous data available at: %s\n", previousDataPath)
+		}
 		return nil
 	})
 	onStop := engine.OnEngineStopCallback(func(err error) {

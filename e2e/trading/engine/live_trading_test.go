@@ -60,13 +60,14 @@ func (s *LiveTradingE2ETestSuite) TestBasicEngineExecution() {
 	var engineStarted, engineStopped bool
 	var mu sync.Mutex
 
-	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string) error {
+	onStart := engine.OnEngineStartCallback(func(symbols []string, interval string, previousDataPath string) error {
 		mu.Lock()
 		defer mu.Unlock()
 
 		engineStarted = true
 		s.Equal([]string{"BTCUSDT"}, symbols)
 		s.Equal("1m", interval)
+		// previousDataPath will be empty string in this test since persistence is not enabled
 
 		return nil
 	})

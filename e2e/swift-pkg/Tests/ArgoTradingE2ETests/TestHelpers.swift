@@ -1,5 +1,5 @@
-import Foundation
 import ArgoTrading
+import Foundation
 
 /// Mock implementation of ArgoHelper for testing backtest callbacks
 class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
@@ -41,7 +41,9 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         lastTotalDataFiles = totalDataFiles
 
         if shouldFailOnBacktestStart {
-            throw NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error in onBacktestStart"])
+            throw NSError(
+                domain: "TestError", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onBacktestStart"])
         }
     }
 
@@ -50,22 +52,32 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         processDataCount += 1
 
         if shouldFailOnProcessData {
-            throw NSError(domain: "TestError", code: 4, userInfo: [NSLocalizedDescriptionKey: "Test error in onProcessData"])
+            throw NSError(
+                domain: "TestError", code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onProcessData"])
         }
     }
 
-    func onRunEnd(_ configIndex: Int, configName: String?, dataFileIndex: Int, dataFilePath: String?, resultFolderPath: String?) {
+    func onRunEnd(
+        _ configIndex: Int, configName: String?, dataFileIndex: Int, dataFilePath: String?,
+        resultFolderPath: String?
+    ) {
         runEndCalled = true
         lastResultFolderPath = resultFolderPath ?? ""
     }
 
-    func onRunStart(_ runID: String?, configIndex: Int, configName: String?, dataFileIndex: Int, dataFilePath: String?, totalDataPoints: Int) throws {
+    func onRunStart(
+        _ runID: String?, configIndex: Int, configName: String?, dataFileIndex: Int,
+        dataFilePath: String?, totalDataPoints: Int
+    ) throws {
         runStartCalled = true
         lastRunID = runID ?? ""
         lastDataFilePath = dataFilePath ?? ""
 
         if shouldFailOnRunStart {
-            throw NSError(domain: "TestError", code: 3, userInfo: [NSLocalizedDescriptionKey: "Test error in onRunStart"])
+            throw NSError(
+                domain: "TestError", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onRunStart"])
         }
     }
 
@@ -78,7 +90,9 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         lastStrategyName = strategyName ?? ""
 
         if shouldFailOnStrategyStart {
-            throw NSError(domain: "TestError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Test error in onStrategyStart"])
+            throw NSError(
+                domain: "TestError", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onStrategyStart"])
         }
     }
 
@@ -183,6 +197,131 @@ class TempDirectory {
 
     deinit {
         try? FileManager.default.removeItem(atPath: path)
+    }
+}
+
+/// Mock implementation of TradingEngineHelper for testing live trading callbacks
+class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
+    // Track callback invocations
+    var engineStartCalled = false
+    var engineStopCalled = false
+    var marketDataCalled = false
+    var orderPlacedCalled = false
+    var orderFilledCalled = false
+    var errorCalled = false
+    var strategyErrorCalled = false
+
+    // Store callback parameters for verification
+    var lastSymbols: [String] = []
+    var lastInterval: String = ""
+    var lastPreviousDataPath: String = ""
+    var lastError: Error?
+    var marketDataCount: Int = 0
+    var orderPlacedCount: Int = 0
+    var orderFilledCount: Int = 0
+    var lastOrderJSON: String = ""
+
+    // Control callback behavior
+    var shouldFailOnEngineStart = false
+    var shouldFailOnMarketData = false
+    var shouldFailOnOrderPlaced = false
+    var shouldFailOnOrderFilled = false
+
+    func onEngineStart(
+        _ symbols: (any SwiftargoStringCollectionProtocol)?, interval: String?,
+        previousDataPath: String?
+    ) throws {
+        engineStartCalled = true
+        lastInterval = interval ?? ""
+        lastPreviousDataPath = previousDataPath ?? ""
+        if let syms = symbols {
+            lastSymbols = []
+            for i in 0..<syms.size() {
+                lastSymbols.append(syms.get(i))
+            }
+        }
+
+        if shouldFailOnEngineStart {
+            throw NSError(
+                domain: "TestError", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onEngineStart"])
+        }
+    }
+
+    func onEngineStop(_ err: Error?) {
+        engineStopCalled = true
+        lastError = err
+    }
+
+    func onMarketData(
+        _ symbol: String?, timestamp: Int64, open: Double, high: Double, low: Double, close: Double,
+        volume: Double
+    ) throws {
+        marketDataCalled = true
+        marketDataCount += 1
+
+        if shouldFailOnMarketData {
+            throw NSError(
+                domain: "TestError", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onMarketData"])
+        }
+    }
+
+    func onOrderPlaced(_ orderJSON: String?) throws {
+        orderPlacedCalled = true
+        orderPlacedCount += 1
+        lastOrderJSON = orderJSON ?? ""
+
+        if shouldFailOnOrderPlaced {
+            throw NSError(
+                domain: "TestError", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onOrderPlaced"])
+        }
+    }
+
+    func onOrderFilled(_ orderJSON: String?) throws {
+        orderFilledCalled = true
+        orderFilledCount += 1
+        lastOrderJSON = orderJSON ?? ""
+
+        if shouldFailOnOrderFilled {
+            throw NSError(
+                domain: "TestError", code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Test error in onOrderFilled"])
+        }
+    }
+
+    func onError(_ err: Error?) {
+        errorCalled = true
+        lastError = err
+    }
+
+    func onStrategyError(_ symbol: String?, timestamp: Int64, err: Error?) {
+        strategyErrorCalled = true
+        lastError = err
+    }
+
+    /// Reset all tracking state
+    func reset() {
+        engineStartCalled = false
+        engineStopCalled = false
+        marketDataCalled = false
+        orderPlacedCalled = false
+        orderFilledCalled = false
+        errorCalled = false
+        strategyErrorCalled = false
+        lastSymbols = []
+        lastInterval = ""
+        lastPreviousDataPath = ""
+        lastError = nil
+        marketDataCount = 0
+        orderPlacedCount = 0
+        orderFilledCount = 0
+        lastOrderJSON = ""
+        shouldFailOnEngineStart = false
+        shouldFailOnMarketData = false
+        shouldFailOnOrderPlaced = false
+        shouldFailOnOrderFilled = false
     }
 }
 

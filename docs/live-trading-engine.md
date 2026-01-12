@@ -176,7 +176,7 @@ type LiveTradingCallbacks struct {
     OnStrategyError *OnStrategyErrorCallback
 }
 
-type OnEngineStartCallback func(symbols []string, interval string) error
+type OnEngineStartCallback func(symbols []string, interval string, previousDataPath string) error
 type OnEngineStopCallback func(err error)
 type OnMarketDataCallback func(data types.MarketData) error
 type OnOrderPlacedCallback func(order types.ExecuteOrder) error
@@ -305,7 +305,13 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks LiveTradingCall
 
     // 3. Call OnEngineStart callback
     if callbacks.OnEngineStart != nil {
-        if err := (*callbacks.OnEngineStart)(e.config.Symbols, e.config.Interval); err != nil {
+        // Determine previousDataPath - if persistence is enabled, provide the parquet file path
+        previousDataPath := ""
+        if e.streamingWriter != nil {
+            previousDataPath = e.streamingWriter.GetOutputPath()
+        }
+        
+        if err := (*callbacks.OnEngineStart)(e.config.Symbols, e.config.Interval, previousDataPath); err != nil {
             return err
         }
     }
@@ -1136,10 +1142,11 @@ func (s *LiveTradingE2ETestSuite) TestBasicStrategyExecution() {
     var dataPointsProcessed int
     var engineStarted, engineStopped bool
 
-    onStart := func(symbols []string, interval string) error {
+    onStart := func(symbols []string, interval string, previousDataPath string) error {
         engineStarted = true
         s.Equal([]string{"BTCUSDT"}, symbols)
         s.Equal("1m", interval)
+        // previousDataPath will be empty string if persistence is not enabled
         return nil
     }
 
@@ -1303,8 +1310,11 @@ func main() {
     }()
 
     // Define callbacks
-    onStart := func(symbols []string, interval string) error {
+    onStart := func(symbols []string, interval string, previousDataPath string) error {
         log.Printf("Engine started: symbols=%v, interval=%s\n", symbols, interval)
+        if previousDataPath != "" {
+            log.Printf("Previous data available at: %s\n", previousDataPath)
+        }
         return nil
     }
     onMarketData := func(data types.MarketData) error {
