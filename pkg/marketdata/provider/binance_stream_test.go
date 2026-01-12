@@ -70,6 +70,8 @@ func TestBinanceStreamSuite(t *testing.T) {
 }
 
 func (suite *BinanceStreamTestSuite) TestStreamSingleSymbol() {
+	// Note: Stream only emits finalized candles (IsFinal=true)
+	// Both events must have IsFinal=true to be yielded
 	events := []*BinanceWsKlineEvent{
 		{
 			Symbol: "BTCUSDT",
@@ -80,7 +82,7 @@ func (suite *BinanceStreamTestSuite) TestStreamSingleSymbol() {
 				Low:       "41800.00",
 				Close:     "42300.00",
 				Volume:    "1000.5",
-				IsFinal:   false,
+				IsFinal:   true, // Must be true to be yielded
 			},
 		},
 		{
@@ -135,6 +137,7 @@ func (suite *BinanceStreamTestSuite) TestStreamSingleSymbol() {
 
 func (suite *BinanceStreamTestSuite) TestStreamMultipleSymbols() {
 	// Create a mock that returns events for both symbols
+	// Note: Stream only emits finalized candles (IsFinal=true)
 	mockWs := &mockBinanceWebSocketService{
 		events: []*BinanceWsKlineEvent{
 			{
@@ -146,6 +149,7 @@ func (suite *BinanceStreamTestSuite) TestStreamMultipleSymbols() {
 					Low:       "41800.00",
 					Close:     "42300.00",
 					Volume:    "1000.0",
+					IsFinal:   true, // Must be true to be yielded
 				},
 			},
 		},

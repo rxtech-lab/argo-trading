@@ -415,6 +415,12 @@ func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval s
 				defer wg.Done()
 
 				handler := func(event *BinanceWsKlineEvent) {
+					// Only emit finalized candles (IsFinal=true)
+					// This ensures we only persist and process complete candle data
+					if !event.Kline.IsFinal {
+						return
+					}
+
 					marketData := convertWsKlineToMarketData(event)
 
 					select {
