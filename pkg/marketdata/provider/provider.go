@@ -2,12 +2,21 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"time"
 
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/writer"
+)
+
+// ProviderType defines the type of market data provider.
+type ProviderType string
+
+const (
+	ProviderPolygon ProviderType = "polygon"
+	ProviderBinance ProviderType = "binance"
 )
 
 type OnDownloadProgress = func(current float64, total float64, message string)
@@ -26,4 +35,21 @@ type Provider interface {
 	// Uses Go 1.23+ iter.Seq2 pattern for streaming data.
 	// The iterator yields MarketData and error pairs. Cancel the context to stop streaming.
 	Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error]
+}
+
+// NewMarketDataProvider creates a new market data provider based on the provider type.
+func NewMarketDataProvider(providerType ProviderType, config any) (Provider, error) {
+	switch providerType {
+	case ProviderBinance:
+		return NewBinanceClient()
+	case ProviderPolygon:
+		apiKey, ok := config.(string)
+		if !ok {
+			return nil, fmt.Errorf("polygon provider requires API key string config")
+		}
+
+		return NewPolygonClient(apiKey)
+	default:
+		return nil, fmt.Errorf("unsupported market data provider: %s", providerType)
+	}
 }

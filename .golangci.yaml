@@ -6,6 +6,7 @@ linters:
     # Checks that all struct fields are filled when initializing structs
     - exhaustruct
   disable:
+    - wsl # deprecated, replaced by wsl_v5
     - cyclop
     - depguard
     - funlen
