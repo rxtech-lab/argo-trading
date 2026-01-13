@@ -23,10 +23,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25.5"
           check-latest: true
@@ -57,7 +57,7 @@ jobs:
           SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: argo-trading-macos-${{ github.sha }}
           path: output/trading-backtest
@@ -65,16 +65,15 @@ jobs:
 
   build-linux:
     name: Build Linux Binary
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25.5"
-          check-latest: true
 
       - name: Install dependencies
         run: go mod download
@@ -100,7 +99,7 @@ jobs:
           zip -j assets/ArgoTrading_Linux_amd64.zip output/trading-backtest
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: argo-trading-linux-${{ github.sha }}
           path: |
