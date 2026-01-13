@@ -19,3 +19,4 @@ mock_*.parquet
 docs/index.*
 *.test
 *.html
+!/cmd/data

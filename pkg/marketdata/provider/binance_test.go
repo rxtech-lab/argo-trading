@@ -70,10 +70,44 @@ type mockBinanceAPIClient struct {
 	callCount     int
 	klinesPerCall [][]*binance.Kline
 	errorsPerCall []error
+	// For price validation testing
+	prices    []*SymbolPrice
+	pricesErr error
 }
 
 func (m *mockBinanceAPIClient) NewKlinesService() BinanceKlinesService {
 	return &mockBinanceKlinesService{client: m}
+}
+
+func (m *mockBinanceAPIClient) NewListPricesService() BinanceListPricesService {
+	return &mockBinanceListPricesService{client: m}
+}
+
+// mockBinanceListPricesService implements BinanceListPricesService for testing.
+type mockBinanceListPricesService struct {
+	client  *mockBinanceAPIClient
+	symbols []string
+}
+
+func (m *mockBinanceListPricesService) Symbols(symbols []string) BinanceListPricesService {
+	m.symbols = symbols
+	return m
+}
+
+func (m *mockBinanceListPricesService) Do(_ context.Context) ([]*SymbolPrice, error) {
+	if m.client.pricesErr != nil {
+		return nil, m.client.pricesErr
+	}
+	// If prices are set, return them; otherwise return prices for all requested symbols
+	if m.client.prices != nil {
+		return m.client.prices, nil
+	}
+	// Default: return prices for all requested symbols (valid symbols)
+	result := make([]*SymbolPrice, len(m.symbols))
+	for i, sym := range m.symbols {
+		result[i] = &SymbolPrice{Symbol: sym, Price: "100.00"}
+	}
+	return result, nil
 }
 
 type mockBinanceKlinesService struct {

@@ -9,6 +9,46 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// mockStreamAPIClient implements BinanceAPIClient for stream testing.
+// It returns valid prices for all symbols by default.
+type mockStreamAPIClient struct {
+	prices    []*SymbolPrice
+	pricesErr error
+}
+
+func (m *mockStreamAPIClient) NewKlinesService() BinanceKlinesService {
+	return nil // Not used in stream tests
+}
+
+func (m *mockStreamAPIClient) NewListPricesService() BinanceListPricesService {
+	return &mockStreamListPricesService{client: m}
+}
+
+type mockStreamListPricesService struct {
+	client  *mockStreamAPIClient
+	symbols []string
+}
+
+func (m *mockStreamListPricesService) Symbols(symbols []string) BinanceListPricesService {
+	m.symbols = symbols
+	return m
+}
+
+func (m *mockStreamListPricesService) Do(_ context.Context) ([]*SymbolPrice, error) {
+	if m.client.pricesErr != nil {
+		return nil, m.client.pricesErr
+	}
+	if m.client.prices != nil {
+		return m.client.prices, nil
+	}
+	// Default: return prices for all requested symbols (valid symbols)
+	result := make([]*SymbolPrice, len(m.symbols))
+	for i, sym := range m.symbols {
+		result[i] = &SymbolPrice{Symbol: sym, Price: "100.00"}
+	}
+	return result, nil
+}
+
 // mockBinanceWebSocketService implements BinanceWebSocketService for testing.
 type mockBinanceWebSocketService struct {
 	events     []*BinanceWsKlineEvent // Events to emit
@@ -100,7 +140,7 @@ func (suite *BinanceStreamTestSuite) TestStreamSingleSymbol() {
 	}
 
 	mockWs := &mockBinanceWebSocketService{events: events}
-	client := NewBinanceClientWithWebSocket(nil, mockWs)
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -155,7 +195,7 @@ func (suite *BinanceStreamTestSuite) TestStreamMultipleSymbols() {
 		},
 	}
 
-	client := NewBinanceClientWithWebSocket(nil, mockWs)
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -174,7 +214,7 @@ func (suite *BinanceStreamTestSuite) TestStreamMultipleSymbols() {
 
 func (suite *BinanceStreamTestSuite) TestStreamInvalidInterval() {
 	mockWs := &mockBinanceWebSocketService{}
-	client := NewBinanceClientWithWebSocket(nil, mockWs)
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
 
 	ctx := context.Background()
 
@@ -194,7 +234,7 @@ func (suite *BinanceStreamTestSuite) TestStreamInvalidInterval() {
 
 func (suite *BinanceStreamTestSuite) TestStreamEmptySymbols() {
 	mockWs := &mockBinanceWebSocketService{}
-	client := NewBinanceClientWithWebSocket(nil, mockWs)
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
 
 	ctx := context.Background()
 
@@ -232,7 +272,7 @@ func (suite *BinanceStreamTestSuite) TestStreamContextCancellation() {
 		events:     events,
 		eventDelay: 50 * time.Millisecond,
 	}
-	client := NewBinanceClientWithWebSocket(nil, mockWs)
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -258,7 +298,7 @@ func (suite *BinanceStreamTestSuite) TestStreamConnectionError() {
 	mockWs := &mockBinanceWebSocketService{
 		startError: errors.New("connection refused"),
 	}
-	client := NewBinanceClientWithWebSocket(nil, mockWs)
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -283,7 +323,7 @@ func (suite *BinanceStreamTestSuite) TestStreamWebSocketError() {
 		events: []*BinanceWsKlineEvent{},
 		errors: []error{errors.New("websocket disconnected")},
 	}
-	client := NewBinanceClientWithWebSocket(nil, mockWs)
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -329,6 +369,7 @@ func (suite *BinanceStreamTestSuite) TestConvertWsKlineToMarketData() {
 
 func (suite *BinanceStreamTestSuite) TestIsValidBinanceInterval() {
 	// Valid intervals
+	suite.True(isValidBinanceInterval("1s"))
 	suite.True(isValidBinanceInterval("1m"))
 	suite.True(isValidBinanceInterval("3m"))
 	suite.True(isValidBinanceInterval("5m"))
@@ -354,4 +395,114 @@ func (suite *BinanceStreamTestSuite) TestIsValidBinanceInterval() {
 	suite.False(isValidBinanceInterval("2M"))
 	suite.False(isValidBinanceInterval("invalid"))
 	suite.False(isValidBinanceInterval(""))
+}
+
+func (suite *BinanceStreamTestSuite) TestValidateSymbolsValid() {
+	mockAPI := &mockStreamAPIClient{
+		prices: []*SymbolPrice{
+			{Symbol: "BTCUSDT", Price: "42000.00"},
+			{Symbol: "ETHUSDT", Price: "2300.00"},
+		},
+	}
+	client := NewBinanceClientWithWebSocket(mockAPI, nil)
+
+	err := client.ValidateSymbols(context.Background(), []string{"BTCUSDT", "ETHUSDT"})
+	suite.NoError(err)
+}
+
+func (suite *BinanceStreamTestSuite) TestValidateSymbolsInvalid() {
+	mockAPI := &mockStreamAPIClient{
+		// Return prices only for BTCUSDT, not INVALID
+		prices: []*SymbolPrice{
+			{Symbol: "BTCUSDT", Price: "42000.00"},
+		},
+	}
+	client := NewBinanceClientWithWebSocket(mockAPI, nil)
+
+	err := client.ValidateSymbols(context.Background(), []string{"BTCUSDT", "INVALID"})
+	suite.Error(err)
+	suite.Contains(err.Error(), "invalid symbols")
+	suite.Contains(err.Error(), "INVALID")
+}
+
+func (suite *BinanceStreamTestSuite) TestValidateSymbolsAPIError() {
+	mockAPI := &mockStreamAPIClient{
+		pricesErr: errors.New("API error: rate limited"),
+	}
+	client := NewBinanceClientWithWebSocket(mockAPI, nil)
+
+	err := client.ValidateSymbols(context.Background(), []string{"BTCUSDT"})
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to validate symbols")
+	suite.Contains(err.Error(), "rate limited")
+}
+
+func (suite *BinanceStreamTestSuite) TestValidateSymbolsEmpty() {
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, nil)
+
+	err := client.ValidateSymbols(context.Background(), []string{})
+	suite.NoError(err)
+}
+
+func (suite *BinanceStreamTestSuite) TestStreamWithInvalidSymbol() {
+	mockAPI := &mockStreamAPIClient{
+		// Return empty prices - simulating invalid symbol
+		prices: []*SymbolPrice{},
+	}
+	mockWs := &mockBinanceWebSocketService{}
+	client := NewBinanceClientWithWebSocket(mockAPI, mockWs)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	var gotError bool
+	var errorMsg string
+	for _, err := range client.Stream(ctx, []string{"INVALID"}, "1m") {
+		if err != nil {
+			gotError = true
+			errorMsg = err.Error()
+			break
+		}
+	}
+
+	suite.True(gotError)
+	suite.Contains(errorMsg, "invalid symbols")
+}
+
+func (suite *BinanceStreamTestSuite) TestStreamOneSecondInterval() {
+	// Test streaming with 1s interval - Binance supports 1 second candles
+	events := []*BinanceWsKlineEvent{
+		{
+			Symbol: "BTCUSDT",
+			Kline: BinanceWsKline{
+				StartTime: 1704067200000,
+				Open:      "42000.50",
+				High:      "42001.00",
+				Low:       "41999.00",
+				Close:     "42000.75",
+				Volume:    "10.5",
+				IsFinal:   true,
+			},
+		},
+	}
+
+	mockWs := &mockBinanceWebSocketService{events: events}
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	var received int
+	for data, err := range client.Stream(ctx, []string{"BTCUSDT"}, "1s") {
+		if err != nil {
+			suite.Fail("unexpected error: %v", err)
+			break
+		}
+		suite.Equal("BTCUSDT", data.Symbol)
+		suite.InDelta(42000.50, data.Open, 0.01)
+		suite.InDelta(42000.75, data.Close, 0.01)
+		received++
+	}
+
+	suite.Equal(1, received)
 }

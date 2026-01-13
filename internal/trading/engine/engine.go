@@ -67,7 +67,7 @@ type LiveTradingEngineConfig struct {
 	Symbols []string `json:"symbols" yaml:"symbols" jsonschema:"description=List of symbols to stream and trade" validate:"required,min=1"`
 
 	// Interval for market data streaming (e.g., "1m", "5m", "1h")
-	Interval string `json:"interval" yaml:"interval" jsonschema:"description=Candlestick interval for streaming data,default=1m" validate:"required"`
+	Interval string `json:"interval" yaml:"interval" jsonschema:"description=Candlestick interval for streaming data,default=1m,enum=1s,enum=1m,enum=3m,enum=5m,enum=15m,enum=30m,enum=1h,enum=2h,enum=4h,enum=6h,enum=8h,enum=12h,enum=1d,enum=3d,enum=1w,enum=1M" validate:"required,oneof=1s 1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 3d 1w 1M"`
 
 	// MarketDataCacheSize is the number of historical data points to cache per symbol
 	// for indicator calculations (default: 1000)
