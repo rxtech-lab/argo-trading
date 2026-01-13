@@ -28,6 +28,19 @@ type BinanceKlinesService interface {
 // BinanceAPIClient defines the interface for the Binance API client.
 type BinanceAPIClient interface {
 	NewKlinesService() BinanceKlinesService
+	NewListPricesService() BinanceListPricesService
+}
+
+// SymbolPrice represents the price of a symbol.
+type SymbolPrice struct {
+	Symbol string
+	Price  string
+}
+
+// BinanceListPricesService defines the interface for fetching symbol prices.
+type BinanceListPricesService interface {
+	Symbols(symbols []string) BinanceListPricesService
+	Do(ctx context.Context) ([]*SymbolPrice, error)
 }
 
 // binanceClientWrapper wraps the real binance.Client to implement BinanceAPIClient.
@@ -37,6 +50,10 @@ type binanceClientWrapper struct {
 
 func (w *binanceClientWrapper) NewKlinesService() BinanceKlinesService {
 	return &binanceKlinesServiceWrapper{service: w.client.NewKlinesService()}
+}
+
+func (w *binanceClientWrapper) NewListPricesService() BinanceListPricesService {
+	return &binanceListPricesServiceWrapper{service: w.client.NewListPricesService()}
 }
 
 // binanceKlinesServiceWrapper wraps the real binance.KlinesService.
@@ -70,6 +87,34 @@ func (w *binanceKlinesServiceWrapper) EndTime(endTime int64) BinanceKlinesServic
 
 func (w *binanceKlinesServiceWrapper) Do(ctx context.Context) ([]*binance.Kline, error) {
 	return w.service.Do(ctx)
+}
+
+// binanceListPricesServiceWrapper wraps the real binance.ListPricesService.
+type binanceListPricesServiceWrapper struct {
+	service *binance.ListPricesService
+}
+
+func (w *binanceListPricesServiceWrapper) Symbols(symbols []string) BinanceListPricesService {
+	w.service = w.service.Symbols(symbols)
+
+	return w
+}
+
+func (w *binanceListPricesServiceWrapper) Do(ctx context.Context) ([]*SymbolPrice, error) {
+	prices, err := w.service.Do(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*SymbolPrice, len(prices))
+	for i, p := range prices {
+		result[i] = &SymbolPrice{
+			Symbol: p.Symbol,
+			Price:  p.Price,
+		}
+	}
+
+	return result, nil
 }
 
 // BinanceWsKline represents the kline data within a WebSocket event.
@@ -171,6 +216,42 @@ func NewBinanceClientWithWebSocket(apiClient BinanceAPIClient, wsService Binance
 
 func (c *BinanceClient) ConfigWriter(w writer.MarketDataWriter) {
 	c.writer = w
+}
+
+// ValidateSymbols checks if all provided symbols are valid Binance trading pairs.
+// It uses the price ticker API to verify symbols exist and are actively trading.
+// Returns an error listing any invalid symbols.
+func (c *BinanceClient) ValidateSymbols(ctx context.Context, symbols []string) error {
+	if len(symbols) == 0 {
+		return nil
+	}
+
+	prices, err := c.apiClient.NewListPricesService().
+		Symbols(symbols).
+		Do(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to validate symbols: %w", err)
+	}
+
+	// Build a map of returned symbols for quick lookup
+	priceMap := make(map[string]bool, len(prices))
+	for _, p := range prices {
+		priceMap[p.Symbol] = true
+	}
+
+	// Check that we got prices for all requested symbols
+	var invalid []string
+	for _, sym := range symbols {
+		if !priceMap[sym] {
+			invalid = append(invalid, sym)
+		}
+	}
+
+	if len(invalid) > 0 {
+		return fmt.Errorf("invalid symbols: %v", invalid)
+	}
+
+	return nil
 }
 
 // Download downloads the historical klines data for the given ticker and date range from Binance.
@@ -380,6 +461,14 @@ func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval s
 			return
 		}
 
+		// Validate that all symbols are valid Binance trading pairs
+		if err := c.ValidateSymbols(ctx, symbols); err != nil {
+			//nolint:exhaustruct // empty struct for error case
+			yield(types.MarketData{}, err)
+
+			return
+		}
+
 		// Channel for market data from all WebSocket connections
 		dataChan := make(chan types.MarketData, 100)
 		errChan := make(chan error, len(symbols)*2)
@@ -568,6 +657,7 @@ func convertWsKlineToMarketData(event *BinanceWsKlineEvent) types.MarketData {
 // isValidBinanceInterval validates that the interval is supported by Binance.
 func isValidBinanceInterval(interval string) bool {
 	validIntervals := map[string]bool{
+		"1s": true,
 		"1m": true, "3m": true, "5m": true, "15m": true, "30m": true,
 		"1h": true, "2h": true, "4h": true, "6h": true, "8h": true, "12h": true,
 		"1d": true, "3d": true, "1w": true, "1M": true,
