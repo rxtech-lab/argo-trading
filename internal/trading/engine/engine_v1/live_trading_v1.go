@@ -3,6 +3,7 @@ package engine_v1
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
@@ -13,6 +14,10 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	"github.com/rxtech-lab/argo-trading/internal/runtime/wasm"
 	"github.com/rxtech-lab/argo-trading/internal/trading/engine"
+	"github.com/rxtech-lab/argo-trading/internal/trading/engine/engine_v1/prefetch"
+	"github.com/rxtech-lab/argo-trading/internal/trading/engine/engine_v1/session"
+	"github.com/rxtech-lab/argo-trading/internal/trading/engine/engine_v1/stats"
+	"github.com/rxtech-lab/argo-trading/internal/trading/engine/engine_v1/writers"
 	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/version"
@@ -47,6 +52,21 @@ type LiveTradingEngineV1 struct {
 	providerName         string                         // Name of the data provider (e.g., "binance")
 	streamingWriter      *writer.StreamingDuckDBWriter  // Writes finalized candles to parquet
 	persistentDataSource *PersistentStreamingDataSource // Reads from parquet for indicator calculations
+
+	// Session management
+	sessionManager *session.SessionManager
+
+	// Statistics tracking
+	statsTracker *stats.StatsTracker
+
+	// Prefetch management
+	prefetchManager *prefetch.PrefetchManager
+
+	// Parquet writers for orders, trades, marks, logs
+	ordersWriter *writers.OrdersWriter
+	tradesWriter *writers.TradesWriter
+	marksWriter  *writers.MarksWriter
+	logsWriter   *writers.LogsWriter
 }
 
 // NewLiveTradingEngineV1 creates a new LiveTradingEngineV1 instance without persistence.
@@ -73,6 +93,13 @@ func NewLiveTradingEngineV1() (engine.LiveTradingEngine, error) {
 		providerName:         "",
 		streamingWriter:      nil,
 		persistentDataSource: nil,
+		sessionManager:       nil,
+		statsTracker:         nil,
+		prefetchManager:      nil,
+		ordersWriter:         nil,
+		tradesWriter:         nil,
+		marksWriter:          nil,
+		logsWriter:           nil,
 	}, nil
 }
 
@@ -102,6 +129,13 @@ func NewLiveTradingEngineV1WithPersistence(dataDir, providerName string) (engine
 		providerName:         providerName,
 		streamingWriter:      nil,
 		persistentDataSource: nil,
+		sessionManager:       nil,
+		statsTracker:         nil,
+		prefetchManager:      nil,
+		ordersWriter:         nil,
+		tradesWriter:         nil,
+		marksWriter:          nil,
+		logsWriter:           nil,
 	}, nil
 }
 
@@ -162,6 +196,60 @@ func (e *LiveTradingEngineV1) Initialize(config engine.LiveTradingEngineConfig) 
 		if err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create log storage", err)
 		}
+	}
+
+	// Initialize session management if DataOutputPath is configured
+	if config.DataOutputPath != "" {
+		e.sessionManager = session.NewSessionManager(e.log)
+		if err := e.sessionManager.Initialize(config.DataOutputPath); err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize session manager", err)
+		}
+
+		runPath := e.sessionManager.GetCurrentRunPath()
+
+		e.log.Info("Session initialized",
+			zap.String("run_id", e.sessionManager.GetRunID()),
+			zap.String("run_path", runPath),
+		)
+
+		// Initialize parquet writers in the session folder
+		ordersPath := filepath.Join(runPath, "orders.parquet")
+		e.ordersWriter = writers.NewOrdersWriter(ordersPath)
+		if err := e.ordersWriter.Initialize(); err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize orders writer", err)
+		}
+
+		tradesPath := filepath.Join(runPath, "trades.parquet")
+		e.tradesWriter = writers.NewTradesWriter(tradesPath)
+		if err := e.tradesWriter.Initialize(); err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize trades writer", err)
+		}
+
+		marksPath := filepath.Join(runPath, "marks.parquet")
+		e.marksWriter = writers.NewMarksWriter(marksPath)
+		if err := e.marksWriter.Initialize(); err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize marks writer", err)
+		}
+
+		logsPath := filepath.Join(runPath, "logs.parquet")
+		e.logsWriter = writers.NewLogsWriter(logsPath)
+		if err := e.logsWriter.Initialize(); err != nil {
+			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize logs writer", err)
+		}
+
+		// Initialize stats tracker (will be fully initialized after strategy loads with strategy info)
+		e.statsTracker = stats.NewStatsTracker(e.log)
+		e.statsTracker.SetFilePaths(
+			ordersPath,
+			tradesPath,
+			marksPath,
+			logsPath,
+			"", // market data path set later
+			filepath.Join(runPath, "stats.yaml"),
+		)
+
+		// Initialize prefetch manager (will be fully initialized before Run with provider)
+		e.prefetchManager = prefetch.NewPrefetchManager(e.log)
 	}
 
 	e.initialized = true
@@ -238,11 +326,63 @@ func (e *LiveTradingEngineV1) SetTradingProvider(tradingProvider tradingprovider
 }
 
 // Run implements engine.LiveTradingEngine.
+//
+//nolint:gocyclo,maintidx // Run orchestrates the live trading loop which requires handling many cases
 func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTradingCallbacks) error {
 	var runErr error
+	firstDataReceived := false
 
 	// Always call OnEngineStop and cleanup when Run exits
 	defer func() {
+		// Emit stopped status
+		if callbacks.OnStatusUpdate != nil {
+			_ = (*callbacks.OnStatusUpdate)(types.EngineStatusStopped)
+		}
+
+		// Write final stats
+		if e.statsTracker != nil {
+			if err := e.statsTracker.WriteStatsYAML(); err != nil {
+				e.log.Warn("Failed to write final stats", zap.Error(err))
+			}
+		}
+
+		// Cleanup parquet writers
+		if e.ordersWriter != nil {
+			if err := e.ordersWriter.Flush(); err != nil {
+				e.log.Warn("Failed to flush orders writer", zap.Error(err))
+			}
+			if err := e.ordersWriter.Close(); err != nil {
+				e.log.Warn("Failed to close orders writer", zap.Error(err))
+			}
+		}
+
+		if e.tradesWriter != nil {
+			if err := e.tradesWriter.Flush(); err != nil {
+				e.log.Warn("Failed to flush trades writer", zap.Error(err))
+			}
+			if err := e.tradesWriter.Close(); err != nil {
+				e.log.Warn("Failed to close trades writer", zap.Error(err))
+			}
+		}
+
+		if e.marksWriter != nil {
+			if err := e.marksWriter.Flush(); err != nil {
+				e.log.Warn("Failed to flush marks writer", zap.Error(err))
+			}
+			if err := e.marksWriter.Close(); err != nil {
+				e.log.Warn("Failed to close marks writer", zap.Error(err))
+			}
+		}
+
+		if e.logsWriter != nil {
+			if err := e.logsWriter.Flush(); err != nil {
+				e.log.Warn("Failed to flush logs writer", zap.Error(err))
+			}
+			if err := e.logsWriter.Close(); err != nil {
+				e.log.Warn("Failed to close logs writer", zap.Error(err))
+			}
+		}
+
 		// Cleanup persistence components
 		if e.streamingWriter != nil {
 			if err := e.streamingWriter.Flush(); err != nil {
@@ -277,6 +417,51 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		runErr = err
 
 		return err
+	}
+
+	// Initialize stats tracker with strategy info
+	if e.statsTracker != nil && e.sessionManager != nil {
+		strategyInfo := types.StrategyInfo{
+			ID:      "", // Strategy ID not available from runtime
+			Version: "", // Strategy version not available from runtime
+			Name:    e.strategy.Name(),
+		}
+		e.statsTracker.Initialize(
+			e.config.Symbols,
+			e.sessionManager.GetRunID(),
+			e.sessionManager.GetSessionStart(),
+			strategyInfo,
+		)
+
+		// Update market data file path if streaming writer is available
+		if e.streamingWriter != nil {
+			e.statsTracker.SetFilePaths(
+				filepath.Join(e.sessionManager.GetCurrentRunPath(), "orders.parquet"),
+				filepath.Join(e.sessionManager.GetCurrentRunPath(), "trades.parquet"),
+				filepath.Join(e.sessionManager.GetCurrentRunPath(), "marks.parquet"),
+				filepath.Join(e.sessionManager.GetCurrentRunPath(), "logs.parquet"),
+				e.streamingWriter.GetOutputPath(),
+				filepath.Join(e.sessionManager.GetCurrentRunPath(), "stats.yaml"),
+			)
+		}
+	}
+
+	// Initialize prefetch manager with provider and streaming writer
+	if e.prefetchManager != nil && e.streamingWriter != nil {
+		e.prefetchManager.Initialize(
+			e.config.Prefetch,
+			e.marketDataProvider,
+			e.streamingWriter,
+			e.config.Interval,
+			callbacks.OnStatusUpdate,
+		)
+
+		// Execute prefetch before starting stream
+		if err := e.prefetchManager.ExecutePrefetch(ctx, e.config.Symbols); err != nil {
+			e.log.Warn("Prefetch failed, continuing without historical data",
+				zap.Error(err),
+			)
+		}
 	}
 
 	// Call OnEngineStart callback
@@ -340,6 +525,51 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			continue
 		}
 
+		// Handle first data point - check for gaps
+		if !firstDataReceived {
+			firstDataReceived = true
+
+			if e.prefetchManager != nil {
+				if err := e.prefetchManager.HandleStreamStart(ctx, data.Time, e.config.Symbols); err != nil {
+					e.log.Warn("Failed to handle stream start",
+						zap.Error(err),
+					)
+				}
+			}
+
+			// Emit running status if no prefetch manager
+			if e.prefetchManager == nil && callbacks.OnStatusUpdate != nil {
+				_ = (*callbacks.OnStatusUpdate)(types.EngineStatusRunning)
+			}
+		}
+
+		// Handle date boundary if session manager is available
+		if e.sessionManager != nil {
+			dateBoundary, err := e.sessionManager.HandleDateBoundary(data.Time)
+			if err != nil {
+				e.log.Warn("Failed to handle date boundary",
+					zap.Error(err),
+				)
+			}
+
+			if dateBoundary && e.statsTracker != nil {
+				// Date changed - handle date boundary in stats tracker
+				newDate := data.Time.Format("2006-01-02")
+				e.statsTracker.HandleDateBoundary(newDate)
+
+				// Reinitialize writers for new date folder
+				newRunPath := e.sessionManager.GetCurrentRunPath()
+				e.statsTracker.SetFilePaths(
+					filepath.Join(newRunPath, "orders.parquet"),
+					filepath.Join(newRunPath, "trades.parquet"),
+					filepath.Join(newRunPath, "marks.parquet"),
+					filepath.Join(newRunPath, "logs.parquet"),
+					e.streamingWriter.GetOutputPath(),
+					filepath.Join(newRunPath, "stats.yaml"),
+				)
+			}
+		}
+
 		// Persist finalized candle to parquet file if persistence is enabled
 		if e.streamingWriter != nil {
 			if writeErr := e.streamingWriter.Write(data); writeErr != nil {
@@ -378,6 +608,50 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 				zap.Error(err),
 			)
 			// Continue processing - don't abort on strategy errors
+		}
+
+		// Write marks to parquet if available
+		if e.marksWriter != nil && e.marker != nil {
+			marks, _ := e.marker.GetMarks()
+			for _, mark := range marks {
+				if err := e.marksWriter.Write(mark); err != nil {
+					e.log.Warn("Failed to write mark",
+						zap.Error(err),
+					)
+				}
+			}
+		}
+
+		// Write logs to parquet if available
+		if e.logsWriter != nil && e.logStorage != nil {
+			logs, _ := e.logStorage.GetLogs()
+			for _, logEntry := range logs {
+				if err := e.logsWriter.Write(logEntry); err != nil {
+					e.log.Warn("Failed to write log",
+						zap.Error(err),
+					)
+				}
+			}
+		}
+
+		// Update and emit stats periodically
+		if e.statsTracker != nil {
+			// Write stats to disk
+			if err := e.statsTracker.WriteStatsYAML(); err != nil {
+				e.log.Warn("Failed to write stats",
+					zap.Error(err),
+				)
+			}
+
+			// Emit stats callback
+			if callbacks.OnStatsUpdate != nil {
+				stats := e.statsTracker.GetCumulativeStats()
+				if err := (*callbacks.OnStatsUpdate)(stats); err != nil {
+					e.log.Warn("OnStatsUpdate callback failed",
+						zap.Error(err),
+					)
+				}
+			}
 		}
 	}
 

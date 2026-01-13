@@ -1172,6 +1172,465 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_AllCallbacksNil() {
 }
 
 // ============================================================================
+// Run Tests with DataOutputPath
+// ============================================================================
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_WithDataOutputPath() {
+	// Create temp directory for data output
+	tempDir, err := os.MkdirTemp("", "live-trading-data-output-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:        []string{"BTCUSDT"},
+		Interval:       "1m",
+		DataOutputPath: tempDir, // Enable session management
+		EnableLogging:  true,    // Enable marks and logs
+	})
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+
+	// Verify session manager was initialized
+	s.NotNil(e.sessionManager)
+	s.NotEmpty(e.sessionManager.GetRunID())
+
+	// Verify writers were initialized
+	s.NotNil(e.ordersWriter)
+	s.NotNil(e.tradesWriter)
+	s.NotNil(e.marksWriter)
+	s.NotNil(e.logsWriter)
+
+	// Verify stats tracker was initialized
+	s.NotNil(e.statsTracker)
+
+	// Verify prefetch manager was initialized
+	s.NotNil(e.prefetchManager)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).Times(2)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+		createTestMarketData("BTCUSDT", now.Add(time.Minute), 50100),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	callbacks := engine.LiveTradingCallbacks{}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	// Verify run path exists
+	runPath := e.sessionManager.GetCurrentRunPath()
+	s.DirExists(runPath)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Stopped() {
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:  []string{"BTCUSDT"},
+		Interval: "1m",
+	})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).Times(2)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+		createTestMarketData("BTCUSDT", now.Add(time.Minute), 50100),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	var statusUpdates []types.EngineStatus
+	var mu sync.Mutex
+	onStatusUpdate := engine.OnStatusUpdateCallback(func(status types.EngineStatus) error {
+		mu.Lock()
+		defer mu.Unlock()
+		statusUpdates = append(statusUpdates, status)
+		return nil
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnStatusUpdate: &onStatusUpdate,
+	}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Should contain Running (no prefetch) and Stopped statuses
+	s.Contains(statusUpdates, types.EngineStatusRunning)
+	s.Contains(statusUpdates, types.EngineStatusStopped)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Running_NoPrefetch() {
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:  []string{"BTCUSDT"},
+		Interval: "1m",
+		// No DataOutputPath - no prefetch manager
+	})
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.Nil(e.prefetchManager) // Prefetch manager should be nil
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).Times(1)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	var statusUpdates []types.EngineStatus
+	var mu sync.Mutex
+	onStatusUpdate := engine.OnStatusUpdateCallback(func(status types.EngineStatus) error {
+		mu.Lock()
+		defer mu.Unlock()
+		statusUpdates = append(statusUpdates, status)
+		return nil
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnStatusUpdate: &onStatusUpdate,
+	}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Should get Running status on first data when no prefetch manager
+	s.Contains(statusUpdates, types.EngineStatusRunning)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Success() {
+	// Create temp directory for data output
+	tempDir, err := os.MkdirTemp("", "live-trading-stats-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:        []string{"BTCUSDT"},
+		Interval:       "1m",
+		DataOutputPath: tempDir, // Enable stats tracker
+	})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).Times(2)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+		createTestMarketData("BTCUSDT", now.Add(time.Minute), 50100),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	var statsUpdates []types.LiveTradeStats
+	var mu sync.Mutex
+	onStatsUpdate := engine.OnStatsUpdateCallback(func(stats types.LiveTradeStats) error {
+		mu.Lock()
+		defer mu.Unlock()
+		statsUpdates = append(statsUpdates, stats)
+		return nil
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnStatsUpdate: &onStatsUpdate,
+	}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Should have received stats updates (one per market data point)
+	s.Equal(2, len(statsUpdates))
+	// Verify stats contain proper data
+	for _, stats := range statsUpdates {
+		s.NotEmpty(stats.ID)
+		s.Equal([]string{"BTCUSDT"}, stats.Symbols)
+	}
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Error_Continues() {
+	// Create temp directory for data output
+	tempDir, err := os.MkdirTemp("", "live-trading-stats-error-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:        []string{"BTCUSDT"},
+		Interval:       "1m",
+		DataOutputPath: tempDir,
+	})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).Times(2)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+		createTestMarketData("BTCUSDT", now.Add(time.Minute), 50100),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	callCount := 0
+	onStatsUpdate := engine.OnStatsUpdateCallback(func(stats types.LiveTradeStats) error {
+		callCount++
+		return errors.New("stats callback error")
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnStatsUpdate: &onStatsUpdate,
+	}
+
+	// Should not fail - stats callback errors are logged but don't stop execution
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	// Callback should have been called for each data point
+	s.Equal(2, callCount)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_WritesMarks() {
+	// Create temp directory for data output
+	tempDir, err := os.MkdirTemp("", "live-trading-marks-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:        []string{"BTCUSDT"},
+		Interval:       "1m",
+		DataOutputPath: tempDir,
+		EnableLogging:  true, // Enable marks
+	})
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.NotNil(e.marker)
+	s.NotNil(e.marksWriter)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	// When ProcessData is called, add a mark
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).DoAndReturn(func(data types.MarketData) error {
+		// Add a mark via the marker
+		mark := types.Mark{
+			MarketDataId: data.Id,
+			Color:        types.MarkColorGreen,
+			Shape:        types.MarkShapeCircle,
+			Level:        types.MarkLevelInfo,
+			Title:        "Test Mark",
+		}
+		_ = e.marker.Mark(data, mark)
+		return nil
+	}).Times(1)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	callbacks := engine.LiveTradingCallbacks{}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	// Verify marks file was created
+	marksPath := filepath.Join(e.sessionManager.GetCurrentRunPath(), "marks.parquet")
+	s.FileExists(marksPath)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_WritesLogs() {
+	// Create temp directory for data output
+	tempDir, err := os.MkdirTemp("", "live-trading-logs-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:        []string{"BTCUSDT"},
+		Interval:       "1m",
+		DataOutputPath: tempDir,
+		EnableLogging:  true, // Enable logs
+	})
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.NotNil(e.logStorage)
+	s.NotNil(e.logsWriter)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	// When ProcessData is called, add a log entry
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).DoAndReturn(func(data types.MarketData) error {
+		// Add a log via the logStorage
+		logEntry := internalLog.LogEntry{
+			Timestamp: data.Time,
+			Symbol:    data.Symbol,
+			Level:     types.LogLevelInfo,
+			Message:   "Test log message",
+		}
+		_ = e.logStorage.Log(logEntry)
+		return nil
+	}).Times(1)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	callbacks := engine.LiveTradingCallbacks{}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	// Verify logs file was created
+	logsPath := filepath.Join(e.sessionManager.GetCurrentRunPath(), "logs.parquet")
+	s.FileExists(logsPath)
+}
+
+// ============================================================================
 // GetConfigSchema Tests
 // ============================================================================
 
