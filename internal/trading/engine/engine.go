@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"time"
 
 	"github.com/invopop/jsonschema"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
@@ -36,6 +37,12 @@ type OnErrorCallback func(err error)
 // OnStrategyErrorCallback is called when the strategy returns an error.
 type OnStrategyErrorCallback func(data types.MarketData, err error)
 
+// OnStatsUpdateCallback is called when trading statistics are updated.
+type OnStatsUpdateCallback func(stats types.LiveTradeStats) error
+
+// OnStatusUpdateCallback is called when engine status changes.
+type OnStatusUpdateCallback func(status types.EngineStatus) error
+
 // LiveTradingCallbacks holds all lifecycle callback functions for the live trading engine.
 // All fields are pointers - nil means no callback will be invoked.
 type LiveTradingCallbacks struct {
@@ -59,6 +66,28 @@ type LiveTradingCallbacks struct {
 
 	// OnStrategyError is called when the strategy returns an error.
 	OnStrategyError *OnStrategyErrorCallback
+
+	// OnStatsUpdate is called when trading statistics are updated.
+	OnStatsUpdate *OnStatsUpdateCallback
+
+	// OnStatusUpdate is called when engine status changes.
+	OnStatusUpdate *OnStatusUpdateCallback
+}
+
+// PrefetchConfig holds configuration for historical data prefetching.
+type PrefetchConfig struct {
+	// Enabled enables historical data prefetching before live trading starts
+	Enabled bool `json:"enabled" yaml:"enabled" jsonschema:"description=Enable historical data prefetch"`
+
+	// StartTimeType specifies how to determine the prefetch start time.
+	// "date" uses StartTime as absolute time, "days" uses Days relative to now.
+	StartTimeType string `json:"start_time_type" yaml:"start_time_type" jsonschema:"description=How to specify start time,enum=date,enum=days"`
+
+	// StartTime is the absolute start time for prefetching (used when StartTimeType is "date")
+	StartTime time.Time `json:"start_time" yaml:"start_time" jsonschema:"description=Absolute start time (when type is date)"`
+
+	// Days is the number of days of history to prefetch (used when StartTimeType is "days")
+	Days int `json:"days" yaml:"days" jsonschema:"description=Number of days to prefetch (when type is days)"`
 }
 
 // LiveTradingEngineConfig holds the configuration for the live trading engine.
@@ -78,6 +107,12 @@ type LiveTradingEngineConfig struct {
 
 	// LogOutputPath is the directory for log files (optional)
 	LogOutputPath string `json:"log_output_path" yaml:"log_output_path" jsonschema:"description=Directory for log output files"`
+
+	// DataOutputPath is the base directory for session data output (orders, trades, marks, logs, stats)
+	DataOutputPath string `json:"data_output_path" yaml:"data_output_path" jsonschema:"description=Base directory for session data output" validate:"required"`
+
+	// Prefetch configures historical data prefetching for indicator accuracy
+	Prefetch PrefetchConfig `json:"prefetch" yaml:"prefetch" jsonschema:"description=Historical data prefetch configuration"`
 }
 
 // GetConfigSchema returns the JSON schema for LiveTradingEngineConfig.
