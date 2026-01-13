@@ -113,23 +113,16 @@ The prefetch process consists of four phases:
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Phase 3: Gap Fill                             │
 │                                                                 │
-│  ┌──────────────┐    ┌────────────────┐    ┌─────────────────┐ │
-│  │ Buffer live  │    │ Fetch gap data │    │ Store gap data  │ │
-│  │ stream data  │    │ via REST API   │    │ to parquet      │ │
-│  └──────┬───────┘    └───────┬────────┘    └────────┬────────┘ │
-│         │                    │                      │          │
-│         └────────────────────┴──────────────────────┘          │
-│                              │                                  │
-│                              ▼                                  │
-│                    ┌─────────────────┐                         │
-│                    │ Drain buffer to │                         │
-│                    │ strategy        │                         │
-│                    └─────────────────┘                         │
+│  ┌────────────────┐    ┌─────────────────┐                     │
+│  │ Fetch gap data │───▶│ Store gap data  │                     │
+│  │ via REST API   │    │ to parquet      │                     │
+│  └────────────────┘    └─────────────────┘                     │
 │                                                                 │
-│  - Live data continues arriving during gap fill                 │
-│  - Buffer stores incoming data (in-memory)                      │
+│  - Pause live stream consumption during gap fill                │
 │  - REST API fetches missing candles                             │
-│  - After gap filled, drain buffer to strategy                   │
+│  - Store to parquet                                             │
+│  - Some live data points may be missed (acceptable)             │
+│  - Resume live stream after gap fill completes                  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -150,6 +143,8 @@ The prefetch process consists of four phases:
 ## Phase Details
 
 ### Phase 1: Prefetch
+
+**Status:** `EngineStatusPrefetching`
 
 The engine downloads historical data using the market data provider's `Download()` method:
 
@@ -202,37 +197,31 @@ if gap > tolerance {
 
 If a significant gap is detected:
 
-1. **Start buffering**: Incoming stream data goes to an in-memory buffer
+1. **Pause stream**: Stop consuming live stream data temporarily
 2. **Fetch gap data**: REST API downloads the missing candles
 3. **Store gap data**: Append to parquet file
-4. **Drain buffer**: Feed buffered data to strategy in order
+4. **Resume stream**: Continue with live data (some data points may be missed, which is acceptable)
 
 ```go
 // Pseudocode for gap fill
-buffer := NewCircularBuffer()
 
-// Start buffering stream data
-go func() {
-    for data := range stream {
-        buffer.Add(data)
-    }
-}()
-
-// Fetch and store gap data
+// Fetch and store gap data (blocks until complete)
 gapData := provider.Download(ctx, DownloadParams{
     StartDate: lastStoredTime,
-    EndDate:   firstStreamTime,
+    EndDate:   time.Now(),
 })
 storeToParquet(gapData)
 
-// Drain buffer to strategy
-for data := range buffer.Drain() {
+// Resume live stream - some candles during gap fill may be missed
+for data := range stream {
     storeToParquet(data)
     strategy.ProcessData(data)
 }
 ```
 
 ### Phase 4: Live Trading
+
+**Status:** `EngineStatusRunning`
 
 Normal live trading proceeds:
 - Each candle is stored to parquet
@@ -301,24 +290,23 @@ if isRateLimitError(err) {
 
 ## Edge Cases
 
-### Stream Starts Before Prefetch Completes
+### Data Points Missed During Gap Fill
 
-If the live stream connects faster than prefetch:
-
-1. Stream data is buffered from the start
-2. Prefetch continues in parallel
-3. Gap detection uses buffered first timestamp
-4. After prefetch + gap fill, buffer is drained
+During gap fill, live stream data is not consumed. This means some candles may be missed:
 
 ```
 Timeline:
-  T+0s:  Start prefetch
-  T+2s:  Stream connects, start buffering
-  T+10s: Prefetch completes
-  T+12s: Gap fill completes
-  T+12s: Drain buffer (contains T+2s to T+12s data)
-  T+12s: Normal live trading begins
+  T+0s:   Gap fill starts
+  T+5s:   Gap fill completes
+  T+5s:   Resume live stream
+
+  Missed: Any candles that closed between T+0s and T+5s
 ```
+
+This is acceptable because:
+- Gap fill ensures historical continuity for indicators
+- Missing a few recent candles has minimal impact
+- The next candle will be processed normally
 
 ### Clock Skew
 

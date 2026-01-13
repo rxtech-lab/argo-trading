@@ -475,36 +475,29 @@ func (s *PrefetchTestSuite) TestGapDetection() {
 }
 ```
 
-**Gap Fill with Buffering:**
+**Gap Fill Completion:**
 ```go
-func (s *PrefetchTestSuite) TestGapFillWithBuffering() {
+func (s *PrefetchTestSuite) TestGapFillCompletion() {
     // Provider simulates:
     // 1. Prefetch completes at T-10min
     // 2. Stream starts at T
-    // 3. Gap fill takes 5 seconds
-    // 4. During gap fill, 5 stream candles arrive
+    // 3. Gap fill fetches missing 10 minutes of data
     mockProvider := testhelper.NewMockMarketDataProviderWithGapFill(
         testhelper.GapFillConfig{
-            GapDuration:       10 * time.Minute,
-            GapFillDuration:   5 * time.Second,
-            StreamCandlesDuringFill: 5,
+            GapDuration:     10 * time.Minute,
+            GapFillDuration: 5 * time.Second,
         },
     )
 
-    var processedCandles []time.Time
-    callbacks := engine.LiveTradingCallbacks{
-        OnMarketData: &engine.OnMarketDataCallback(func(data types.MarketData) error {
-            processedCandles = append(processedCandles, data.Timestamp)
-            return nil
-        }),
+    var gapFillCompleted bool
+    mockProvider.OnGapFillComplete = func() {
+        gapFillCompleted = true
     }
 
     eng.Run(ctx, callbacks)
 
-    // Verify candles are in chronological order
-    for i := 1; i < len(processedCandles); i++ {
-        s.True(processedCandles[i].After(processedCandles[i-1]))
-    }
+    // Verify gap fill completed before live trading started
+    s.True(gapFillCompleted)
 }
 ```
 

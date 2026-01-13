@@ -166,7 +166,25 @@ type LiveTradingCallbacks struct {
 
     // OnStatsUpdate is called periodically with real-time statistics.
     OnStatsUpdate *OnStatsUpdateCallback
+
+    // OnStatusUpdate is called when the engine status changes.
+    OnStatusUpdate *OnStatusUpdateCallback
 }
+
+// EngineStatus represents the current status of the live trading engine.
+type EngineStatus string
+
+const (
+    // EngineStatusPrefetching indicates the engine is downloading historical data.
+    EngineStatusPrefetching EngineStatus = "prefetching"
+
+    // EngineStatusRunning indicates the engine is processing live market data.
+    EngineStatusRunning EngineStatus = "running"
+
+    // EngineStatusStopping indicates the engine is shutting down (cleanup in progress).
+    // Note: Not implemented yet - reserved for future use.
+    EngineStatusStopping EngineStatus = "stopping"
+)
 
 type OnEngineStartCallback func(symbols []string, interval string, dataPath string) error
 type OnEngineStopCallback func(err error)
@@ -176,6 +194,7 @@ type OnOrderFilledCallback func(order types.Order) error
 type OnErrorCallback func(err error)
 type OnStrategyErrorCallback func(data types.MarketData, err error)
 type OnStatsUpdateCallback func(stats LiveTradeStats) error
+type OnStatusUpdateCallback func(status EngineStatus) error
 ```
 
 ## Market Data Providers
