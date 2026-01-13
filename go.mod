@@ -12,6 +12,7 @@ require (
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20260112120226-d84da2a4022f
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/mux v1.8.1
 	github.com/invopop/jsonschema v0.12.0
 	github.com/knqyf263/go-plugin v0.9.0
 	github.com/marcboeker/go-duckdb v1.8.5
@@ -67,7 +68,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/gorilla/websocket v1.5.3
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
