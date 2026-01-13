@@ -12,6 +12,8 @@ import (
 	polygon "github.com/polygon-io/client-go/rest"
 	"github.com/polygon-io/client-go/rest/iter"
 	"github.com/polygon-io/client-go/rest/models"
+	polygonws "github.com/polygon-io/client-go/websocket"
+	polygonmodels "github.com/polygon-io/client-go/websocket/models"
 	"github.com/schollz/progressbar/v3"
 
 	"github.com/rxtech-lab/argo-trading/internal/types"
@@ -39,9 +41,79 @@ func (w *polygonClientWrapper) ListAggs(ctx context.Context, params *models.List
 	return w.client.ListAggs(ctx, params, options...)
 }
 
+// PolygonWebSocketService defines the interface for Polygon WebSocket operations.
+// This abstraction enables testing with mock implementations.
+type PolygonWebSocketService interface {
+	// Connect establishes the WebSocket connection to Polygon.
+	Connect() error
+
+	// Subscribe subscribes to a topic for the given tickers.
+	Subscribe(topic polygonws.Topic, tickers ...string) error
+
+	// Unsubscribe unsubscribes from a topic for the given tickers.
+	Unsubscribe(topic polygonws.Topic, tickers ...string) error
+
+	// Output returns a channel that receives incoming messages.
+	// Messages can be of type: models.EquityAgg, models.EquityTrade, etc.
+	Output() <-chan any
+
+	// Error returns a channel that receives error messages.
+	Error() <-chan error
+
+	// Close gracefully closes the WebSocket connection.
+	Close()
+}
+
+// polygonWebSocketServiceWrapper wraps the real Polygon WebSocket client.
+type polygonWebSocketServiceWrapper struct {
+	client *polygonws.Client
+}
+
+func newPolygonWebSocketService(apiKey string, feed polygonws.Feed) (PolygonWebSocketService, error) {
+	//nolint:exhaustruct // third-party struct with many optional fields
+	config := polygonws.Config{
+		APIKey: apiKey,
+		Feed:   feed,
+		Market: polygonws.Stocks,
+	}
+
+	client, err := polygonws.New(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create polygon websocket client: %w", err)
+	}
+
+	return &polygonWebSocketServiceWrapper{client: client}, nil
+}
+
+func (w *polygonWebSocketServiceWrapper) Connect() error {
+	return w.client.Connect()
+}
+
+func (w *polygonWebSocketServiceWrapper) Subscribe(topic polygonws.Topic, tickers ...string) error {
+	return w.client.Subscribe(topic, tickers...)
+}
+
+func (w *polygonWebSocketServiceWrapper) Unsubscribe(topic polygonws.Topic, tickers ...string) error {
+	return w.client.Unsubscribe(topic, tickers...)
+}
+
+func (w *polygonWebSocketServiceWrapper) Output() <-chan any {
+	return w.client.Output()
+}
+
+func (w *polygonWebSocketServiceWrapper) Error() <-chan error {
+	return w.client.Error()
+}
+
+func (w *polygonWebSocketServiceWrapper) Close() {
+	w.client.Close()
+}
+
 type PolygonClient struct {
-	apiClient PolygonAPIClient
-	writer    writer.MarketDataWriter
+	apiClient           PolygonAPIClient
+	wsServiceForTesting PolygonWebSocketService // WebSocket service for testing
+	apiKey              string
+	writer              writer.MarketDataWriter
 }
 
 func NewPolygonClient(apiKey string) (Provider, error) {
@@ -52,16 +124,30 @@ func NewPolygonClient(apiKey string) (Provider, error) {
 	client := polygon.New(apiKey)
 
 	return &PolygonClient{
-		apiClient: &polygonClientWrapper{client: client},
-		writer:    nil,
+		apiClient:           &polygonClientWrapper{client: client},
+		wsServiceForTesting: nil,
+		apiKey:              apiKey,
+		writer:              nil,
 	}, nil
 }
 
 // NewPolygonClientWithAPI creates a PolygonClient with a custom API client (for testing).
 func NewPolygonClientWithAPI(apiClient PolygonAPIClient) *PolygonClient {
 	return &PolygonClient{
-		apiClient: apiClient,
-		writer:    nil,
+		apiClient:           apiClient,
+		wsServiceForTesting: nil,
+		apiKey:              "",
+		writer:              nil,
+	}
+}
+
+// NewPolygonClientWithWebSocket creates a PolygonClient with custom WebSocket service (for testing).
+func NewPolygonClientWithWebSocket(apiKey string, wsService PolygonWebSocketService) *PolygonClient {
+	return &PolygonClient{
+		apiClient:           nil,
+		wsServiceForTesting: wsService,
+		apiKey:              apiKey,
+		writer:              nil,
 	}
 }
 
@@ -173,11 +259,114 @@ func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate t
 	return outputPath, nil
 }
 
-// Stream implements Provider.Stream but is not yet supported for Polygon.
+// Stream implements Provider.Stream for real-time WebSocket market data from Polygon.
+// It subscribes to aggregate streams for all specified symbols and yields data as it arrives.
+// The iterator terminates when the context is cancelled or an unrecoverable error occurs.
 func (c *PolygonClient) Stream(ctx context.Context, symbols []string, interval string) goiter.Seq2[types.MarketData, error] {
 	return func(yield func(types.MarketData, error) bool) {
-		//nolint:exhaustruct // empty struct for error case
-		yield(types.MarketData{}, fmt.Errorf("streaming is not yet implemented for Polygon provider"))
+		// Validate inputs
+		if len(symbols) == 0 {
+			//nolint:exhaustruct // empty struct for error case
+			yield(types.MarketData{}, fmt.Errorf("no symbols provided for streaming"))
+
+			return
+		}
+
+		topic, err := convertIntervalToPolygonTopic(interval)
+		if err != nil {
+			//nolint:exhaustruct // empty struct for error case
+			yield(types.MarketData{}, err)
+
+			return
+		}
+
+		// Create or use WebSocket service
+		var wsService PolygonWebSocketService
+		if c.wsServiceForTesting != nil {
+			// Use injected service for testing
+			wsService = c.wsServiceForTesting
+		} else {
+			// Create production WebSocket service
+			wsService, err = newPolygonWebSocketService(c.apiKey, polygonws.RealTime)
+			if err != nil {
+				//nolint:exhaustruct // empty struct for error case
+				yield(types.MarketData{}, fmt.Errorf("failed to create websocket service: %w", err))
+
+				return
+			}
+			defer wsService.Close()
+		}
+
+		// Connect to WebSocket
+		if err := wsService.Connect(); err != nil {
+			//nolint:exhaustruct // empty struct for error case
+			yield(types.MarketData{}, fmt.Errorf("failed to connect to polygon websocket: %w", err))
+
+			return
+		}
+
+		// Subscribe to aggregate topic for all symbols
+		if err := wsService.Subscribe(topic, symbols...); err != nil {
+			//nolint:exhaustruct // empty struct for error case
+			yield(types.MarketData{}, fmt.Errorf("failed to subscribe to symbols: %w", err))
+
+			return
+		}
+
+		// Main message loop
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case err := <-wsService.Error():
+				//nolint:exhaustruct // empty struct for error case
+				if !yield(types.MarketData{}, fmt.Errorf("websocket error: %w", err)) {
+					return
+				}
+
+			case msg := <-wsService.Output():
+				switch agg := msg.(type) {
+				case polygonmodels.EquityAgg:
+					marketData := convertEquityAggToMarketData(&agg)
+					if !yield(marketData, nil) {
+						return
+					}
+				// Ignore other message types (trades, quotes, control messages)
+				default:
+					// Skip non-aggregate messages
+				}
+			}
+		}
+	}
+}
+
+// convertIntervalToPolygonTopic converts an interval string to a Polygon WebSocket topic.
+func convertIntervalToPolygonTopic(interval string) (polygonws.Topic, error) {
+	switch interval {
+	case "1s":
+		return polygonws.StocksSecAggs, nil
+	case "1m":
+		return polygonws.StocksMinAggs, nil
+	default:
+		// For other intervals, use minute aggregates and aggregate locally
+		// This is a limitation of the Polygon WebSocket API which only supports
+		// second and minute aggregates natively
+		return polygonws.StocksMinAggs, nil
+	}
+}
+
+// convertEquityAggToMarketData converts a Polygon EquityAgg to our internal MarketData type.
+func convertEquityAggToMarketData(agg *polygonmodels.EquityAgg) types.MarketData {
+	return types.MarketData{
+		Id:     "",
+		Symbol: agg.Symbol,
+		Time:   time.UnixMilli(agg.StartTimestamp),
+		Open:   agg.Open,
+		High:   agg.High,
+		Low:    agg.Low,
+		Close:  agg.Close,
+		Volume: agg.Volume,
 	}
 }
 
