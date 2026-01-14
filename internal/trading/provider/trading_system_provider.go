@@ -91,6 +91,7 @@ func GetProviderConfigSchema(providerName string) (string, error) {
 		return strategy.ToJSONSchema(BinanceProviderConfig{
 			ApiKey:    "",
 			SecretKey: "",
+			BaseURL:   "",
 		})
 	default:
 		return "", fmt.Errorf("unsupported trading provider: %s", providerName)

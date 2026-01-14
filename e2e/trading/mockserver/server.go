@@ -321,8 +321,9 @@ func (s *MockBinanceServer) BaseURL() string {
 }
 
 // WebSocketURL returns the WebSocket URL for the server.
+// The URL includes the /ws path prefix that the go-binance library expects.
 func (s *MockBinanceServer) WebSocketURL() string {
-	return "ws://" + s.Address()
+	return "ws://" + s.Address() + "/ws"
 }
 
 // SetPrice sets the current price for a symbol.
