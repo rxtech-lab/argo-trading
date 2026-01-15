@@ -181,40 +181,40 @@ func (w *binanceWebSocketServiceWrapper) WsKlineServe(symbol string, interval st
 }
 
 type BinanceClient struct {
-	apiClient        BinanceAPIClient
-	wsService        BinanceWebSocketService
-	writer           writer.MarketDataWriter
-	onStatusChange   OnStatusChange
+	apiClient      BinanceAPIClient
+	wsService      BinanceWebSocketService
+	writer         writer.MarketDataWriter
+	onStatusChange OnStatusChange
 }
 
 func NewBinanceClient() (Provider, error) {
 	client := binance.NewClient("", "")
 
 	return &BinanceClient{
-		apiClient:        &binanceClientWrapper{client: client},
-		wsService:        &binanceWebSocketServiceWrapper{},
-		writer:           nil,
-		onStatusChange:   nil,
+		apiClient:      &binanceClientWrapper{client: client},
+		wsService:      &binanceWebSocketServiceWrapper{},
+		writer:         nil,
+		onStatusChange: nil,
 	}, nil
 }
 
 // NewBinanceClientWithAPI creates a BinanceClient with a custom API client (for testing).
 func NewBinanceClientWithAPI(apiClient BinanceAPIClient) *BinanceClient {
 	return &BinanceClient{
-		apiClient:        apiClient,
-		wsService:        &binanceWebSocketServiceWrapper{},
-		writer:           nil,
-		onStatusChange:   nil,
+		apiClient:      apiClient,
+		wsService:      &binanceWebSocketServiceWrapper{},
+		writer:         nil,
+		onStatusChange: nil,
 	}
 }
 
 // NewBinanceClientWithWebSocket creates a BinanceClient with custom API and WebSocket services (for testing).
 func NewBinanceClientWithWebSocket(apiClient BinanceAPIClient, wsService BinanceWebSocketService) *BinanceClient {
 	return &BinanceClient{
-		apiClient:        apiClient,
-		wsService:        wsService,
-		writer:           nil,
-		onStatusChange:   nil,
+		apiClient:      apiClient,
+		wsService:      wsService,
+		writer:         nil,
+		onStatusChange: nil,
 	}
 }
 
@@ -240,10 +240,10 @@ func NewBinanceClientWithEndpoints(config BinanceEndpointConfig) (Provider, erro
 	}
 
 	return &BinanceClient{
-		apiClient:        &binanceClientWrapper{client: client},
-		wsService:        &binanceWebSocketServiceWrapper{},
-		writer:           nil,
-		onStatusChange:   nil,
+		apiClient:      &binanceClientWrapper{client: client},
+		wsService:      &binanceWebSocketServiceWrapper{},
+		writer:         nil,
+		onStatusChange: nil,
 	}, nil
 }
 
