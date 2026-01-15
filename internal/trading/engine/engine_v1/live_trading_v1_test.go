@@ -300,6 +300,7 @@ func (s *LiveTradingEngineV1TestSuite) TestSetMarketDataProvider() {
 	s.Require().NoError(err)
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -312,6 +313,8 @@ func (s *LiveTradingEngineV1TestSuite) TestSetTradingProvider() {
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -386,6 +389,7 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoTradingProvider() {
 	s.Require().NoError(err)
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -411,10 +415,13 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoSymbols() {
 	s.Require().NoError(err)
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -440,10 +447,13 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoInterval() {
 	s.Require().NoError(err)
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -469,10 +479,13 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_Success() {
 	s.Require().NoError(err)
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -505,6 +518,8 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_Success() {
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -531,6 +546,8 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_InitializeApiFails
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -559,6 +576,8 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_GetRuntimeVersionF
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -588,6 +607,8 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_VersionMismatch() 
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -617,6 +638,8 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_InitializeFails() 
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -668,10 +691,13 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_InitializeStrategyFails() {
 	s.Require().NoError(err)
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -710,10 +736,13 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnEngineStartCallbackError() {
 	s.Require().NoError(err)
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -759,12 +788,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_SuccessfulExecution() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -846,12 +878,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StreamError_NonFatal() {
 	streamErrs := []error{nil, errors.New("stream error"), nil}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, streamErrs))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -907,12 +942,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StrategyError_NonFatal() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -962,12 +1000,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnMarketDataCallbackError() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1029,12 +1070,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_ContextCancellation() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(stream)
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1092,12 +1136,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithPersistence() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1155,12 +1202,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_AllCallbacksNil() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1227,12 +1277,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithDataOutputPath() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1273,12 +1326,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Stopped() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1335,12 +1391,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Running_NoPrefetch()
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1399,12 +1458,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Success() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1468,12 +1530,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Error_Continues() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1544,12 +1609,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesMarks() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
@@ -1611,12 +1679,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesLogs() {
 	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
 	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
