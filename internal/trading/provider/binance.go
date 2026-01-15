@@ -8,7 +8,15 @@ import (
 	"github.com/adshao/go-binance/v2"
 	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/types"
+	"github.com/rxtech-lab/argo-trading/internal/utils"
 	"github.com/rxtech-lab/argo-trading/pkg/errors"
+)
+
+const (
+	// BinanceDecimalPrecision is a default decimal precision used as a fallback.
+	// 8 decimals allows for satoshi-level precision (0.00000001 BTC) for BTC-like assets.
+	// Production systems should use symbol-specific precision from Binance exchange info (e.g. LOT_SIZE, PRICE_FILTER).
+	BinanceDecimalPrecision = 8
 )
 
 // Service interfaces for mocking the Binance API
@@ -253,11 +261,13 @@ func (s *realTradeFeeService) Do(ctx context.Context) ([]*binance.TradeFeeDetail
 // BinanceTradingSystemProvider implements TradingSystemProvider using Binance API.
 // It is stateless - all data is fetched directly from the Binance API.
 type BinanceTradingSystemProvider struct {
-	client BinanceClient
+	client           BinanceClient
+	decimalPrecision int
 }
 
 // NewBinanceTradingSystemProvider creates a new Binance trading system.
 // If useTestnet is true, connects to Binance Testnet (https://testnet.binance.vision/).
+// If config.BaseURL is set, it takes precedence over useTestnet.
 func NewBinanceTradingSystemProvider(config BinanceProviderConfig, useTestnet bool) (*BinanceTradingSystemProvider, error) {
 	if useTestnet {
 		binance.UseTestnet = true
@@ -265,8 +275,14 @@ func NewBinanceTradingSystemProvider(config BinanceProviderConfig, useTestnet bo
 
 	client := binance.NewClient(config.ApiKey, config.SecretKey)
 
+	// Set custom base URL if provided (takes precedence over useTestnet)
+	if config.BaseURL != "" {
+		client.BaseURL = config.BaseURL
+	}
+
 	return &BinanceTradingSystemProvider{
-		client: &realBinanceClient{client: client},
+		client:           &realBinanceClient{client: client},
+		decimalPrecision: BinanceDecimalPrecision,
 	}, nil
 }
 
@@ -274,7 +290,17 @@ func NewBinanceTradingSystemProvider(config BinanceProviderConfig, useTestnet bo
 // This is used for testing with mock clients.
 func newBinanceTradingSystemProviderWithClient(client BinanceClient) *BinanceTradingSystemProvider {
 	return &BinanceTradingSystemProvider{
-		client: client,
+		client:           client,
+		decimalPrecision: BinanceDecimalPrecision,
+	}
+}
+
+// newBinanceTradingSystemProviderWithPrecision creates a new Binance trading system with custom precision.
+// This is used for testing with different decimal precisions.
+func newBinanceTradingSystemProviderWithPrecision(client BinanceClient, decimalPrecision int) *BinanceTradingSystemProvider {
+	return &BinanceTradingSystemProvider{
+		client:           client,
+		decimalPrecision: decimalPrecision,
 	}
 }
 
@@ -306,12 +332,24 @@ func (b *BinanceTradingSystemProvider) PlaceOrder(order types.ExecuteOrder) erro
 		return errors.Newf(errors.ErrCodeInvalidParameter, "unsupported order type: %s", order.OrderType)
 	}
 
+	// Validate and round quantity to decimal precision
+	if order.Quantity <= 0 {
+		return errors.New(errors.ErrCodeInvalidParameter, "order quantity must be greater than zero")
+	}
+
+	roundedQuantity := utils.RoundToDecimalPrecision(order.Quantity, b.decimalPrecision)
+	if roundedQuantity <= 0 {
+		return errors.Newf(errors.ErrCodeInvalidParameter,
+			"order quantity %.8f is too small after rounding to %d decimal places",
+			order.Quantity, b.decimalPrecision)
+	}
+
 	// Create order service
 	orderService := b.client.NewCreateOrderService().
 		Symbol(order.Symbol).
 		Side(side).
 		Type(orderType).
-		Quantity(strconv.FormatFloat(order.Quantity, 'f', -1, 64))
+		Quantity(strconv.FormatFloat(roundedQuantity, 'f', b.decimalPrecision, 64))
 
 	// For limit orders, add price and time in force
 	if order.OrderType == types.OrderTypeLimit {

@@ -214,6 +214,34 @@ func NewBinanceClientWithWebSocket(apiClient BinanceAPIClient, wsService Binance
 	}
 }
 
+// BinanceEndpointConfig holds custom endpoint configuration for Binance client.
+type BinanceEndpointConfig struct {
+	RestBaseURL string // Custom REST API base URL (e.g., "http://localhost:8080")
+	WsBaseURL   string // Custom WebSocket base URL (e.g., "ws://localhost:8080/ws")
+}
+
+// NewBinanceClientWithEndpoints creates a BinanceClient with custom API endpoints.
+// This is useful for testing with mock servers or using alternative endpoints.
+// If WsBaseURL is set, it overrides the global binance.BaseWsMainURL.
+func NewBinanceClientWithEndpoints(config BinanceEndpointConfig) (Provider, error) {
+	// Set WebSocket endpoint before creating any connections
+	// Note: This is a global variable change that affects all WebSocket connections
+	if config.WsBaseURL != "" {
+		binance.BaseWsMainURL = config.WsBaseURL
+	}
+
+	client := binance.NewClient("", "")
+	if config.RestBaseURL != "" {
+		client.BaseURL = config.RestBaseURL
+	}
+
+	return &BinanceClient{
+		apiClient: &binanceClientWrapper{client: client},
+		wsService: &binanceWebSocketServiceWrapper{},
+		writer:    nil,
+	}, nil
+}
+
 func (c *BinanceClient) ConfigWriter(w writer.MarketDataWriter) {
 	c.writer = w
 }

@@ -1244,3 +1244,244 @@ func (suite *BinanceTradingTestSuite) TestRealBinanceClient_NewTradeFeeService()
 	result := service.Symbol("BTCUSDT")
 	suite.NotNil(result)
 }
+
+// =============================================================================
+// Quantity Validation Tests
+// =============================================================================
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_FractionalQuantity_Success() {
+	// Test 0.01 quantity with default precision (8) - should succeed
+	mockClient := newMockBinanceClient()
+	mockClient.createOrderService.response = &binance.CreateOrderResponse{
+		OrderID: 12345,
+		Symbol:  "BTCUSDT",
+	}
+
+	provider := newBinanceTradingSystemProviderWithClient(mockClient)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  0.01,
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.NoError(err)
+	suite.Equal("0.01000000", mockClient.createOrderService.quantity)
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_SatoshiPrecision_Success() {
+	// Test 0.00000001 (1 satoshi) quantity with default precision (8) - should succeed
+	mockClient := newMockBinanceClient()
+	mockClient.createOrderService.response = &binance.CreateOrderResponse{
+		OrderID: 12346,
+		Symbol:  "BTCUSDT",
+	}
+
+	provider := newBinanceTradingSystemProviderWithClient(mockClient)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  0.00000001,
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.NoError(err)
+	suite.Equal("0.00000001", mockClient.createOrderService.quantity)
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_QuantityTooSmall_Error() {
+	// Test quantity smaller than 1 satoshi - should fail after rounding
+	mockClient := newMockBinanceClient()
+	provider := newBinanceTradingSystemProviderWithClient(mockClient)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  0.000000001, // Smaller than 8 decimal places
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.Error(err)
+	suite.Contains(err.Error(), "too small after rounding")
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_ZeroQuantity_Error() {
+	// Test zero quantity - should fail immediately
+	mockClient := newMockBinanceClient()
+	provider := newBinanceTradingSystemProviderWithClient(mockClient)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  0,
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.Error(err)
+	suite.Contains(err.Error(), "quantity must be greater than zero")
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_NegativeQuantity_Error() {
+	// Test negative quantity - should fail immediately
+	mockClient := newMockBinanceClient()
+	provider := newBinanceTradingSystemProviderWithClient(mockClient)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  -0.01,
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.Error(err)
+	suite.Contains(err.Error(), "quantity must be greater than zero")
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_CustomPrecision_Success() {
+	// Test with precision=2, quantity=0.01 - should succeed
+	mockClient := newMockBinanceClient()
+	mockClient.createOrderService.response = &binance.CreateOrderResponse{
+		OrderID: 12347,
+		Symbol:  "BTCUSDT",
+	}
+
+	provider := newBinanceTradingSystemProviderWithPrecision(mockClient, 2)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  0.01,
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.NoError(err)
+	suite.Equal("0.01", mockClient.createOrderService.quantity)
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_CustomPrecision_TooSmall_Error() {
+	// Test with precision=1, quantity=0.01 - should fail (0.01 rounds to 0.0 with precision 1)
+	mockClient := newMockBinanceClient()
+	provider := newBinanceTradingSystemProviderWithPrecision(mockClient, 1)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  0.01,
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.Error(err)
+	suite.Contains(err.Error(), "too small after rounding")
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_QuantityBelowPrecision_Errors() {
+	// Table-driven tests for various precision levels and quantities below permitted
+	testCases := []struct {
+		name             string
+		decimalPrecision int
+		quantity         float64
+		shouldFail       bool
+	}{
+		{
+			name:             "0.001 with precision 2 - should fail",
+			decimalPrecision: 2,
+			quantity:         0.001, // Rounds to 0.00
+			shouldFail:       true,
+		},
+		{
+			name:             "0.009 with precision 2 - should fail",
+			decimalPrecision: 2,
+			quantity:         0.009, // Rounds to 0.00 (floor)
+			shouldFail:       true,
+		},
+		{
+			name:             "0.01 with precision 2 - should succeed",
+			decimalPrecision: 2,
+			quantity:         0.01, // Rounds to 0.01
+			shouldFail:       false,
+		},
+		{
+			name:             "0.0001 with precision 3 - should fail",
+			decimalPrecision: 3,
+			quantity:         0.0001, // Rounds to 0.000
+			shouldFail:       true,
+		},
+		{
+			name:             "0.001 with precision 3 - should succeed",
+			decimalPrecision: 3,
+			quantity:         0.001, // Rounds to 0.001
+			shouldFail:       false,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			mockClient := newMockBinanceClient()
+			if !tc.shouldFail {
+				mockClient.createOrderService.response = &binance.CreateOrderResponse{
+					OrderID: 12345,
+					Symbol:  "BTCUSDT",
+				}
+			}
+
+			provider := newBinanceTradingSystemProviderWithPrecision(mockClient, tc.decimalPrecision)
+
+			order := types.ExecuteOrder{
+				Symbol:    "BTCUSDT",
+				Side:      types.PurchaseTypeBuy,
+				OrderType: types.OrderTypeMarket,
+				Quantity:  tc.quantity,
+			}
+
+			err := provider.PlaceOrder(order)
+			if tc.shouldFail {
+				suite.Error(err, "Expected error for quantity %f with precision %d", tc.quantity, tc.decimalPrecision)
+				suite.Contains(err.Error(), "too small after rounding")
+			} else {
+				suite.NoError(err, "Expected success for quantity %f with precision %d", tc.quantity, tc.decimalPrecision)
+			}
+		})
+	}
+}
+
+func (suite *BinanceTradingTestSuite) TestPlaceOrder_QuantityRounding() {
+	// Test that quantity is properly rounded down
+	mockClient := newMockBinanceClient()
+	mockClient.createOrderService.response = &binance.CreateOrderResponse{
+		OrderID: 12348,
+		Symbol:  "BTCUSDT",
+	}
+
+	provider := newBinanceTradingSystemProviderWithPrecision(mockClient, 2)
+
+	order := types.ExecuteOrder{
+		Symbol:    "BTCUSDT",
+		Side:      types.PurchaseTypeBuy,
+		OrderType: types.OrderTypeMarket,
+		Quantity:  0.019999, // Should round down to 0.01
+	}
+
+	err := provider.PlaceOrder(order)
+	suite.NoError(err)
+	suite.Equal("0.01", mockClient.createOrderService.quantity)
+}
+
+func (suite *BinanceTradingTestSuite) TestNewBinanceTradingSystemProvider_HasCorrectPrecision() {
+	// Verify new providers are created with correct decimal precision
+	config := BinanceProviderConfig{
+		ApiKey:    "test-api-key",
+		SecretKey: "test-secret-key",
+	}
+	provider, err := NewBinanceTradingSystemProvider(config, true)
+	suite.NoError(err)
+	suite.Equal(BinanceDecimalPrecision, provider.decimalPrecision)
+}

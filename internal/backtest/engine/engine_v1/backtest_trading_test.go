@@ -705,6 +705,20 @@ func (suite *BacktestTradingTestSuite) TestPlaceOrder_With_Market_Price_Order_Bu
 			expectError:  true,
 			errorMessage: "order quantity is too small or zero after rounding to configured precision",
 		},
+		{
+			name:         "Failed buy - quantity 0.001 below permitted precision 1",
+			balance:      1000.0,
+			quantity:     0.001, // Below permitted minimum of 0.1 with precision 1
+			expectError:  true,
+			errorMessage: "order quantity is too small or zero after rounding to configured precision",
+		},
+		{
+			name:         "Failed buy - quantity 0.09 below permitted precision 1",
+			balance:      1000.0,
+			quantity:     0.09, // 0.09 rounds to 0.0 with precision 1 (floor)
+			expectError:  true,
+			errorMessage: "order quantity is too small or zero after rounding to configured precision",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1439,6 +1453,18 @@ func (suite *BacktestTradingTestSuite) TestDecimalPrecisionHandling() {
 			decimalPrecision: 8,
 			quantity:         0.123456789,
 			expectedQuantity: 0.12345678,
+		},
+		{
+			name:             "0.01 quantity with 2 decimal precision",
+			decimalPrecision: 2,
+			quantity:         0.01,
+			expectedQuantity: 0.01,
+		},
+		{
+			name:             "0.001 quantity with 3 decimal precision",
+			decimalPrecision: 3,
+			quantity:         0.001,
+			expectedQuantity: 0.001,
 		},
 	}
 

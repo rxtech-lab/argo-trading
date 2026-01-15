@@ -534,7 +534,7 @@ func (suite *MockServerTestSuite) TestTradeFeeAllSymbols() {
 func (suite *MockServerTestSuite) TestWebSocketKlineStream() {
 	suite.server.SetPrice("BTCUSDT", 50000.0)
 
-	wsURL := suite.server.WebSocketURL() + "/ws/btcusdt@kline_1m"
+	wsURL := suite.server.WebSocketURL() + "/btcusdt@kline_1m"
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	suite.Require().NoError(err)
 	defer conn.Close()
