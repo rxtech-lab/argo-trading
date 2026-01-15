@@ -21,6 +21,9 @@ const (
 
 type OnDownloadProgress = func(current float64, total float64, message string)
 
+// OnStatusChange is a callback that is called when the provider's connection status changes.
+type OnStatusChange = func(status types.ProviderConnectionStatus)
+
 type Provider interface {
 	// ConfigWriter configures the writer for the provider
 	// Writer is used to write the market data to the database.
@@ -35,6 +38,9 @@ type Provider interface {
 	// Uses Go 1.23+ iter.Seq2 pattern for streaming data.
 	// The iterator yields MarketData and error pairs. Cancel the context to stop streaming.
 	Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error]
+	// SetOnStatusChange sets a callback that will be called when the WebSocket connection
+	// status changes (connected/disconnected). This is used for market data streaming.
+	SetOnStatusChange(callback OnStatusChange)
 }
 
 // NewMarketDataProvider creates a new market data provider based on the provider type.

@@ -242,3 +242,24 @@ func (s *LiveStatisticsTestSuite) TestEngineStatus_Values() {
 	s.Equal(EngineStatus("running"), EngineStatusRunning)
 	s.Equal(EngineStatus("stopped"), EngineStatusStopped)
 }
+
+// ============================================================================
+// ProviderConnectionStatus Tests
+// ============================================================================
+
+func (s *LiveStatisticsTestSuite) TestProviderConnectionStatus_Values() {
+	// Verify enum values are correct strings
+	s.Equal(ProviderConnectionStatus("connected"), ProviderStatusConnected)
+	s.Equal(ProviderConnectionStatus("disconnected"), ProviderStatusDisconnected)
+}
+
+func (s *LiveStatisticsTestSuite) TestProviderStatusUpdate_Struct() {
+	// Test that ProviderStatusUpdate can be created with both statuses
+	update := ProviderStatusUpdate{
+		MarketDataStatus: ProviderStatusConnected,
+		TradingStatus:    ProviderStatusDisconnected,
+	}
+
+	s.Equal(ProviderStatusConnected, update.MarketDataStatus)
+	s.Equal(ProviderStatusDisconnected, update.TradingStatus)
+}

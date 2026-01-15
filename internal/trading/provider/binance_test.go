@@ -1485,3 +1485,43 @@ func (suite *BinanceTradingTestSuite) TestNewBinanceTradingSystemProvider_HasCor
 	suite.NoError(err)
 	suite.Equal(BinanceDecimalPrecision, provider.decimalPrecision)
 }
+
+func (suite *BinanceTradingTestSuite) TestCheckConnection_Success() {
+	mockClient := newMockBinanceClient()
+	mockClient.getAccountService.account = &binance.Account{
+		Balances: []binance.Balance{
+			{Asset: "USDT", Free: "1000.0", Locked: "0.0"},
+		},
+	}
+
+	provider := newBinanceTradingSystemProviderWithClient(mockClient)
+
+	err := provider.CheckConnection(context.Background())
+	suite.NoError(err)
+}
+
+func (suite *BinanceTradingTestSuite) TestCheckConnection_APIError() {
+	mockClient := newMockBinanceClient()
+	mockClient.getAccountService.err = errors.New("authentication failed")
+
+	provider := newBinanceTradingSystemProviderWithClient(mockClient)
+
+	err := provider.CheckConnection(context.Background())
+	suite.Error(err)
+	suite.Contains(err.Error(), "failed to connect to Binance API")
+}
+
+func (suite *BinanceTradingTestSuite) TestSetOnStatusChange() {
+	provider := newBinanceTradingSystemProviderWithClient(newMockBinanceClient())
+
+	var statusReceived bool
+	provider.SetOnStatusChange(func(_ types.ProviderConnectionStatus) {
+		statusReceived = true
+	})
+
+	suite.NotNil(provider.onStatusChange)
+
+	// Call the callback to verify it's set correctly
+	provider.emitStatus(types.ProviderStatusConnected)
+	suite.True(statusReceived)
+}

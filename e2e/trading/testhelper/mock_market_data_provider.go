@@ -160,5 +160,11 @@ func (p *MockMarketDataProvider) Stream(ctx context.Context, symbols []string, _
 	}
 }
 
+// SetOnStatusChange implements provider.Provider.
+// This is a no-op for mock provider since it's always connected.
+func (p *MockMarketDataProvider) SetOnStatusChange(_ provider.OnStatusChange) {
+	// No-op for mock provider
+}
+
 // Verify MockMarketDataProvider implements provider.Provider interface.
 var _ provider.Provider = (*MockMarketDataProvider)(nil)

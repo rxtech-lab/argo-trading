@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -505,4 +506,75 @@ func (suite *BinanceStreamTestSuite) TestStreamOneSecondInterval() {
 	}
 
 	suite.Equal(1, received)
+}
+
+func (suite *BinanceStreamTestSuite) TestSetOnStatusChange() {
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, nil)
+
+	client.SetOnStatusChange(func(_ types.ProviderConnectionStatus) {
+		// Callback registered successfully
+	})
+
+	// Verify callback is set
+	suite.NotNil(client.onStatusChange)
+}
+
+func (suite *BinanceStreamTestSuite) TestStreamEmitsConnectedStatus() {
+	events := []*BinanceWsKlineEvent{
+		{
+			Symbol: "BTCUSDT",
+			Kline: BinanceWsKline{
+				StartTime: 1704067200000,
+				Open:      "42000.50",
+				High:      "42500.00",
+				Low:       "41800.00",
+				Close:     "42300.00",
+				Volume:    "1000.5",
+				IsFinal:   true,
+			},
+		},
+	}
+
+	mockWs := &mockBinanceWebSocketService{events: events}
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
+
+	var statusChanges []types.ProviderConnectionStatus
+	client.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
+		statusChanges = append(statusChanges, status)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	// Consume the stream to trigger the connection
+	for range client.Stream(ctx, []string{"BTCUSDT"}, "1m") {
+		// Just iterate through to completion
+	}
+
+	// Should have received at least one connected and one disconnected status
+	suite.GreaterOrEqual(len(statusChanges), 1, "Should have received at least one status change")
+	suite.Contains(statusChanges, types.ProviderStatusConnected, "Should have received connected status")
+}
+
+func (suite *BinanceStreamTestSuite) TestStreamEmitsDisconnectedOnError() {
+	mockWs := &mockBinanceWebSocketService{
+		startError: errors.New("connection refused"),
+	}
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs)
+
+	var statusChanges []types.ProviderConnectionStatus
+	client.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
+		statusChanges = append(statusChanges, status)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// Stream should fail to connect
+	for range client.Stream(ctx, []string{"BTCUSDT"}, "1m") {
+		// Just iterate through to completion
+	}
+
+	// Should have received disconnected status on failure
+	suite.Contains(statusChanges, types.ProviderStatusDisconnected, "Should have received disconnected status on connection error")
 }

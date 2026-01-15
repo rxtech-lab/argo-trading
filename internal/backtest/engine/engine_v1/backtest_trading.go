@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -652,4 +653,16 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 	_, err := b.state.Update([]types.Order{executedOrder})
 
 	return err
+}
+
+// CheckConnection implements tradingprovider.TradingSystemProvider.
+// For backtesting, this always returns nil as the trading system is always available.
+func (b *BacktestTrading) CheckConnection(_ context.Context) error {
+	return nil
+}
+
+// SetOnStatusChange implements tradingprovider.TradingSystemProvider.
+// For backtesting, this is a no-op as the trading system is always connected.
+func (b *BacktestTrading) SetOnStatusChange(_ tradingprovider.OnStatusChange) {
+	// No-op for backtest trading
 }

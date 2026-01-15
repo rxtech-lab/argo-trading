@@ -25,6 +25,26 @@ const (
 	EngineStatusStopped EngineStatus = "stopped"
 )
 
+// ProviderConnectionStatus represents the connection state of a provider.
+type ProviderConnectionStatus string
+
+const (
+	// ProviderStatusConnected indicates the provider is connected.
+	ProviderStatusConnected ProviderConnectionStatus = "connected"
+
+	// ProviderStatusDisconnected indicates the provider is disconnected.
+	ProviderStatusDisconnected ProviderConnectionStatus = "disconnected"
+)
+
+// ProviderStatusUpdate contains the status update for market data and trading providers.
+type ProviderStatusUpdate struct {
+	// MarketDataStatus is the current connection status of the market data provider.
+	MarketDataStatus ProviderConnectionStatus `json:"market_data_status"`
+
+	// TradingStatus is the current connection status of the trading provider.
+	TradingStatus ProviderConnectionStatus `json:"trading_status"`
+}
+
 // LiveTradeStats contains statistics for a live trading session.
 type LiveTradeStats struct {
 	// ID is the unique identifier for this trading session (e.g., "run_1").

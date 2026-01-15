@@ -1,6 +1,7 @@
 package testhelper
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -346,6 +347,18 @@ func (m *MockTradingProvider) Reset(initialBalance float64) {
 	m.currentPrice = make(map[string]float64)
 	m.FailAllOrders = false
 	m.FailReason = ""
+}
+
+// CheckConnection implements tradingprovider.TradingSystemProvider.
+// For mock provider, this always returns nil as it's always connected.
+func (m *MockTradingProvider) CheckConnection(_ context.Context) error {
+	return nil
+}
+
+// SetOnStatusChange implements tradingprovider.TradingSystemProvider.
+// For mock provider, this is a no-op as it's always connected.
+func (m *MockTradingProvider) SetOnStatusChange(_ tradingprovider.OnStatusChange) {
+	// No-op for mock provider
 }
 
 // Verify MockTradingProvider implements TradingSystemProvider interface.

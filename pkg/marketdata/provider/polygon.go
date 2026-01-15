@@ -114,6 +114,7 @@ type PolygonClient struct {
 	wsServiceForTesting PolygonWebSocketService // WebSocket service for testing
 	apiKey              string
 	writer              writer.MarketDataWriter
+	onStatusChange      OnStatusChange
 }
 
 func NewPolygonClient(apiKey string) (Provider, error) {
@@ -128,6 +129,7 @@ func NewPolygonClient(apiKey string) (Provider, error) {
 		wsServiceForTesting: nil,
 		apiKey:              apiKey,
 		writer:              nil,
+		onStatusChange:      nil,
 	}, nil
 }
 
@@ -138,6 +140,7 @@ func NewPolygonClientWithAPI(apiClient PolygonAPIClient) *PolygonClient {
 		wsServiceForTesting: nil,
 		apiKey:              "",
 		writer:              nil,
+		onStatusChange:      nil,
 	}
 }
 
@@ -148,6 +151,7 @@ func NewPolygonClientWithWebSocket(apiKey string, wsService PolygonWebSocketServ
 		wsServiceForTesting: wsService,
 		apiKey:              apiKey,
 		writer:              nil,
+		onStatusChange:      nil,
 	}
 }
 
@@ -156,6 +160,19 @@ var _ PolygonAggsIterator = (*iter.Iter[models.Agg])(nil)
 
 func (c *PolygonClient) ConfigWriter(w writer.MarketDataWriter) {
 	c.writer = w
+}
+
+// SetOnStatusChange sets a callback that will be called when the WebSocket connection
+// status changes (connected/disconnected).
+func (c *PolygonClient) SetOnStatusChange(callback OnStatusChange) {
+	c.onStatusChange = callback
+}
+
+// emitStatus emits a status change if a callback is registered.
+func (c *PolygonClient) emitStatus(status types.ProviderConnectionStatus) {
+	if c.onStatusChange != nil {
+		c.onStatusChange(status)
+	}
 }
 
 func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
@@ -302,16 +319,28 @@ func (c *PolygonClient) Stream(ctx context.Context, symbols []string, interval s
 			//nolint:exhaustruct // empty struct for error case
 			yield(types.MarketData{}, fmt.Errorf("failed to connect to polygon websocket: %w", err))
 
+			// Emit disconnected status on connection failure
+			c.emitStatus(types.ProviderStatusDisconnected)
+
 			return
 		}
+
+		// Emit connected status when WebSocket connection is established
+		c.emitStatus(types.ProviderStatusConnected)
 
 		// Subscribe to aggregate topic for all symbols
 		if err := wsService.Subscribe(topic, symbols...); err != nil {
 			//nolint:exhaustruct // empty struct for error case
 			yield(types.MarketData{}, fmt.Errorf("failed to subscribe to symbols: %w", err))
 
+			// Emit disconnected status on subscription failure
+			c.emitStatus(types.ProviderStatusDisconnected)
+
 			return
 		}
+
+		// Ensure disconnected status is emitted when the stream ends
+		defer c.emitStatus(types.ProviderStatusDisconnected)
 
 		// Main message loop
 		for {
