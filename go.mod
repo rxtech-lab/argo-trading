@@ -51,7 +51,6 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/mobile v0.0.0-20260112195712-5b9ecdfb8721 // indirect
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 )
 
