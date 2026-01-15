@@ -1861,6 +1861,248 @@ func (s *LiveTradingEngineV1TestSuite) TestLiveTradingLog_GetLogs() {
 }
 
 // ============================================================================
+// OnProviderStatusChange Callback Tests
+// ============================================================================
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Success() {
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:  []string{"BTCUSDT"},
+		Interval: "1m",
+	})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).Times(1)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	// Create test data
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	var statusUpdateReceived bool
+	var receivedStatus types.ProviderStatusUpdate
+	var mu sync.Mutex
+
+	onStatusChange := engine.OnProviderStatusChangeCallback(func(status types.ProviderStatusUpdate) error {
+		mu.Lock()
+		defer mu.Unlock()
+		statusUpdateReceived = true
+		receivedStatus = status
+		return nil
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnProviderStatusChange: &onStatusChange,
+	}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Callback should have been invoked because we set up the provider callbacks
+	s.True(statusUpdateReceived)
+	// After successful connection, trading status should be connected
+	s.Equal(types.ProviderStatusConnected, receivedStatus.TradingStatus)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Nil() {
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:  []string{"BTCUSDT"},
+		Interval: "1m",
+	})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).Times(1)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	// Create test data
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	// Test with nil OnProviderStatusChange callback - should not panic
+	callbacks := engine.LiveTradingCallbacks{
+		OnProviderStatusChange: nil,
+	}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Error() {
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:  []string{"BTCUSDT"},
+		Interval: "1m",
+	})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	// Create test data
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	var callCount int
+	var mu sync.Mutex
+
+	// Callback that returns an error
+	onStatusChange := engine.OnProviderStatusChangeCallback(func(status types.ProviderStatusUpdate) error {
+		mu.Lock()
+		defer mu.Unlock()
+		callCount++
+		return errors.New("status callback error")
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnProviderStatusChange: &onStatusChange,
+	}
+
+	// The run should complete without error since status callback errors are non-fatal
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	s.GreaterOrEqual(callCount, 1)
+}
+
+func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_TradingConnectionFails() {
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{
+		Symbols:  []string{"BTCUSDT"},
+		Interval: "1m",
+	})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	// Create test data
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	// CheckConnection fails - trading provider is not connected
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(errors.New("connection failed")).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	var mu sync.Mutex
+
+	onStatusChange := engine.OnProviderStatusChangeCallback(func(_ types.ProviderStatusUpdate) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return nil
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnProviderStatusChange: &onStatusChange,
+	}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	// When CheckConnection fails, the status stays disconnected (initial value),
+	// so the callback is NOT called for trading status since no status change occurred.
+	// However, callback may still be called from market data status changes.
+	// This test verifies that the engine does not crash when CheckConnection fails.
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
