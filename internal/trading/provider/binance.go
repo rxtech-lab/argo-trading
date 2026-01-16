@@ -263,6 +263,7 @@ func (s *realTradeFeeService) Do(ctx context.Context) ([]*binance.TradeFeeDetail
 type BinanceTradingSystemProvider struct {
 	client           BinanceClient
 	decimalPrecision int
+	onStatusChange   OnStatusChange
 }
 
 // NewBinanceTradingSystemProvider creates a new Binance trading system.
@@ -283,6 +284,7 @@ func NewBinanceTradingSystemProvider(config BinanceProviderConfig, useTestnet bo
 	return &BinanceTradingSystemProvider{
 		client:           &realBinanceClient{client: client},
 		decimalPrecision: BinanceDecimalPrecision,
+		onStatusChange:   nil,
 	}, nil
 }
 
@@ -292,6 +294,7 @@ func newBinanceTradingSystemProviderWithClient(client BinanceClient) *BinanceTra
 	return &BinanceTradingSystemProvider{
 		client:           client,
 		decimalPrecision: BinanceDecimalPrecision,
+		onStatusChange:   nil,
 	}
 }
 
@@ -301,6 +304,7 @@ func newBinanceTradingSystemProviderWithPrecision(client BinanceClient, decimalP
 	return &BinanceTradingSystemProvider{
 		client:           client,
 		decimalPrecision: decimalPrecision,
+		onStatusChange:   nil,
 	}
 }
 
@@ -692,6 +696,29 @@ func (b *BinanceTradingSystemProvider) GetMaxSellQuantity(symbol string) (float6
 	}
 
 	return position.TotalLongPositionQuantity, nil
+}
+
+// CheckConnection verifies if the trading provider is connected by performing a health check.
+// For Binance, it uses the GetAccountService to verify connectivity and authentication.
+func (b *BinanceTradingSystemProvider) CheckConnection(ctx context.Context) error {
+	_, err := b.client.NewGetAccountService().Do(ctx)
+	if err != nil {
+		return errors.Wrap(errors.ErrCodeOrderFailed, "failed to connect to Binance API", err)
+	}
+
+	return nil
+}
+
+// SetOnStatusChange sets a callback that will be called when the connection status changes.
+func (b *BinanceTradingSystemProvider) SetOnStatusChange(callback OnStatusChange) {
+	b.onStatusChange = callback
+}
+
+// emitStatus emits a status change if a callback is registered.
+func (b *BinanceTradingSystemProvider) emitStatus(status types.ProviderConnectionStatus) {
+	if b.onStatusChange != nil {
+		b.onStatusChange(status)
+	}
 }
 
 // Helper functions

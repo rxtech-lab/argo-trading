@@ -294,3 +294,72 @@ func (suite *PolygonStreamTestSuite) TestConvertIntervalToPolygonTopic() {
 	suite.NoError(err)
 	suite.Equal(polygonws.StocksMinAggs, topic)
 }
+
+func (suite *PolygonStreamTestSuite) TestSetOnStatusChange() {
+	client := NewPolygonClientWithWebSocket("test-api-key", nil)
+
+	client.SetOnStatusChange(func(_ types.ProviderConnectionStatus) {
+		// Callback registered successfully
+	})
+
+	// Verify callback is set
+	suite.NotNil(client.onStatusChange)
+}
+
+func (suite *PolygonStreamTestSuite) TestStreamEmitsConnectedStatus() {
+	events := []any{
+		models.EquityAgg{
+			Symbol:         "AAPL",
+			Open:           150.00,
+			High:           152.00,
+			Low:            149.50,
+			Close:          151.50,
+			Volume:         1000000,
+			StartTimestamp: 1704067200000,
+		},
+	}
+
+	mockWs := newMockPolygonWebSocketService()
+	mockWs.events = events
+
+	client := NewPolygonClientWithWebSocket("test-api-key", mockWs)
+
+	var statusChanges []types.ProviderConnectionStatus
+	client.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
+		statusChanges = append(statusChanges, status)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	// Consume the stream to trigger the connection
+	for range client.Stream(ctx, []string{"AAPL"}, "1m") {
+		// Just iterate through to completion
+	}
+
+	// Should have received connected and disconnected status
+	suite.GreaterOrEqual(len(statusChanges), 1, "Should have received at least one status change")
+	suite.Contains(statusChanges, types.ProviderStatusConnected, "Should have received connected status")
+}
+
+func (suite *PolygonStreamTestSuite) TestStreamEmitsDisconnectedOnError() {
+	mockWs := newMockPolygonWebSocketService()
+	mockWs.connectError = errors.New("authentication failed")
+
+	client := NewPolygonClientWithWebSocket("invalid-api-key", mockWs)
+
+	var statusChanges []types.ProviderConnectionStatus
+	client.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
+		statusChanges = append(statusChanges, status)
+	})
+
+	ctx := context.Background()
+
+	// Stream should fail to connect
+	for range client.Stream(ctx, []string{"AAPL"}, "1m") {
+		// Just iterate through to completion
+	}
+
+	// Should have received disconnected status on failure
+	suite.Contains(statusChanges, types.ProviderStatusDisconnected, "Should have received disconnected status on connection error")
+}

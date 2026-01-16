@@ -181,36 +181,40 @@ func (w *binanceWebSocketServiceWrapper) WsKlineServe(symbol string, interval st
 }
 
 type BinanceClient struct {
-	apiClient BinanceAPIClient
-	wsService BinanceWebSocketService
-	writer    writer.MarketDataWriter
+	apiClient      BinanceAPIClient
+	wsService      BinanceWebSocketService
+	writer         writer.MarketDataWriter
+	onStatusChange OnStatusChange
 }
 
 func NewBinanceClient() (Provider, error) {
 	client := binance.NewClient("", "")
 
 	return &BinanceClient{
-		apiClient: &binanceClientWrapper{client: client},
-		wsService: &binanceWebSocketServiceWrapper{},
-		writer:    nil,
+		apiClient:      &binanceClientWrapper{client: client},
+		wsService:      &binanceWebSocketServiceWrapper{},
+		writer:         nil,
+		onStatusChange: nil,
 	}, nil
 }
 
 // NewBinanceClientWithAPI creates a BinanceClient with a custom API client (for testing).
 func NewBinanceClientWithAPI(apiClient BinanceAPIClient) *BinanceClient {
 	return &BinanceClient{
-		apiClient: apiClient,
-		wsService: &binanceWebSocketServiceWrapper{},
-		writer:    nil,
+		apiClient:      apiClient,
+		wsService:      &binanceWebSocketServiceWrapper{},
+		writer:         nil,
+		onStatusChange: nil,
 	}
 }
 
 // NewBinanceClientWithWebSocket creates a BinanceClient with custom API and WebSocket services (for testing).
 func NewBinanceClientWithWebSocket(apiClient BinanceAPIClient, wsService BinanceWebSocketService) *BinanceClient {
 	return &BinanceClient{
-		apiClient: apiClient,
-		wsService: wsService,
-		writer:    nil,
+		apiClient:      apiClient,
+		wsService:      wsService,
+		writer:         nil,
+		onStatusChange: nil,
 	}
 }
 
@@ -236,14 +240,21 @@ func NewBinanceClientWithEndpoints(config BinanceEndpointConfig) (Provider, erro
 	}
 
 	return &BinanceClient{
-		apiClient: &binanceClientWrapper{client: client},
-		wsService: &binanceWebSocketServiceWrapper{},
-		writer:    nil,
+		apiClient:      &binanceClientWrapper{client: client},
+		wsService:      &binanceWebSocketServiceWrapper{},
+		writer:         nil,
+		onStatusChange: nil,
 	}, nil
 }
 
 func (c *BinanceClient) ConfigWriter(w writer.MarketDataWriter) {
 	c.writer = w
+}
+
+// SetOnStatusChange sets a callback that will be called when the WebSocket connection
+// status changes (connected/disconnected).
+func (c *BinanceClient) SetOnStatusChange(callback OnStatusChange) {
+	c.onStatusChange = callback
 }
 
 // ValidateSymbols checks if all provided symbols are valid Binance trading pairs.
@@ -562,8 +573,14 @@ func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval s
 					default:
 					}
 
+					// Emit disconnected status on connection failure
+					c.emitStatus(types.ProviderStatusDisconnected)
+
 					return
 				}
+
+				// Emit connected status when WebSocket connection is established
+				c.emitStatus(types.ProviderStatusConnected)
 
 				entry := &stopChanEntry{ch: stopC, closed: false}
 
@@ -575,7 +592,11 @@ func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval s
 				select {
 				case <-ctx.Done():
 					safeStop(entry)
+					// Emit disconnected status when connection is closed
+					c.emitStatus(types.ProviderStatusDisconnected)
 				case <-doneC:
+					// Emit disconnected status when connection is closed
+					c.emitStatus(types.ProviderStatusDisconnected)
 				}
 			}(symbol)
 		}
@@ -659,6 +680,13 @@ func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval s
 				}
 			}
 		}
+	}
+}
+
+// emitStatus emits a status change if a callback is registered.
+func (c *BinanceClient) emitStatus(status types.ProviderConnectionStatus) {
+	if c.onStatusChange != nil {
+		c.onStatusChange(status)
 	}
 }
 

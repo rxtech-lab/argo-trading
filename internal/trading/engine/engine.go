@@ -43,6 +43,10 @@ type OnStatsUpdateCallback func(stats types.LiveTradeStats) error
 // OnStatusUpdateCallback is called when engine status changes.
 type OnStatusUpdateCallback func(status types.EngineStatus) error
 
+// OnProviderStatusChangeCallback is called when provider connection status changes.
+// It receives the current status of both market data and trading providers.
+type OnProviderStatusChangeCallback func(status types.ProviderStatusUpdate) error
+
 // LiveTradingCallbacks holds all lifecycle callback functions for the live trading engine.
 // All fields are pointers - nil means no callback will be invoked.
 type LiveTradingCallbacks struct {
@@ -72,6 +76,10 @@ type LiveTradingCallbacks struct {
 
 	// OnStatusUpdate is called when engine status changes.
 	OnStatusUpdate *OnStatusUpdateCallback
+
+	// OnProviderStatusChange is called when provider connection status changes.
+	// It receives the current status of both market data and trading providers.
+	OnProviderStatusChange *OnProviderStatusChangeCallback
 }
 
 // PrefetchConfig holds configuration for historical data prefetching.

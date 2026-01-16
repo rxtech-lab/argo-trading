@@ -67,6 +67,10 @@ type LiveTradingEngineV1 struct {
 	tradesWriter *writers.TradesWriter
 	marksWriter  *writers.MarksWriter
 	logsWriter   *writers.LogsWriter
+
+	// Provider status tracking
+	marketDataStatus types.ProviderConnectionStatus
+	tradingStatus    types.ProviderConnectionStatus
 }
 
 // NewLiveTradingEngineV1 creates a new LiveTradingEngineV1 instance without persistence.
@@ -100,6 +104,8 @@ func NewLiveTradingEngineV1() (engine.LiveTradingEngine, error) {
 		tradesWriter:         nil,
 		marksWriter:          nil,
 		logsWriter:           nil,
+		marketDataStatus:     types.ProviderStatusDisconnected,
+		tradingStatus:        types.ProviderStatusDisconnected,
 	}, nil
 }
 
@@ -136,6 +142,8 @@ func NewLiveTradingEngineV1WithPersistence(dataDir, providerName string) (engine
 		tradesWriter:         nil,
 		marksWriter:          nil,
 		logsWriter:           nil,
+		marketDataStatus:     types.ProviderStatusDisconnected,
+		tradingStatus:        types.ProviderStatusDisconnected,
 	}, nil
 }
 
@@ -410,6 +418,17 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		runErr = err
 
 		return err
+	}
+
+	// Set up provider status callbacks
+	e.setupProviderStatusCallbacks(callbacks.OnProviderStatusChange)
+
+	// Check trading provider connection
+	if err := e.tradingProvider.CheckConnection(ctx); err != nil {
+		e.log.Warn("Trading provider connection check failed", zap.Error(err))
+		e.updateTradingStatus(types.ProviderStatusDisconnected, callbacks.OnProviderStatusChange)
+	} else {
+		e.updateTradingStatus(types.ProviderStatusConnected, callbacks.OnProviderStatusChange)
 	}
 
 	// Initialize strategy
@@ -808,4 +827,46 @@ func (l *LiveTradingLog) Log(entry internalLog.LogEntry) error {
 // GetLogs implements internalLog.Log.
 func (l *LiveTradingLog) GetLogs() ([]internalLog.LogEntry, error) {
 	return l.logs, nil
+}
+
+// updateMarketDataStatus updates the market data provider status and emits a callback if registered.
+func (e *LiveTradingEngineV1) updateMarketDataStatus(status types.ProviderConnectionStatus, callback *engine.OnProviderStatusChangeCallback) {
+	if e.marketDataStatus != status {
+		e.marketDataStatus = status
+		e.emitProviderStatusUpdate(callback)
+	}
+}
+
+// updateTradingStatus updates the trading provider status and emits a callback if registered.
+func (e *LiveTradingEngineV1) updateTradingStatus(status types.ProviderConnectionStatus, callback *engine.OnProviderStatusChangeCallback) {
+	if e.tradingStatus != status {
+		e.tradingStatus = status
+		e.emitProviderStatusUpdate(callback)
+	}
+}
+
+// emitProviderStatusUpdate emits the current provider status to the callback if registered.
+func (e *LiveTradingEngineV1) emitProviderStatusUpdate(callback *engine.OnProviderStatusChangeCallback) {
+	if callback != nil {
+		statusUpdate := types.ProviderStatusUpdate{
+			MarketDataStatus: e.marketDataStatus,
+			TradingStatus:    e.tradingStatus,
+		}
+		if err := (*callback)(statusUpdate); err != nil {
+			e.log.Warn("OnProviderStatusChange callback failed", zap.Error(err))
+		}
+	}
+}
+
+// setupProviderStatusCallbacks sets up the status change callbacks on providers.
+func (e *LiveTradingEngineV1) setupProviderStatusCallbacks(callback *engine.OnProviderStatusChangeCallback) {
+	// Set up market data provider status callback
+	e.marketDataProvider.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
+		e.updateMarketDataStatus(status, callback)
+	})
+
+	// Set up trading provider status callback
+	e.tradingProvider.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
+		e.updateTradingStatus(status, callback)
+	})
 }

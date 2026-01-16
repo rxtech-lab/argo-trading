@@ -1,11 +1,15 @@
 package tradingprovider
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
+
+// OnStatusChange is a callback that is called when the provider's connection status changes.
+type OnStatusChange = func(status types.ProviderConnectionStatus)
 
 type TradingSystemProvider interface {
 	// PlaceOrder places a single order
@@ -34,6 +38,11 @@ type TradingSystemProvider interface {
 	// GetMaxSellQuantity returns the maximum quantity that can be sold for a symbol.
 	// This is the total long position quantity for the symbol.
 	GetMaxSellQuantity(symbol string) (float64, error)
+	// CheckConnection verifies if the trading provider is connected by performing a health check.
+	// Returns nil if connected, error otherwise.
+	CheckConnection(ctx context.Context) error
+	// SetOnStatusChange sets a callback that will be called when the connection status changes.
+	SetOnStatusChange(callback OnStatusChange)
 }
 
 type ProviderType string
