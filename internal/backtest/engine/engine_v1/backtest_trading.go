@@ -472,6 +472,18 @@ func (b *BacktestTrading) GetMaxSellQuantity(symbol string) (float64, error) {
 	return utils.RoundToDecimalPrecision(position.TotalLongPositionQuantity, b.decimalPrecision), nil
 }
 
+// CheckConnection implements tradingprovider.TradingSystemProvider.
+// For backtesting, this always returns nil as the trading system is always available.
+func (b *BacktestTrading) CheckConnection(_ context.Context) error {
+	return nil
+}
+
+// SetOnStatusChange implements tradingprovider.TradingSystemProvider.
+// For backtesting, this is a no-op as the trading system is always connected.
+func (b *BacktestTrading) SetOnStatusChange(_ tradingprovider.OnStatusChange) {
+	// No-op for backtest trading
+}
+
 // getBuyingPower returns the maximum quantity that can be bought for the current market data.
 func (b *BacktestTrading) getBuyingPower() float64 {
 	maxQty := utils.CalculateMaxQuantity(b.balance, (b.marketData.High+b.marketData.Low)/2, b.commission)
@@ -653,16 +665,4 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 	_, err := b.state.Update([]types.Order{executedOrder})
 
 	return err
-}
-
-// CheckConnection implements tradingprovider.TradingSystemProvider.
-// For backtesting, this always returns nil as the trading system is always available.
-func (b *BacktestTrading) CheckConnection(_ context.Context) error {
-	return nil
-}
-
-// SetOnStatusChange implements tradingprovider.TradingSystemProvider.
-// For backtesting, this is a no-op as the trading system is always connected.
-func (b *BacktestTrading) SetOnStatusChange(_ tradingprovider.OnStatusChange) {
-	// No-op for backtest trading
 }

@@ -257,13 +257,6 @@ func (c *BinanceClient) SetOnStatusChange(callback OnStatusChange) {
 	c.onStatusChange = callback
 }
 
-// emitStatus emits a status change if a callback is registered.
-func (c *BinanceClient) emitStatus(status types.ProviderConnectionStatus) {
-	if c.onStatusChange != nil {
-		c.onStatusChange(status)
-	}
-}
-
 // ValidateSymbols checks if all provided symbols are valid Binance trading pairs.
 // It uses the price ticker API to verify symbols exist and are actively trading.
 // Returns an error listing any invalid symbols.
@@ -687,6 +680,13 @@ func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval s
 				}
 			}
 		}
+	}
+}
+
+// emitStatus emits a status change if a callback is registered.
+func (c *BinanceClient) emitStatus(status types.ProviderConnectionStatus) {
+	if c.onStatusChange != nil {
+		c.onStatusChange(status)
 	}
 }
 

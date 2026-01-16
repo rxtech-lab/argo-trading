@@ -168,13 +168,6 @@ func (c *PolygonClient) SetOnStatusChange(callback OnStatusChange) {
 	c.onStatusChange = callback
 }
 
-// emitStatus emits a status change if a callback is registered.
-func (c *PolygonClient) emitStatus(status types.ProviderConnectionStatus) {
-	if c.onStatusChange != nil {
-		c.onStatusChange(status)
-	}
-}
-
 func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate time.Time, endDate time.Time, multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error) {
 	if c.writer == nil {
 		return "", fmt.Errorf("no writer configured for PolygonClient. Call ConfigWriter first")
@@ -367,6 +360,13 @@ func (c *PolygonClient) Stream(ctx context.Context, symbols []string, interval s
 				}
 			}
 		}
+	}
+}
+
+// emitStatus emits a status change if a callback is registered.
+func (c *PolygonClient) emitStatus(status types.ProviderConnectionStatus) {
+	if c.onStatusChange != nil {
+		c.onStatusChange(status)
 	}
 }
 
