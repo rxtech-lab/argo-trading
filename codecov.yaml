@@ -1,7 +1,0 @@
-# sample regex patterns
-ignore:
-  - "*.pb.go"           # Protobuf generated files
-  - "*_vtproto.pb.go"   # VTProtobuf generated files
-  - "main.go"
-  - "pkg/strategy/**"   # Auto-generated strategy code
-  - "mocks/**"          # Generated mock files
