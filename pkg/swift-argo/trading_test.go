@@ -103,6 +103,31 @@ func (suite *TradingTestSuite) TestGetSupportedTradingProviders() {
 	suite.True(found["binance-live"], "should contain binance-live")
 }
 
+// Test GetTradingProviderKeychainFields
+func (suite *TradingTestSuite) TestGetTradingProviderKeychainFields_BinancePaper() {
+	fields := GetTradingProviderKeychainFields("binance-paper")
+
+	suite.NotNil(fields)
+	suite.Equal(2, fields.Size())
+	suite.Equal("apiKey", fields.Get(0))
+	suite.Equal("secretKey", fields.Get(1))
+}
+
+func (suite *TradingTestSuite) TestGetTradingProviderKeychainFields_BinanceLive() {
+	fields := GetTradingProviderKeychainFields("binance-live")
+
+	suite.NotNil(fields)
+	suite.Equal(2, fields.Size())
+	suite.Equal("apiKey", fields.Get(0))
+	suite.Equal("secretKey", fields.Get(1))
+}
+
+func (suite *TradingTestSuite) TestGetTradingProviderKeychainFields_InvalidProvider() {
+	fields := GetTradingProviderKeychainFields("invalid")
+
+	suite.Nil(fields)
+}
+
 // Test GetTradingProviderSchema
 func (suite *TradingTestSuite) TestGetTradingProviderSchema_BinancePaper() {
 	schema := GetTradingProviderSchema("binance-paper")

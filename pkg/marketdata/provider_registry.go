@@ -64,6 +64,20 @@ func GetDownloadConfigSchema(providerName string) (string, error) {
 	}
 }
 
+// GetDownloadKeychainFields returns the list of keychain field names for a provider's download configuration.
+func GetDownloadKeychainFields(providerName string) ([]string, error) {
+	switch ProviderType(providerName) {
+	case ProviderPolygon:
+		//nolint:exhaustruct // Empty struct is intentional for field introspection
+		return strategy.GetKeychainFields(PolygonDownloadConfig{}), nil
+	case ProviderBinance:
+		//nolint:exhaustruct // Empty struct is intentional for field introspection
+		return strategy.GetKeychainFields(BinanceDownloadConfig{}), nil
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", providerName)
+	}
+}
+
 // ParseDownloadConfig parses a JSON configuration string for the given provider.
 // Returns the parsed config as an interface{} which can be type-asserted to the specific config type.
 func ParseDownloadConfig(providerName string, jsonConfig string) (interface{}, error) {

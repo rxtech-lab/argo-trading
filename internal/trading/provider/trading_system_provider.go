@@ -107,6 +107,17 @@ func GetProviderConfigSchema(providerName string) (string, error) {
 	}
 }
 
+// GetProviderKeychainFields returns the list of keychain field names for a provider's configuration.
+func GetProviderKeychainFields(providerName string) ([]string, error) {
+	switch ProviderType(providerName) {
+	case ProviderBinancePaper, ProviderBinanceLive:
+		//nolint:exhaustruct // Empty struct is intentional for field introspection
+		return strategy.GetKeychainFields(BinanceProviderConfig{}), nil
+	default:
+		return nil, fmt.Errorf("unsupported trading provider: %s", providerName)
+	}
+}
+
 // ParseProviderConfig parses a JSON configuration string for the given provider.
 func ParseProviderConfig(providerName string, jsonConfig string) (any, error) {
 	switch ProviderType(providerName) {

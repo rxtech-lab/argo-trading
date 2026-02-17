@@ -81,6 +81,18 @@ func GetTradingProviderSchema(providerName string) string {
 	return schema
 }
 
+// GetTradingProviderKeychainFields returns the keychain field names for a trading provider's configuration.
+// The providerName should be one of the values returned by GetSupportedTradingProviders().
+// Returns nil if the provider is not found.
+func GetTradingProviderKeychainFields(providerName string) StringCollection {
+	fields, err := tradingprovider.GetProviderKeychainFields(providerName)
+	if err != nil {
+		return nil
+	}
+
+	return &StringArray{items: fields}
+}
+
 // GetTradingProviderInfo returns metadata for a specific trading provider.
 // Returns nil and an error if the provider is not found.
 func GetTradingProviderInfo(providerName string) (*TradingProviderInfo, error) {

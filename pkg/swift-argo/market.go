@@ -42,6 +42,18 @@ func GetDownloadClientSchema(providerName string) string {
 	return schema
 }
 
+// GetDownloadClientKeychainFields returns the keychain field names for a download client's configuration.
+// The providerName should be one of the values returned by GetSupportedDownloadClients().
+// Returns nil if the provider is not found.
+func GetDownloadClientKeychainFields(providerName string) StringCollection {
+	fields, err := marketdata.GetDownloadKeychainFields(providerName)
+	if err != nil || len(fields) == 0 {
+		return nil
+	}
+
+	return &StringArray{items: fields}
+}
+
 // NewMarketDownloader creates a new MarketDownloader with the given helper for progress callbacks.
 func NewMarketDownloader(helper MarketDownloaderHelper) *MarketDownloader {
 	return &MarketDownloader{

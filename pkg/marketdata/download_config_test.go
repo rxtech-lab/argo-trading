@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -298,6 +299,16 @@ func (suite *DownloadConfigTestSuite) TestAllIntervals() {
 		err := config.Validate()
 		suite.NoError(err, "interval %s should be valid", interval)
 	}
+}
+
+func (suite *DownloadConfigTestSuite) TestPolygonKeychainFields() {
+	fields := strategy.GetKeychainFields(PolygonDownloadConfig{})
+	suite.Equal([]string{"apiKey"}, fields)
+}
+
+func (suite *DownloadConfigTestSuite) TestBinanceKeychainFields() {
+	fields := strategy.GetKeychainFields(BinanceDownloadConfig{})
+	suite.Nil(fields)
 }
 
 func (suite *DownloadConfigTestSuite) TestPolygonConfigJSONSchema() {

@@ -14,6 +14,35 @@ func TestJsonSchemaTestSuite(t *testing.T) {
 	suite.Run(t, new(JsonSchemaTestSuite))
 }
 
+func (suite *JsonSchemaTestSuite) TestGetKeychainFields() {
+	type Config struct {
+		ApiKey    string `json:"apiKey" keychain:"true"`
+		SecretKey string `json:"secretKey" keychain:"true"`
+		BaseURL   string `json:"baseUrl,omitempty"`
+	}
+
+	fields := GetKeychainFields(Config{})
+	suite.Equal([]string{"apiKey", "secretKey"}, fields)
+}
+
+func (suite *JsonSchemaTestSuite) TestGetKeychainFields_NoKeychainFields() {
+	type Config struct {
+		Name string `json:"name"`
+	}
+
+	fields := GetKeychainFields(Config{})
+	suite.Nil(fields)
+}
+
+func (suite *JsonSchemaTestSuite) TestGetKeychainFields_NoJsonTag() {
+	type Config struct {
+		ApiKey string `keychain:"true"`
+	}
+
+	fields := GetKeychainFields(Config{})
+	suite.Equal([]string{"ApiKey"}, fields)
+}
+
 func (suite *JsonSchemaTestSuite) TestToJSONSchema() {
 	type TestConfig struct {
 		FastPeriod int    `yaml:"fastPeriod" jsonschema:"title=Fast Period,description=The period for the fast moving average,minimum=1,default=5"`
