@@ -9,8 +9,8 @@ import (
 
 // BinanceProviderConfig contains configuration for Binance trading.
 type BinanceProviderConfig struct {
-	ApiKey    string `json:"apiKey" jsonschema:"title=API Key,description=Binance API key" validate:"required"`
-	SecretKey string `json:"secretKey" jsonschema:"title=Secret Key,description=Binance API secret key" validate:"required"`
+	ApiKey    string `json:"apiKey" jsonschema:"title=API Key,description=Binance API key" keychain:"true" validate:"required"`
+	SecretKey string `json:"secretKey" jsonschema:"title=Secret Key,description=Binance API secret key" keychain:"true" validate:"required"`
 	BaseURL   string `json:"baseUrl,omitempty" jsonschema:"title=Base URL,description=Custom REST API base URL (optional). If set takes precedence over useTestnet."`
 }
 

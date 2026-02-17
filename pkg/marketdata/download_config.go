@@ -32,7 +32,7 @@ type BaseDownloadConfig struct {
 type PolygonDownloadConfig struct {
 	BaseDownloadConfig
 
-	ApiKey string `json:"apiKey" jsonschema:"title=API Key,description=Polygon.io API key for authentication,required" validate:"required"`
+	ApiKey string `json:"apiKey" jsonschema:"title=API Key,description=Polygon.io API key for authentication,required" keychain:"true" validate:"required"`
 }
 
 // BinanceDownloadConfig contains configuration for downloading from Binance.

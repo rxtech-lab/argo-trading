@@ -50,6 +50,32 @@ final class TradingApiTests: XCTestCase {
             "Should return same number of providers on multiple calls")
     }
 
+    // MARK: - GetTradingProviderKeychainFields Tests
+
+    func testGetTradingProviderKeychainFields_BinancePaperReturnsFields() {
+        let fields = SwiftargoGetTradingProviderKeychainFields("binance-paper")
+
+        XCTAssertNotNil(fields, "Binance paper should have keychain fields")
+        XCTAssertEqual(fields!.size(), 2, "Binance paper should have 2 keychain fields")
+        XCTAssertEqual(fields!.get(0), "apiKey", "First keychain field should be apiKey")
+        XCTAssertEqual(fields!.get(1), "secretKey", "Second keychain field should be secretKey")
+    }
+
+    func testGetTradingProviderKeychainFields_BinanceLiveReturnsFields() {
+        let fields = SwiftargoGetTradingProviderKeychainFields("binance-live")
+
+        XCTAssertNotNil(fields, "Binance live should have keychain fields")
+        XCTAssertEqual(fields!.size(), 2, "Binance live should have 2 keychain fields")
+        XCTAssertEqual(fields!.get(0), "apiKey", "First keychain field should be apiKey")
+        XCTAssertEqual(fields!.get(1), "secretKey", "Second keychain field should be secretKey")
+    }
+
+    func testGetTradingProviderKeychainFields_InvalidProviderReturnsNil() {
+        let fields = SwiftargoGetTradingProviderKeychainFields("invalid")
+
+        XCTAssertNil(fields, "Invalid provider should return nil")
+    }
+
     // MARK: - GetTradingProviderSchema Tests
 
     func testGetTradingProviderSchema_BinancePaperReturnsValidJSON() {

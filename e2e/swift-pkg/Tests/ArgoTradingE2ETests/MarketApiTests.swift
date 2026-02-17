@@ -50,6 +50,28 @@ final class MarketApiTests: XCTestCase {
             "Should return same number of clients on multiple calls")
     }
 
+    // MARK: - GetDownloadClientKeychainFields Tests
+
+    func testGetDownloadClientKeychainFields_PolygonReturnsFields() {
+        let fields = SwiftargoGetDownloadClientKeychainFields("polygon")
+
+        XCTAssertNotNil(fields, "Polygon should have keychain fields")
+        XCTAssertEqual(fields!.size(), 1, "Polygon should have 1 keychain field")
+        XCTAssertEqual(fields!.get(0), "apiKey", "Keychain field should be apiKey")
+    }
+
+    func testGetDownloadClientKeychainFields_BinanceReturnsNil() {
+        let fields = SwiftargoGetDownloadClientKeychainFields("binance")
+
+        XCTAssertNil(fields, "Binance should have no keychain fields")
+    }
+
+    func testGetDownloadClientKeychainFields_InvalidProviderReturnsNil() {
+        let fields = SwiftargoGetDownloadClientKeychainFields("invalid")
+
+        XCTAssertNil(fields, "Invalid provider should return nil")
+    }
+
     // MARK: - GetDownloadClientSchema Tests
 
     func testGetDownloadClientSchema_PolygonReturnsValidJSON() {

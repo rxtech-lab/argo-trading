@@ -51,6 +51,27 @@ func (suite *MarketTestSuite) TestGetSupportedDownloadClients() {
 	suite.True(found["binance"], "should contain binance")
 }
 
+// Test GetDownloadClientKeychainFields
+func (suite *MarketTestSuite) TestGetDownloadClientKeychainFields_Polygon() {
+	fields := GetDownloadClientKeychainFields("polygon")
+
+	suite.NotNil(fields)
+	suite.Equal(1, fields.Size())
+	suite.Equal("apiKey", fields.Get(0))
+}
+
+func (suite *MarketTestSuite) TestGetDownloadClientKeychainFields_Binance() {
+	fields := GetDownloadClientKeychainFields("binance")
+
+	suite.Nil(fields)
+}
+
+func (suite *MarketTestSuite) TestGetDownloadClientKeychainFields_InvalidProvider() {
+	fields := GetDownloadClientKeychainFields("invalid")
+
+	suite.Nil(fields)
+}
+
 func (suite *MarketTestSuite) TestGetDownloadClientSchema_Polygon() {
 	schema := GetDownloadClientSchema("polygon")
 
