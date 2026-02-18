@@ -433,6 +433,7 @@ On shutdown:
 
 ## Related Documentation
 
+- [Order Confirmation](order-confirmation.md) - Auto/manual order confirmation configuration and callbacks
 - [Session Management and Persistence](session-and-persistence.md) - Daily statistics, multi-day sessions, data storage
 - [Data Prefetch](data-prefetch.md) - Historical data prefetching for indicators
 - [Testing](testing.md) - Mock providers and E2E testing
