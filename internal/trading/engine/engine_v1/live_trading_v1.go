@@ -434,9 +434,14 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	e.setupProviderStatusCallbacks(callbacks.OnProviderStatusChange)
 
 	// Check trading provider connection
+	e.log.Info("Checking trading provider connection...")
 	if err := e.tradingProvider.CheckConnection(ctx); err != nil {
 		e.log.Warn("Trading provider connection check failed", zap.Error(err))
 		e.updateTradingStatus(types.ProviderStatusDisconnected, callbacks.OnProviderStatusChange)
+
+		if callbacks.OnError != nil {
+			(*callbacks.OnError)(fmt.Errorf("trading provider connection check failed: %w", err))
+		}
 	} else {
 		e.updateTradingStatus(types.ProviderStatusConnected, callbacks.OnProviderStatusChange)
 	}
@@ -509,6 +514,10 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	}
 
 	// Start streaming market data
+	e.log.Info("Starting market data stream",
+		zap.Strings("symbols", e.marketDataProvider.GetSymbols()),
+		zap.String("interval", e.marketDataProvider.GetInterval()),
+	)
 	stream := e.marketDataProvider.Stream(ctx)
 
 	// Determine which datasource to use for indicator calculations

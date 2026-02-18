@@ -2071,6 +2071,67 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Tr
 	// This test verifies that the engine does not crash when CheckConnection fails.
 }
 
+func (s *LiveTradingEngineV1TestSuite) TestRun_TradingProviderConnectionFails_CallsOnError() {
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
+	s.Require().NoError(err)
+
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	// Create test data
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(errors.New("invalid API key")).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	var errorReceived error
+	var mu sync.Mutex
+
+	onError := engine.OnErrorCallback(func(err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		errorReceived = err
+	})
+
+	callbacks := engine.LiveTradingCallbacks{
+		OnError: &onError,
+	}
+
+	err = eng.Run(context.Background(), callbacks)
+	s.NoError(err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	s.Require().NotNil(errorReceived, "OnError should have been called when CheckConnection fails")
+	s.Contains(errorReceived.Error(), "trading provider connection check failed")
+	s.Contains(errorReceived.Error(), "invalid API key")
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================

@@ -14,7 +14,11 @@ import (
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/writer"
+	"go.uber.org/zap"
 )
+
+// debugLog is a package-level zap logger for debug output in the market data provider.
+var debugLog, _ = zap.NewProduction()
 
 // BinanceKlinesService defines the interface for fetching klines from Binance.
 type BinanceKlinesService interface {
@@ -154,6 +158,13 @@ type BinanceWebSocketService interface {
 type binanceWebSocketServiceWrapper struct{}
 
 func (w *binanceWebSocketServiceWrapper) WsKlineServe(symbol string, interval string, handler WsKlineHandler, errHandler WsErrorHandler) (chan struct{}, chan struct{}, error) {
+	debugLog.Info("WsKlineServe",
+		zap.String("symbol", symbol),
+		zap.String("interval", interval),
+		zap.Bool("binance.UseTestnet", binance.UseTestnet),
+		zap.String("binance.BaseWsMainURL", binance.BaseWsMainURL),
+	)
+
 	// Convert our handler types to binance handler types
 	binanceHandler := func(event *binance.WsKlineEvent) {
 		handler(&BinanceWsKlineEvent{
@@ -194,7 +205,18 @@ func NewBinanceClient(config *BinanceStreamConfig) (Provider, error) {
 		return nil, fmt.Errorf("config is required for binance provider")
 	}
 
+	debugLog.Info("NewBinanceClient",
+		zap.Strings("symbols", config.Symbols),
+		zap.String("interval", config.Interval),
+		zap.Bool("binance.UseTestnet", binance.UseTestnet),
+		zap.String("binance.BaseWsMainURL", binance.BaseWsMainURL),
+	)
+
 	client := binance.NewClient("", "")
+
+	debugLog.Info("NewBinanceClient: client created",
+		zap.String("client.BaseURL", client.BaseURL),
+	)
 
 	return &BinanceClient{
 		apiClient:      &binanceClientWrapper{client: client},
@@ -528,7 +550,9 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 		}
 
 		// Validate that all symbols are valid Binance trading pairs
+		debugLog.Info("Stream: validating symbols", zap.Strings("symbols", symbols))
 		if err := c.ValidateSymbols(ctx, symbols); err != nil {
+			debugLog.Warn("Stream: symbol validation FAILED", zap.Error(err))
 			//nolint:exhaustruct // empty struct for error case
 			yield(types.MarketData{}, err)
 
@@ -595,6 +619,8 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 
 				doneC, stopC, err := c.wsService.WsKlineServe(sym, interval, handler, errHandler)
 				if err != nil {
+					debugLog.Warn("Stream: WebSocket connection FAILED", zap.String("symbol", sym), zap.Error(err))
+
 					select {
 					case errChan <- fmt.Errorf("failed to start websocket for %s: %w", sym, err):
 					default:
@@ -605,6 +631,8 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 
 					return
 				}
+
+				debugLog.Info("Stream: WebSocket connection ESTABLISHED", zap.String("symbol", sym))
 
 				// Emit connected status when WebSocket connection is established
 				c.emitStatus(types.ProviderStatusConnected)
@@ -627,6 +655,16 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 				}
 			}(symbol)
 		}
+
+		// allDone is closed when all per-symbol goroutines have completed
+		// (either failed to connect or disconnected). Used to detect when the
+		// stream should terminate instead of blocking forever.
+		allDone := make(chan struct{})
+
+		go func() {
+			wg.Wait()
+			close(allDone)
+		}()
 
 		// Cleanup function - stops all connections and closes channels
 		cleanup := func() {
@@ -654,7 +692,13 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 
 		go func() {
 			defer cleanupWg.Done()
-			<-ctx.Done()
+
+			select {
+			case <-ctx.Done():
+			case <-allDone:
+				// All goroutines already finished, no cleanup needed
+				return
+			}
 
 			// Wait for all symbol goroutines to finish registering their stop channels
 			wg.Wait()
@@ -672,10 +716,13 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 		// Main loop - yield data to the iterator
 		defer func() {
 			// If we exit early (yield returned false), trigger cleanup
-			// Cancel context would have already triggered cleanup goroutine
+			// Cancel context or allDone would have already triggered cleanup goroutine
 			select {
 			case <-ctx.Done():
 				// Context cancelled, cleanup goroutine handles it
+				cleanupWg.Wait()
+			case <-allDone:
+				// All goroutines finished naturally, cleanup goroutine handles it
 				cleanupWg.Wait()
 			default:
 				// Early exit from iterator, need to cleanup manually
@@ -683,29 +730,69 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 			}
 		}()
 
-		for {
-			select {
-			case <-ctx.Done():
+		yieldLoop(ctx, allDone, dataChan, errChan, yield)
+	}
+}
+
+// yieldLoop is the main data yield loop for Stream, extracted to reduce cyclomatic complexity.
+// It reads from dataChan/errChan and yields to the iterator until the context is cancelled
+// or all WebSocket goroutines have finished.
+func yieldLoop(ctx context.Context, allDone <-chan struct{}, dataChan <-chan types.MarketData, errChan <-chan error, yield func(types.MarketData, error) bool) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-allDone:
+			// All WebSocket goroutines have finished (failed to connect or disconnected).
+			// Drain any remaining buffered errors and data before returning.
+			drainChannels(dataChan, errChan, yield)
+
+			return
+
+		case err, ok := <-errChan:
+			if !ok {
 				return
-
-			case err, ok := <-errChan:
-				if !ok {
-					return
-				}
-				//nolint:exhaustruct // empty struct for error case
-				if !yield(types.MarketData{}, err) {
-					return
-				}
-
-			case data, ok := <-dataChan:
-				if !ok {
-					return
-				}
-
-				if !yield(data, nil) {
-					return
-				}
 			}
+			//nolint:exhaustruct // empty struct for error case
+			if !yield(types.MarketData{}, err) {
+				return
+			}
+
+		case data, ok := <-dataChan:
+			if !ok {
+				return
+			}
+
+			if !yield(data, nil) {
+				return
+			}
+		}
+	}
+}
+
+// drainChannels drains any remaining buffered data and errors from the channels.
+func drainChannels(dataChan <-chan types.MarketData, errChan <-chan error, yield func(types.MarketData, error) bool) {
+	for {
+		select {
+		case err, ok := <-errChan:
+			if !ok {
+				return
+			}
+			//nolint:exhaustruct // empty struct for error case
+			if !yield(types.MarketData{}, err) {
+				return
+			}
+		case data, ok := <-dataChan:
+			if !ok {
+				return
+			}
+
+			if !yield(data, nil) {
+				return
+			}
+		default:
+			return
 		}
 	}
 }

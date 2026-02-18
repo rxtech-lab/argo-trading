@@ -21,7 +21,6 @@ type PolygonStreamConfig struct {
 }
 
 // BinanceStreamConfig contains configuration for Binance streaming market data.
-// Binance public market data API does not require authentication.
 type BinanceStreamConfig struct {
 	BaseStreamConfig
 }
