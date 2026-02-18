@@ -235,14 +235,6 @@ Note: `symbols` and `interval` are configured via the market data provider (see 
       "description": "Enable strategy log storage",
       "default": true
     },
-    "log_output_path": {
-      "type": "string",
-      "description": "Directory for log output files"
-    },
-    "data_output_path": {
-      "type": "string",
-      "description": "Base directory for session data output"
-    },
     "prefetch": {
       "type": "object",
       "description": "Historical data prefetch configuration",
@@ -254,7 +246,7 @@ Note: `symbols` and `interval` are configured via the market data provider (see 
       }
     }
   },
-  "required": ["data_output_path"]
+  "required": []
 }
 ```
 
@@ -267,7 +259,6 @@ let configJSON = """
 {
     "market_data_cache_size": 1000,
     "enable_logging": true,
-    "data_output_path": "/path/to/data",
     "prefetch": {
         "enabled": true,
         "start_time_type": "days",
@@ -276,6 +267,9 @@ let configJSON = """
 }
 """
 try engine.initialize(configJSON)
+
+// Set data output path separately
+try engine.setDataOutputPath("/path/to/data")
 
 // Symbols and interval are configured via the market data provider
 let providerConfig = """

@@ -73,12 +73,15 @@ func (s *BinanceMockServerTestSuite) TestStrategyOrderPlacement() {
 	eng, err := engine_v1.NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	// Initialize engine with persistence (DataOutputPath enables persistence)
+	// Initialize engine
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
-		DataOutputPath:      tmpDir,
 	})
+	s.Require().NoError(err)
+
+	// Set data output path for persistence
+	err = eng.SetDataOutputPath(tmpDir)
 	s.Require().NoError(err)
 
 	// Set up providers using real Binance providers with custom endpoints
@@ -208,8 +211,10 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	err = eng1.Initialize(engine.LiveTradingEngineConfig{
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
-		DataOutputPath:      tmpDir,
 	})
+	s.Require().NoError(err)
+
+	err = eng1.SetDataOutputPath(tmpDir)
 	s.Require().NoError(err)
 
 	marketProvider1, err := marketdataprovider.NewBinanceClientWithEndpoints(marketdataprovider.BinanceEndpointConfig{
@@ -284,8 +289,10 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	err = eng2.Initialize(engine.LiveTradingEngineConfig{
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
-		DataOutputPath:      tmpDir, // Same output path
 	})
+	s.Require().NoError(err)
+
+	err = eng2.SetDataOutputPath(tmpDir) // Same output path
 	s.Require().NoError(err)
 
 	marketProvider2, err := marketdataprovider.NewBinanceClientWithEndpoints(marketdataprovider.BinanceEndpointConfig{
@@ -527,8 +534,10 @@ func (s *BinanceMockServerTestSuite) TestMultipleOrdersAndBalanceVerification() 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
-		DataOutputPath:      tmpDir,
 	})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tmpDir)
 	s.Require().NoError(err)
 
 	marketProvider, err := marketdataprovider.NewBinanceClientWithEndpoints(marketdataprovider.BinanceEndpointConfig{

@@ -35,12 +35,13 @@ engine:
   symbols:
     - BTCUSDT
   interval: "1m"
-  data_output_path: "./data/live-trading"
   prefetch:
     enabled: true
     start_time_type: days    # "date" or "days"
     days: 30                 # Prefetch 30 days of history
 ```
+
+Note: `data_output_path` is set via `SetDataOutputPath()`, not in the config.
 
 Or with absolute date:
 
@@ -56,15 +57,16 @@ engine:
 
 ```go
 config := engine.LiveTradingEngineConfig{
-    Symbols:        []string{"BTCUSDT"},
-    Interval:       "1m",
-    DataOutputPath: "./data/live-trading",
     Prefetch: engine.PrefetchConfig{
         Enabled:       true,
         StartTimeType: "days",
         Days:          30,
     },
 }
+eng.Initialize(config)
+
+// Set data output path separately
+eng.SetDataOutputPath("./data/live-trading")
 ```
 
 ### Configuration Fields

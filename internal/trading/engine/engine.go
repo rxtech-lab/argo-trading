@@ -107,12 +107,6 @@ type LiveTradingEngineConfig struct {
 	// EnableLogging enables strategy log storage
 	EnableLogging bool `json:"enable_logging" yaml:"enable_logging" jsonschema:"description=Enable strategy log storage,default=true"`
 
-	// LogOutputPath is the directory for log files (optional)
-	LogOutputPath string `json:"log_output_path" yaml:"log_output_path" jsonschema:"description=Directory for log output files"`
-
-	// DataOutputPath is the base directory for session data output (orders, trades, marks, logs, stats)
-	DataOutputPath string `json:"data_output_path" yaml:"data_output_path" jsonschema:"description=Base directory for session data output" validate:"required"`
-
 	// Prefetch configures historical data prefetching for indicator accuracy
 	Prefetch PrefetchConfig `json:"prefetch" yaml:"prefetch" jsonschema:"description=Historical data prefetch configuration"`
 }
@@ -147,6 +141,10 @@ type LiveTradingEngine interface {
 
 	// SetTradingProvider configures the trading provider.
 	SetTradingProvider(provider tradingprovider.TradingSystemProvider) error
+
+	// SetDataOutputPath sets the base directory for session data output (orders, trades, marks, logs, stats).
+	// Must be called before Run() if persistence is desired.
+	SetDataOutputPath(path string) error
 
 	// Run starts the live trading engine.
 	// Blocks until context is cancelled or a fatal error occurs.
