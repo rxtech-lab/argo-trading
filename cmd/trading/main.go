@@ -160,7 +160,7 @@ func main() {
 			fmt.Println("Engine stopped")
 		}
 	})
-	onMarketData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onMarketData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		fmt.Printf("[%s] %s: O=%.4f H=%.4f L=%.4f C=%.4f V=%.2f\n",
 			data.Time.Format("15:04:05"), data.Symbol,
 			data.Open, data.High, data.Low, data.Close, data.Volume)

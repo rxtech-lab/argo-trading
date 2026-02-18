@@ -30,7 +30,8 @@ type TradingEngineHelper interface {
 	OnEngineStop(err error)
 
 	// OnMarketData is called for each market data point received.
-	OnMarketData(symbol string, timestamp int64, open, high, low, close, volume float64) error
+	// runId is the session run ID (UUID) when persistence is enabled, or empty string otherwise.
+	OnMarketData(runId string, symbol string, timestamp int64, open, high, low, close, volume float64) error
 
 	// OnOrderPlaced is called when an order is placed by the strategy.
 	// orderJSON is the JSON representation of the ExecuteOrder.
@@ -332,8 +333,9 @@ func (t *TradingEngine) createCallbacks() engine.LiveTradingCallbacks {
 	callbacks.OnEngineStop = &onStop
 
 	// OnMarketData callback
-	onMarketData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onMarketData := engine.OnMarketDataCallback(func(runID string, data types.MarketData) error {
 		return t.helper.OnMarketData(
+			runID,
 			data.Symbol,
 			data.Time.UnixMilli(),
 			data.Open,

@@ -430,6 +430,34 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		)
 	}
 
+	// Initialize market data persistence for SetDataOutputPath flow.
+	// When sessionManager is present but streamingWriter hasn't been created
+	// (no dataDir/providerName from WithPersistence constructor), create the
+	// streaming writer in the session's run folder.
+	if e.sessionManager != nil && e.streamingWriter == nil {
+		interval := e.marketDataProvider.GetInterval()
+		runPath := e.sessionManager.GetCurrentRunPath()
+		e.streamingWriter = writer.NewStreamingDuckDBWriter(runPath, "live", interval)
+		if err := e.streamingWriter.Initialize(); err != nil {
+			runErr = errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize streaming writer for session", err)
+
+			return runErr
+		}
+
+		parquetPath := e.streamingWriter.GetOutputPath()
+		e.persistentDataSource = NewPersistentStreamingDataSource(parquetPath, interval)
+		if err := e.persistentDataSource.Initialize(""); err != nil {
+			runErr = errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize persistent datasource for session", err)
+
+			return runErr
+		}
+
+		e.log.Info("Market data persistence enabled in session folder",
+			zap.String("parquet_path", parquetPath),
+			zap.String("interval", interval),
+		)
+	}
+
 	// Set up provider status callbacks
 	e.setupProviderStatusCallbacks(callbacks.OnProviderStatusChange)
 
@@ -463,6 +491,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		e.statsTracker.Initialize(
 			e.marketDataProvider.GetSymbols(),
 			e.sessionManager.GetRunID(),
+			e.sessionManager.GetRunName(),
 			e.sessionManager.GetSessionStart(),
 			strategyInfo,
 		)
@@ -628,7 +657,12 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 
 		// Invoke OnMarketData callback
 		if callbacks.OnMarketData != nil {
-			if err := (*callbacks.OnMarketData)(data); err != nil {
+			runID := ""
+			if e.sessionManager != nil {
+				runID = e.sessionManager.GetRunID()
+			}
+
+			if err := (*callbacks.OnMarketData)(runID, data); err != nil {
 				runErr = errors.Wrap(errors.ErrCodeCallbackFailed, "OnMarketData callback failed", err)
 
 				return runErr

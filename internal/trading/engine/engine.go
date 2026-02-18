@@ -23,7 +23,8 @@ type OnEngineStartCallback func(symbols []string, interval string, previousDataP
 type OnEngineStopCallback func(err error)
 
 // OnMarketDataCallback is called for each market data point received.
-type OnMarketDataCallback func(data types.MarketData) error
+// runID is the session run ID (UUID) when persistence is enabled, or empty string otherwise.
+type OnMarketDataCallback func(runID string, data types.MarketData) error
 
 // OnOrderPlacedCallback is called when an order is placed by the strategy.
 type OnOrderPlacedCallback func(order types.ExecuteOrder) error

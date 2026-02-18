@@ -28,6 +28,7 @@ type StatsAccumulator struct {
 type StatsTracker struct {
 	symbols      []string
 	runID        string
+	runName      string
 	sessionStart time.Time
 	currentDate  string
 	strategyInfo types.StrategyInfo
@@ -48,6 +49,10 @@ type StatsTracker struct {
 	// Stats output path
 	statsOutputPath string
 
+	// Tracks when stats actually changed
+	lastUpdated time.Time
+	dirty       bool
+
 	mu     sync.Mutex
 	logger *logger.Logger
 }
@@ -57,6 +62,7 @@ func NewStatsTracker(log *logger.Logger) *StatsTracker {
 	return &StatsTracker{
 		symbols:            nil,
 		runID:              "",
+		runName:            "",
 		sessionStart:       time.Time{},
 		currentDate:        "",
 		strategyInfo:       types.StrategyInfo{}, //nolint:exhaustruct // initialized via Initialize()
@@ -66,6 +72,8 @@ func NewStatsTracker(log *logger.Logger) *StatsTracker {
 		logsFilePath:       "",
 		marketDataFilePath: "",
 		statsOutputPath:    "",
+		lastUpdated:        time.Time{},
+		dirty:              false,
 		dailyStats:         newStatsAccumulator(),
 		cumulativeStats:    newStatsAccumulator(),
 		mu:                 sync.Mutex{},
@@ -94,6 +102,7 @@ func newStatsAccumulator() *StatsAccumulator {
 func (s *StatsTracker) Initialize(
 	symbols []string,
 	runID string,
+	runName string,
 	sessionStart time.Time,
 	strategyInfo types.StrategyInfo,
 ) {
@@ -102,9 +111,12 @@ func (s *StatsTracker) Initialize(
 
 	s.symbols = symbols
 	s.runID = runID
+	s.runName = runName
 	s.sessionStart = sessionStart
 	s.currentDate = sessionStart.Format("2006-01-02")
 	s.strategyInfo = strategyInfo
+	s.lastUpdated = sessionStart
+	s.dirty = true
 
 	s.logger.Info("Stats tracker initialized",
 		zap.String("run_id", runID),
@@ -133,6 +145,8 @@ func (s *StatsTracker) RecordTrade(trade types.Trade) {
 	// Update both daily and cumulative stats
 	s.updateAccumulator(s.dailyStats, trade)
 	s.updateAccumulator(s.cumulativeStats, trade)
+	s.lastUpdated = time.Now()
+	s.dirty = true
 
 	s.logger.Debug("Trade recorded",
 		zap.String("order_id", trade.Order.OrderID),
@@ -191,6 +205,8 @@ func (s *StatsTracker) SetUnrealizedPnL(unrealizedPnL float64) {
 
 	s.dailyStats.UnrealizedPnL = unrealizedPnL
 	s.cumulativeStats.UnrealizedPnL = unrealizedPnL
+	s.lastUpdated = time.Now()
+	s.dirty = true
 }
 
 // HandleDateBoundary handles the transition to a new date.
@@ -204,6 +220,8 @@ func (s *StatsTracker) HandleDateBoundary(newDate string) {
 
 	// Reset daily stats
 	s.dailyStats = newStatsAccumulator()
+	s.lastUpdated = time.Now()
+	s.dirty = true
 
 	s.logger.Info("Date boundary handled, daily stats reset",
 		zap.String("old_date", oldDate),
@@ -267,9 +285,10 @@ func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) t
 
 	return types.LiveTradeStats{
 		ID:           s.runID,
+		Name:         s.runName,
 		Date:         date,
 		SessionStart: s.sessionStart,
-		LastUpdated:  time.Now(),
+		LastUpdated:  s.lastUpdated,
 		Symbols:      s.symbols,
 		TradeResult: types.TradeResult{
 			NumberOfTrades:        acc.TotalTrades,
@@ -297,6 +316,7 @@ func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) t
 }
 
 // WriteStatsYAML writes the current cumulative stats to the stats.yaml file.
+// It only writes if stats have changed since the last write.
 func (s *StatsTracker) WriteStatsYAML() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -305,9 +325,19 @@ func (s *StatsTracker) WriteStatsYAML() error {
 		return nil // No output path configured
 	}
 
+	if !s.dirty {
+		return nil // Nothing changed since last write
+	}
+
 	stats := s.buildLiveTradeStats(s.cumulativeStats, s.currentDate)
 
-	return types.WriteLiveTradeStats(s.statsOutputPath, stats)
+	if err := types.WriteLiveTradeStats(s.statsOutputPath, stats); err != nil {
+		return err
+	}
+
+	s.dirty = false
+
+	return nil
 }
 
 // GetStatsOutputPath returns the stats output path.

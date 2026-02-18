@@ -52,7 +52,7 @@ func (m *mockTradingHelper) OnEngineStop(err error) {
 	m.lastError = err
 }
 
-func (m *mockTradingHelper) OnMarketData(symbol string, timestamp int64, open, high, low, close, volume float64) error {
+func (m *mockTradingHelper) OnMarketData(_ string, symbol string, timestamp int64, open, high, low, close, volume float64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.marketDataCalls++

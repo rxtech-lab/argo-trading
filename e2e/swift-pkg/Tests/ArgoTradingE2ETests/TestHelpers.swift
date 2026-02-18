@@ -215,6 +215,7 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var lastSymbols: [String] = []
     var lastInterval: String = ""
     var lastPreviousDataPath: String = ""
+    var lastRunId: String = ""
     var lastError: Error?
     var marketDataCount: Int = 0
     var orderPlacedCount: Int = 0
@@ -254,9 +255,10 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     }
 
     func onMarketData(
-        _ symbol: String?, timestamp: Int64, open: Double, high: Double, low: Double, close: Double,
+        _ runId: String?, symbol: String?, timestamp: Int64, open: Double, high: Double, low: Double, close: Double,
         volume: Double
     ) throws {
+        lastRunId = runId ?? ""
         marketDataCalled = true
         marketDataCount += 1
 
@@ -313,6 +315,7 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastSymbols = []
         lastInterval = ""
         lastPreviousDataPath = ""
+        lastRunId = ""
         lastError = nil
         marketDataCount = 0
         orderPlacedCount = 0

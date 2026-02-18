@@ -71,7 +71,7 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceEndToEnd() {
 	var dataPointsProcessed int
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -184,7 +184,7 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceRestart() {
 		err = engine1.SetStrategyConfig(`{"symbol": "BTCUSDT"}`)
 		s.Require().NoError(err)
 
-		onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+		onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 			mockTradingProvider.SetCurrentPrice(data.Symbol, data.Close)
 			return nil
 		})
@@ -246,7 +246,7 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceRestart() {
 		err = engine2.SetStrategyConfig(`{"symbol": "BTCUSDT"}`)
 		s.Require().NoError(err)
 
-		onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+		onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 			mockTradingProvider.SetCurrentPrice(data.Symbol, data.Close)
 			return nil
 		})
@@ -337,7 +337,7 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceMultiSymbol() {
 	symbolsSeen := make(map[string]int)
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -429,7 +429,7 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceLargeDataset() {
 	var dataCount int
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -514,7 +514,7 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceWithoutPersistence() {
 	var dataCount int
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 

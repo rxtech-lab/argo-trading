@@ -118,7 +118,7 @@ func (s *BinanceMockServerTestSuite) TestStrategyOrderPlacement() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -246,7 +246,7 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	var mu1 sync.Mutex
 	ctx1, cancel1 := context.WithCancel(context.Background())
 
-	onData1 := engine.OnMarketDataCallback(func(_ types.MarketData) error {
+	onData1 := engine.OnMarketDataCallback(func(_ string, _ types.MarketData) error {
 		mu1.Lock()
 		defer mu1.Unlock()
 		count1++
@@ -324,7 +324,7 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	var mu2 sync.Mutex
 	ctx2, cancel2 := context.WithCancel(context.Background())
 
-	onData2 := engine.OnMarketDataCallback(func(_ types.MarketData) error {
+	onData2 := engine.OnMarketDataCallback(func(_ string, _ types.MarketData) error {
 		mu2.Lock()
 		defer mu2.Unlock()
 		count2++
@@ -569,7 +569,7 @@ func (s *BinanceMockServerTestSuite) TestMultipleOrdersAndBalanceVerification() 
 	var mu sync.Mutex
 	ctx, cancel := context.WithCancel(context.Background())
 
-	onData := engine.OnMarketDataCallback(func(_ types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, _ types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 		dataCount++

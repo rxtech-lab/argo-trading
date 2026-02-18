@@ -47,8 +47,11 @@ type ProviderStatusUpdate struct {
 
 // LiveTradeStats contains statistics for a live trading session.
 type LiveTradeStats struct {
-	// ID is the unique identifier for this trading session (e.g., "run_1").
+	// ID is the unique identifier for this trading session (UUID format).
 	ID string `yaml:"id" json:"id"`
+
+	// Name is the human-readable session name (run_N format) matching the folder name.
+	Name string `yaml:"name" json:"name"`
 
 	// Date is the date of this statistics record in YYYY-MM-DD format.
 	Date string `yaml:"date" json:"date"`
@@ -134,11 +137,12 @@ func ReadLiveTradeStats(path string) (LiveTradeStats, error) {
 }
 
 // NewLiveTradeStats creates a new LiveTradeStats with initialized values.
-func NewLiveTradeStats(runID string, symbols []string, strategy StrategyInfo) LiveTradeStats {
+func NewLiveTradeStats(runID string, runName string, symbols []string, strategy StrategyInfo) LiveTradeStats {
 	now := time.Now()
 
 	return LiveTradeStats{
 		ID:           runID,
+		Name:         runName,
 		Date:         now.Format("2006-01-02"),
 		SessionStart: now,
 		LastUpdated:  now,

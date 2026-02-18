@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"go.uber.org/zap"
 )
@@ -20,8 +21,8 @@ import (
 //	{dataOutputPath}/{YYYY-MM-DD}/run_N/
 type SessionManager struct {
 	dataOutputPath string
-	runID          string
-	runNumber      int
+	runID          string // UUID for unique identification
+	runName        string // run_N for folder naming
 	sessionStart   time.Time
 	currentDate    string
 	currentRunPath string
@@ -34,7 +35,7 @@ func NewSessionManager(log *logger.Logger) *SessionManager {
 	return &SessionManager{
 		dataOutputPath: "",
 		runID:          "",
-		runNumber:      0,
+		runName:        "",
 		sessionStart:   time.Time{},
 		currentDate:    "",
 		currentRunPath: "",
@@ -53,14 +54,16 @@ func (s *SessionManager) Initialize(dataOutputPath string) error {
 	s.sessionStart = time.Now()
 	s.currentDate = s.sessionStart.Format("2006-01-02")
 
-	// Determine run number for today
-	runNumber, err := s.determineRunNumber(s.currentDate)
+	// Generate a unique run ID
+	s.runID = uuid.New().String()
+
+	// Determine the next run number for folder naming
+	nextRun, err := s.nextRunNumber()
 	if err != nil {
-		return fmt.Errorf("failed to determine run number: %w", err)
+		return fmt.Errorf("failed to determine next run number: %w", err)
 	}
 
-	s.runNumber = runNumber
-	s.runID = fmt.Sprintf("run_%d", runNumber)
+	s.runName = fmt.Sprintf("run_%d", nextRun)
 
 	// Create folder structure
 	if err := s.createFolderStructure(); err != nil {
@@ -76,54 +79,53 @@ func (s *SessionManager) Initialize(dataOutputPath string) error {
 	return nil
 }
 
-// determineRunNumber scans the date folder for existing run folders and returns the next run number.
+// nextRunNumber scans the current date folder and returns the next run number.
 //
 //nolint:funcorder // helper method used by Initialize
-func (s *SessionManager) determineRunNumber(date string) (int, error) {
-	datePath := filepath.Join(s.dataOutputPath, date)
+func (s *SessionManager) nextRunNumber() (int, error) {
+	datePath := filepath.Join(s.dataOutputPath, s.currentDate)
 
-	// Check if date folder exists
-	if _, err := os.Stat(datePath); os.IsNotExist(err) {
-		// First run for this date
-		return 1, nil
-	}
-
-	// Scan for existing run folders
 	entries, err := os.ReadDir(datePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return 1, nil
+		}
+
 		return 0, fmt.Errorf("failed to read date directory: %w", err)
 	}
 
-	// Pattern to match run_N folders
-	runPattern := regexp.MustCompile(`^run_(\d+)$`)
-	maxRunNumber := 0
+	maxRun := 0
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
-		matches := runPattern.FindStringSubmatch(entry.Name())
-		if len(matches) == 2 {
-			num, err := strconv.Atoi(matches[1])
-			if err != nil {
-				continue
-			}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "run_") {
+			continue
+		}
 
-			if num > maxRunNumber {
-				maxRunNumber = num
-			}
+		numStr := strings.TrimPrefix(name, "run_")
+
+		num, err := strconv.Atoi(numStr)
+		if err != nil {
+			continue
+		}
+
+		if num > maxRun {
+			maxRun = num
 		}
 	}
 
-	return maxRunNumber + 1, nil
+	return maxRun + 1, nil
 }
 
 // createFolderStructure creates the folder structure for the current session.
 //
 //nolint:funcorder // helper method used by Initialize and HandleDateBoundary
 func (s *SessionManager) createFolderStructure() error {
-	s.currentRunPath = filepath.Join(s.dataOutputPath, s.currentDate, s.runID)
+	s.currentRunPath = filepath.Join(s.dataOutputPath, s.currentDate, s.runName)
 
 	if err := os.MkdirAll(s.currentRunPath, 0755); err != nil {
 		return fmt.Errorf("failed to create run folder: %w", err)
@@ -169,7 +171,7 @@ func (s *SessionManager) GetCurrentRunPath() string {
 	return s.currentRunPath
 }
 
-// GetRunID returns the session run ID (e.g., "run_1").
+// GetRunID returns the session run ID (UUID format).
 func (s *SessionManager) GetRunID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -177,12 +179,12 @@ func (s *SessionManager) GetRunID() string {
 	return s.runID
 }
 
-// GetRunNumber returns the numeric run number.
-func (s *SessionManager) GetRunNumber() int {
+// GetRunName returns the session run name (run_N format) used for folder naming.
+func (s *SessionManager) GetRunName() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.runNumber
+	return s.runName
 }
 
 // GetSessionStart returns the session start time.
@@ -230,7 +232,6 @@ func (s *SessionManager) ListSessionsForDate(date string) ([]string, error) {
 		return nil, fmt.Errorf("failed to read date directory: %w", err)
 	}
 
-	runPattern := regexp.MustCompile(`^run_(\d+)$`)
 	var runs []string
 
 	for _, entry := range entries {
@@ -238,18 +239,10 @@ func (s *SessionManager) ListSessionsForDate(date string) ([]string, error) {
 			continue
 		}
 
-		if runPattern.MatchString(entry.Name()) {
-			runs = append(runs, entry.Name())
-		}
+		runs = append(runs, entry.Name())
 	}
 
-	// Sort runs by number
-	sort.Slice(runs, func(i, j int) bool {
-		numI, _ := strconv.Atoi(runs[i][4:]) // Extract number after "run_"
-		numJ, _ := strconv.Atoi(runs[j][4:])
-
-		return numI < numJ
-	})
+	sort.Strings(runs)
 
 	return runs, nil
 }
@@ -265,7 +258,6 @@ func (s *SessionManager) GetAllDates() ([]string, error) {
 		return nil, fmt.Errorf("failed to read data output directory: %w", err)
 	}
 
-	datePattern := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 	var dates []string
 
 	for _, entry := range entries {
@@ -273,7 +265,8 @@ func (s *SessionManager) GetAllDates() ([]string, error) {
 			continue
 		}
 
-		if datePattern.MatchString(entry.Name()) {
+		// Validate date format YYYY-MM-DD
+		if _, err := time.Parse("2006-01-02", entry.Name()); err == nil {
 			dates = append(dates, entry.Name())
 		}
 	}
