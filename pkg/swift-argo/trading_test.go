@@ -206,13 +206,33 @@ func (suite *TradingTestSuite) TestGetLiveTradingEngineConfigSchema() {
 	suite.NotEmpty(schema)
 
 	// Verify it's valid JSON
-	var schemaMap map[string]interface{}
+	var schemaMap map[string]any
 	err := json.Unmarshal([]byte(schema), &schemaMap)
 	suite.NoError(err)
 
-	// Check that schema contains expected fields
-	suite.Contains(schema, "symbols")
-	suite.Contains(schema, "interval")
+	// Should NOT have $ref at top level (DoNotReference: true)
+	suite.NotContains(schemaMap, "$ref")
+	suite.NotContains(schemaMap, "$defs")
+
+	// Check that properties are inlined at top level
+	properties, ok := schemaMap["properties"].(map[string]any)
+	suite.True(ok, "schema should have top-level properties")
+	suite.Contains(properties, "symbols")
+	suite.Contains(properties, "interval")
+	suite.Contains(properties, "market_data_cache_size")
+	suite.Contains(properties, "enable_logging")
+	suite.Contains(properties, "data_output_path")
+	suite.Contains(properties, "prefetch")
+
+	// Verify prefetch is inlined (not a $ref)
+	prefetch, ok := properties["prefetch"].(map[string]any)
+	suite.True(ok)
+	suite.NotContains(prefetch, "$ref")
+	prefetchProps, ok := prefetch["properties"].(map[string]any)
+	suite.True(ok, "prefetch should have inlined properties")
+	suite.Contains(prefetchProps, "enabled")
+	suite.Contains(prefetchProps, "start_time_type")
+	suite.Contains(prefetchProps, "days")
 }
 
 // Test GetSupportedMarketDataProviders

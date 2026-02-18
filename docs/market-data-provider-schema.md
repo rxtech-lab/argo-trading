@@ -1,11 +1,11 @@
 ---
-title: Market Data Provider Schema API
-description: JSON schema for market data provider streaming configuration, exposed to Swift via gomobile
+title: Schema APIs for Swift
+description: JSON schemas for market data providers and live trading engine configuration, exposed to Swift via gomobile
 ---
 
-# Market Data Provider Schema API
+# Schema APIs for Swift
 
-The market data provider schema API exposes JSON schemas for configuring streaming market data providers. This enables SwiftUI to dynamically generate configuration forms based on the provider's requirements.
+The schema APIs expose JSON schemas for configuring streaming market data providers and the live trading engine. This enables SwiftUI to dynamically generate configuration forms based on the provider's and engine's requirements.
 
 ## Swift API
 
@@ -206,8 +206,92 @@ type BinanceStreamConfig struct {
 }
 ```
 
+## Live Trading Engine Config Schema
+
+The live trading engine configuration schema is also exposed to Swift, enabling dynamic form generation for engine settings.
+
+### Swift API
+
+```swift
+// Get JSON schema for engine configuration
+let schema: String = SwiftargoGetLiveTradingEngineConfigSchema()
+```
+
+### Engine Config Schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "symbols": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of symbols to stream and trade"
+    },
+    "interval": {
+      "type": "string",
+      "enum": ["1s","1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M"],
+      "description": "Candlestick interval for streaming data",
+      "default": "1m"
+    },
+    "market_data_cache_size": {
+      "type": "integer",
+      "description": "Number of market data points to cache per symbol",
+      "default": 1000
+    },
+    "enable_logging": {
+      "type": "boolean",
+      "description": "Enable strategy log storage",
+      "default": true
+    },
+    "log_output_path": {
+      "type": "string",
+      "description": "Directory for log output files"
+    },
+    "data_output_path": {
+      "type": "string",
+      "description": "Base directory for session data output"
+    },
+    "prefetch": {
+      "type": "object",
+      "description": "Historical data prefetch configuration",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Enable historical data prefetch" },
+        "start_time_type": { "type": "string", "enum": ["date", "days"], "description": "How to specify start time" },
+        "start_time": { "type": "string", "format": "date-time", "description": "Absolute start time (when type is date)" },
+        "days": { "type": "integer", "description": "Number of days to prefetch (when type is days)" }
+      }
+    }
+  },
+  "required": ["symbols", "interval", "data_output_path"]
+}
+```
+
+### Initializing the Engine with JSON
+
+```swift
+let engine = SwiftargoNewTradingEngine(helper, &error)
+
+let configJSON = """
+{
+    "symbols": ["BTCUSDT"],
+    "interval": "1m",
+    "market_data_cache_size": 1000,
+    "enable_logging": true,
+    "data_output_path": "/path/to/data",
+    "prefetch": {
+        "enabled": true,
+        "start_time_type": "days",
+        "days": 30
+    }
+}
+"""
+try engine.initialize(configJSON)
+```
+
 ## Related Files
 
-- [stream_config.go](../pkg/marketdata/provider/stream_config.go) - Config structs
+- [stream_config.go](../pkg/marketdata/provider/stream_config.go) - Market data provider config structs
 - [stream_registry.go](../pkg/marketdata/provider/stream_registry.go) - Schema and keychain registry
-- [trading.go](../pkg/swift-argo/trading.go) - Swift bindings (`GetMarketDataProviderSchema`, `GetMarketDataProviderKeychainFields`)
+- [engine.go](../internal/trading/engine/engine.go) - Engine config struct and schema generation
+- [trading.go](../pkg/swift-argo/trading.go) - Swift bindings (`GetMarketDataProviderSchema`, `GetMarketDataProviderKeychainFields`, `GetLiveTradingEngineConfigSchema`)

@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/invopop/jsonschema"
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/provider"
+	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
 // Lifecycle callback types for live trading phases.
@@ -125,15 +125,7 @@ type LiveTradingEngineConfig struct {
 
 // GetConfigSchema returns the JSON schema for LiveTradingEngineConfig.
 func GetConfigSchema() (string, error) {
-	reflector := jsonschema.Reflector{}                     //nolint:exhaustruct // Using default reflector settings
-	schema := reflector.Reflect(&LiveTradingEngineConfig{}) //nolint:exhaustruct // Empty config for schema generation
-
-	schemaBytes, err := schema.MarshalJSON()
-	if err != nil {
-		return "", err
-	}
-
-	return string(schemaBytes), nil
+	return strategy.ToJSONSchema(&LiveTradingEngineConfig{}) //nolint:exhaustruct // Empty config for schema generation
 }
 
 // LiveTradingEngine orchestrates real-time strategy execution with streaming market data.

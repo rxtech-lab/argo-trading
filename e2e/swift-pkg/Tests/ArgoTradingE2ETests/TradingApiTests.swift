@@ -188,6 +188,61 @@ final class TradingApiTests: XCTestCase {
         // Engine config should have these fields
         XCTAssertTrue(schema.contains("symbols"), "Schema should contain symbols field")
         XCTAssertTrue(schema.contains("interval"), "Schema should contain interval field")
+        XCTAssertTrue(schema.contains("data_output_path"), "Schema should contain data_output_path field")
+        XCTAssertTrue(schema.contains("market_data_cache_size"), "Schema should contain market_data_cache_size field")
+        XCTAssertTrue(schema.contains("enable_logging"), "Schema should contain enable_logging field")
+        XCTAssertTrue(schema.contains("prefetch"), "Schema should contain prefetch field")
+    }
+
+    func testGetLiveTradingEngineConfigSchema_HasInlinedProperties() {
+        let schema = SwiftargoGetLiveTradingEngineConfigSchema()
+
+        // Parse schema JSON
+        guard let data = schema.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            XCTFail("Failed to parse schema JSON")
+            return
+        }
+
+        // Should NOT have $ref at top level (types should be inlined)
+        XCTAssertNil(json["$ref"], "Schema should not use $ref at top level")
+        XCTAssertNil(json["$defs"], "Schema should not have $defs (types inlined)")
+
+        // Should have properties directly at top level
+        guard let properties = json["properties"] as? [String: Any] else {
+            XCTFail("Schema should have top-level properties")
+            return
+        }
+
+        XCTAssertNotNil(properties["symbols"], "Should have symbols property")
+        XCTAssertNotNil(properties["interval"], "Should have interval property")
+        XCTAssertNotNil(properties["prefetch"], "Should have prefetch property")
+
+        // Prefetch should be inlined (not a $ref)
+        guard let prefetch = properties["prefetch"] as? [String: Any] else {
+            XCTFail("Prefetch should be a dict")
+            return
+        }
+        XCTAssertNil(prefetch["$ref"], "Prefetch should not be a $ref")
+        XCTAssertNotNil(prefetch["properties"], "Prefetch should have inlined properties")
+    }
+
+    func testGetLiveTradingEngineConfigSchema_IntervalHasEnumValues() {
+        let schema = SwiftargoGetLiveTradingEngineConfigSchema()
+
+        guard let data = schema.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let properties = json["properties"] as? [String: Any],
+              let interval = properties["interval"] as? [String: Any],
+              let enumValues = interval["enum"] as? [String] else {
+            XCTFail("Failed to parse interval enum values")
+            return
+        }
+
+        XCTAssertTrue(enumValues.contains("1m"), "Interval should include 1m")
+        XCTAssertTrue(enumValues.contains("5m"), "Interval should include 5m")
+        XCTAssertTrue(enumValues.contains("1h"), "Interval should include 1h")
+        XCTAssertTrue(enumValues.contains("1d"), "Interval should include 1d")
     }
 
     // MARK: - GetSupportedMarketDataProviders Tests
