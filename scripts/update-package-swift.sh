@@ -16,7 +16,7 @@ PACKAGE_SWIFT="Package.swift"
 DOWNLOAD_URL="https://github.com/rxtech-lab/argo-trading/releases/download/${VERSION}/ArgoTrading.xcframework.zip"
 
 # Update url
-sed -i.bak "s|url: \"https://github.com/rxtech-lab/argo-trading/releases/download/[^\"]*\"|url: \"${DOWNLOAD_URL}\"|g" "$PACKAGE_SWIFT"
+sed -i.bak "s|https://github.com/rxtech-lab/argo-trading/releases/download/[^\"]*/ArgoTrading.xcframework.zip|${DOWNLOAD_URL}|g" "$PACKAGE_SWIFT"
 
 # Update checksum
 sed -i.bak "s|checksum: \"[a-f0-9]*\"|checksum: \"${CHECKSUM}\"|g" "$PACKAGE_SWIFT"
