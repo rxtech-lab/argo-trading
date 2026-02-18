@@ -49,12 +49,12 @@ func NewMarketDataProvider(providerType ProviderType, config any) (Provider, err
 	case ProviderBinance:
 		return NewBinanceClient()
 	case ProviderPolygon:
-		apiKey, ok := config.(string)
+		cfg, ok := config.(*PolygonStreamConfig)
 		if !ok {
-			return nil, fmt.Errorf("polygon provider requires API key string config")
+			return nil, fmt.Errorf("invalid config type for polygon provider, expected *PolygonStreamConfig")
 		}
 
-		return NewPolygonClient(apiKey)
+		return NewPolygonClient(cfg.ApiKey)
 	default:
 		return nil, fmt.Errorf("unsupported market data provider: %s", providerType)
 	}

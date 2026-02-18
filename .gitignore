@@ -20,3 +20,4 @@ docs/index.*
 *.test
 *.html
 !/cmd/data
+trading

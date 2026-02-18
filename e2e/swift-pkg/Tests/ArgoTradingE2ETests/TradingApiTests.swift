@@ -364,6 +364,72 @@ final class TradingApiTests: XCTestCase {
         }
     }
 
+    // MARK: - GetMarketDataProviderSchema Tests
+
+    func testGetMarketDataProviderSchema_BinanceReturnsValidJSON() {
+        let schema = SwiftargoGetMarketDataProviderSchema("binance")
+
+        XCTAssertFalse(schema.isEmpty, "Binance market data schema should not be empty")
+        XCTAssertTrue(isValidJSON(schema), "Binance market data schema should be valid JSON")
+    }
+
+    func testGetMarketDataProviderSchema_BinanceContainsRequiredFields() {
+        let schema = SwiftargoGetMarketDataProviderSchema("binance")
+
+        XCTAssertTrue(schema.contains("symbols"), "Binance schema should contain symbols field")
+        XCTAssertTrue(schema.contains("interval"), "Binance schema should contain interval field")
+        XCTAssertFalse(schema.contains("apiKey"), "Binance schema should NOT contain apiKey field")
+    }
+
+    func testGetMarketDataProviderSchema_PolygonReturnsValidJSON() {
+        let schema = SwiftargoGetMarketDataProviderSchema("polygon")
+
+        XCTAssertFalse(schema.isEmpty, "Polygon market data schema should not be empty")
+        XCTAssertTrue(isValidJSON(schema), "Polygon market data schema should be valid JSON")
+    }
+
+    func testGetMarketDataProviderSchema_PolygonContainsRequiredFields() {
+        let schema = SwiftargoGetMarketDataProviderSchema("polygon")
+
+        XCTAssertTrue(schema.contains("symbols"), "Polygon schema should contain symbols field")
+        XCTAssertTrue(schema.contains("interval"), "Polygon schema should contain interval field")
+        XCTAssertTrue(schema.contains("apiKey"), "Polygon schema should contain apiKey field")
+    }
+
+    func testGetMarketDataProviderSchema_InvalidProviderReturnsEmptyString() {
+        let schema = SwiftargoGetMarketDataProviderSchema("invalid")
+
+        XCTAssertEqual(schema, "", "Invalid provider should return empty string")
+    }
+
+    func testGetMarketDataProviderSchema_EmptyProviderReturnsEmptyString() {
+        let schema = SwiftargoGetMarketDataProviderSchema("")
+
+        XCTAssertEqual(schema, "", "Empty provider should return empty string")
+    }
+
+    // MARK: - GetMarketDataProviderKeychainFields Tests
+
+    func testGetMarketDataProviderKeychainFields_PolygonReturnsApiKey() {
+        let fields = SwiftargoGetMarketDataProviderKeychainFields("polygon")
+
+        XCTAssertNotNil(fields, "Polygon should have keychain fields")
+        XCTAssertEqual(fields!.size(), 1, "Polygon should have 1 keychain field")
+        XCTAssertEqual(fields!.get(0), "apiKey", "Keychain field should be apiKey")
+    }
+
+    func testGetMarketDataProviderKeychainFields_BinanceReturnsNil() {
+        let fields = SwiftargoGetMarketDataProviderKeychainFields("binance")
+
+        XCTAssertNil(fields, "Binance should not have keychain fields")
+    }
+
+    func testGetMarketDataProviderKeychainFields_InvalidProviderReturnsNil() {
+        let fields = SwiftargoGetMarketDataProviderKeychainFields("invalid")
+
+        XCTAssertNil(fields, "Invalid provider should return nil")
+    }
+
     // MARK: - SetMarketDataProvider Tests
 
     func testSetMarketDataProvider_WithBinance_Succeeds() throws {
@@ -371,8 +437,11 @@ final class TradingApiTests: XCTestCase {
         var error: NSError?
         let engine = SwiftargoNewTradingEngine(helper, &error)!
 
-        // Binance doesn't require config
-        XCTAssertNoThrow(try engine.setMarketDataProvider("binance", configJSON: "{}"))
+        // Binance requires symbols and interval
+        let config = """
+        {"symbols": ["BTCUSDT"], "interval": "1m"}
+        """
+        XCTAssertNoThrow(try engine.setMarketDataProvider("binance", configJSON: config))
     }
 
     func testSetMarketDataProvider_WithInvalidProvider_ThrowsError() throws {
@@ -390,9 +459,26 @@ final class TradingApiTests: XCTestCase {
         var error: NSError?
         let engine = SwiftargoNewTradingEngine(helper, &error)!
 
-        // Polygon requires apiKey
-        XCTAssertThrowsError(try engine.setMarketDataProvider("polygon", configJSON: "{}")) { err in
+        // Polygon requires apiKey, symbols, and interval
+        let config = """
+        {"symbols": ["SPY"], "interval": "1m"}
+        """
+        XCTAssertThrowsError(try engine.setMarketDataProvider("polygon", configJSON: config)) { err in
             XCTAssertNotNil(err, "Should throw error for missing apiKey")
+        }
+    }
+
+    func testSetMarketDataProvider_BinanceMissingSymbols_ThrowsError() throws {
+        let helper = MockTradingEngineHelper()
+        var error: NSError?
+        let engine = SwiftargoNewTradingEngine(helper, &error)!
+
+        // Missing required symbols field
+        let config = """
+        {"interval": "1m"}
+        """
+        XCTAssertThrowsError(try engine.setMarketDataProvider("binance", configJSON: config)) { err in
+            XCTAssertNotNil(err, "Should throw error for missing symbols")
         }
     }
 

@@ -328,8 +328,8 @@ func (suite *TradingTestSuite) TestSetMarketDataProvider_Binance() {
 	eng, err := NewTradingEngine(helper)
 	suite.NoError(err)
 
-	// Binance doesn't require config
-	err = eng.SetMarketDataProvider("binance", `{}`)
+	// Binance requires symbols and interval
+	err = eng.SetMarketDataProvider("binance", `{"symbols": ["BTCUSDT"], "interval": "1m"}`)
 	suite.NoError(err)
 }
 
@@ -338,10 +338,10 @@ func (suite *TradingTestSuite) TestSetMarketDataProvider_PolygonMissingApiKey() 
 	eng, err := NewTradingEngine(helper)
 	suite.NoError(err)
 
-	// Polygon requires apiKey
-	err = eng.SetMarketDataProvider("polygon", `{}`)
+	// Polygon requires apiKey, symbols, and interval
+	err = eng.SetMarketDataProvider("polygon", `{"symbols": ["SPY"], "interval": "1m"}`)
 	suite.Error(err)
-	suite.Contains(err.Error(), "apiKey")
+	suite.Contains(err.Error(), "ApiKey")
 }
 
 func (suite *TradingTestSuite) TestSetMarketDataProvider_PolygonEmptyApiKey() {
@@ -349,9 +349,9 @@ func (suite *TradingTestSuite) TestSetMarketDataProvider_PolygonEmptyApiKey() {
 	eng, err := NewTradingEngine(helper)
 	suite.NoError(err)
 
-	err = eng.SetMarketDataProvider("polygon", `{"apiKey": ""}`)
+	err = eng.SetMarketDataProvider("polygon", `{"symbols": ["SPY"], "interval": "1m", "apiKey": ""}`)
 	suite.Error(err)
-	suite.Contains(err.Error(), "apiKey")
+	suite.Contains(err.Error(), "ApiKey")
 }
 
 func (suite *TradingTestSuite) TestSetMarketDataProvider_InvalidProvider() {
