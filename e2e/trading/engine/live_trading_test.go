@@ -33,8 +33,6 @@ func (s *LiveTradingE2ETestSuite) TestBasicEngineExecution() {
 
 	// Initialize engine
 	err := s.engine.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})
@@ -137,8 +135,6 @@ func (s *LiveTradingE2ETestSuite) TestGracefulShutdown() {
 	mockTradingProvider := testhelper.NewMockTradingProvider(100000.0) // Enough to buy 1 BTC at ~50000
 
 	err := s.engine.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})
@@ -224,8 +220,6 @@ func (s *LiveTradingE2ETestSuite) TestStreamErrorHandling() {
 	mockTradingProvider := testhelper.NewMockTradingProvider(10000.0)
 
 	err := s.engine.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})
@@ -315,8 +309,6 @@ func (s *LiveTradingE2ETestSuite) TestMultiSymbolStreaming() {
 	mockTradingProvider := testhelper.NewMockTradingProvider(20000.0)
 
 	err := s.engine.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT", "ETHUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})
@@ -371,10 +363,7 @@ func (s *LiveTradingE2ETestSuite) TestEnginePreRunValidation() {
 	s.Contains(err.Error(), "not initialized")
 
 	// Initialize but don't set strategy
-	err = s.engine.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = s.engine.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	err = s.engine.Run(context.Background(), engine.LiveTradingCallbacks{})
@@ -409,8 +398,6 @@ func (s *LiveTradingE2ETestSuite) TestStrategyErrorCallback() {
 	mockTradingProvider := testhelper.NewMockTradingProvider(10000.0)
 
 	err := s.engine.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})

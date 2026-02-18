@@ -66,12 +66,17 @@ func NewClient(config ClientConfig, onProgress provider.OnDownloadProgress) (*Cl
 
 	switch config.ProviderType {
 	case ProviderPolygon:
-		marketProvider, err = provider.NewPolygonClient(config.PolygonApiKey)
+		//nolint:exhaustruct // Download-only client, stream fields not needed
+		marketProvider, err = provider.NewPolygonClient(&provider.PolygonStreamConfig{
+			BaseStreamConfig: provider.BaseStreamConfig{},
+			ApiKey:           config.PolygonApiKey,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Polygon client: %w", err)
 		}
 	case ProviderBinance:
-		marketProvider, err = provider.NewBinanceClient()
+		//nolint:exhaustruct // Download-only client, stream fields not needed
+		marketProvider, err = provider.NewBinanceClient(&provider.BinanceStreamConfig{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Binance client: %w", err)
 		}

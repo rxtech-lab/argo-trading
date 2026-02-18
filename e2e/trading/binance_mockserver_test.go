@@ -75,8 +75,6 @@ func (s *BinanceMockServerTestSuite) TestStrategyOrderPlacement() {
 
 	// Initialize engine with persistence (DataOutputPath enables persistence)
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1s",
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
 		DataOutputPath:      tmpDir,
@@ -87,7 +85,7 @@ func (s *BinanceMockServerTestSuite) TestStrategyOrderPlacement() {
 	marketProvider, err := marketdataprovider.NewBinanceClientWithEndpoints(marketdataprovider.BinanceEndpointConfig{
 		RestBaseURL: baseURL,
 		WsBaseURL:   wsURL,
-	})
+	}, []string{"BTCUSDT"}, "1s")
 	s.Require().NoError(err)
 
 	tradingProvider, err := tradingprovider.NewBinanceTradingSystemProvider(tradingprovider.BinanceProviderConfig{
@@ -208,8 +206,6 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	s.Require().NoError(err)
 
 	err = eng1.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1s",
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
 		DataOutputPath:      tmpDir,
@@ -219,7 +215,7 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	marketProvider1, err := marketdataprovider.NewBinanceClientWithEndpoints(marketdataprovider.BinanceEndpointConfig{
 		RestBaseURL: baseURL,
 		WsBaseURL:   wsURL,
-	})
+	}, []string{"BTCUSDT"}, "1s")
 	s.Require().NoError(err)
 
 	tradingProvider1, err := tradingprovider.NewBinanceTradingSystemProvider(tradingprovider.BinanceProviderConfig{
@@ -286,8 +282,6 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	s.Require().NoError(err)
 
 	err = eng2.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1s",
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
 		DataOutputPath:      tmpDir, // Same output path
@@ -297,7 +291,7 @@ func (s *BinanceMockServerTestSuite) TestEngineLifecycle() {
 	marketProvider2, err := marketdataprovider.NewBinanceClientWithEndpoints(marketdataprovider.BinanceEndpointConfig{
 		RestBaseURL: baseURL,
 		WsBaseURL:   wsURL,
-	})
+	}, []string{"BTCUSDT"}, "1s")
 	s.Require().NoError(err)
 
 	tradingProvider2, err := tradingprovider.NewBinanceTradingSystemProvider(tradingprovider.BinanceProviderConfig{
@@ -531,8 +525,6 @@ func (s *BinanceMockServerTestSuite) TestMultipleOrdersAndBalanceVerification() 
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1s",
 		MarketDataCacheSize: 100,
 		EnableLogging:       true,
 		DataOutputPath:      tmpDir,
@@ -542,7 +534,7 @@ func (s *BinanceMockServerTestSuite) TestMultipleOrdersAndBalanceVerification() 
 	marketProvider, err := marketdataprovider.NewBinanceClientWithEndpoints(marketdataprovider.BinanceEndpointConfig{
 		RestBaseURL: baseURL,
 		WsBaseURL:   wsURL,
-	})
+	}, []string{"BTCUSDT"}, "1s")
 	s.Require().NoError(err)
 
 	tradingProvider, err := tradingprovider.NewBinanceTradingSystemProvider(tradingprovider.BinanceProviderConfig{

@@ -97,7 +97,13 @@ type MockMarketDataConfig struct {
 func NewMockMarketDataProvider(configs ...MockMarketDataConfig) *MockMarketDataProvider
 
 // Stream implements Provider.Stream
-func (p *MockMarketDataProvider) Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error]
+func (p *MockMarketDataProvider) Stream(ctx context.Context) iter.Seq2[types.MarketData, error]
+
+// GetSymbols implements Provider.GetSymbols
+func (p *MockMarketDataProvider) GetSymbols() []string
+
+// GetInterval implements Provider.GetInterval
+func (p *MockMarketDataProvider) GetInterval() string
 ```
 
 **Usage:**

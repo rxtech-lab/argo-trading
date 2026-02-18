@@ -185,9 +185,15 @@ type BinanceClient struct {
 	wsService      BinanceWebSocketService
 	writer         writer.MarketDataWriter
 	onStatusChange OnStatusChange
+	symbols        []string
+	interval       string
 }
 
-func NewBinanceClient() (Provider, error) {
+func NewBinanceClient(config *BinanceStreamConfig) (Provider, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config is required for binance provider")
+	}
+
 	client := binance.NewClient("", "")
 
 	return &BinanceClient{
@@ -195,26 +201,32 @@ func NewBinanceClient() (Provider, error) {
 		wsService:      &binanceWebSocketServiceWrapper{},
 		writer:         nil,
 		onStatusChange: nil,
+		symbols:        config.Symbols,
+		interval:       config.Interval,
 	}, nil
 }
 
 // NewBinanceClientWithAPI creates a BinanceClient with a custom API client (for testing).
-func NewBinanceClientWithAPI(apiClient BinanceAPIClient) *BinanceClient {
+func NewBinanceClientWithAPI(apiClient BinanceAPIClient, symbols []string, interval string) *BinanceClient {
 	return &BinanceClient{
 		apiClient:      apiClient,
 		wsService:      &binanceWebSocketServiceWrapper{},
 		writer:         nil,
 		onStatusChange: nil,
+		symbols:        symbols,
+		interval:       interval,
 	}
 }
 
 // NewBinanceClientWithWebSocket creates a BinanceClient with custom API and WebSocket services (for testing).
-func NewBinanceClientWithWebSocket(apiClient BinanceAPIClient, wsService BinanceWebSocketService) *BinanceClient {
+func NewBinanceClientWithWebSocket(apiClient BinanceAPIClient, wsService BinanceWebSocketService, symbols []string, interval string) *BinanceClient {
 	return &BinanceClient{
 		apiClient:      apiClient,
 		wsService:      wsService,
 		writer:         nil,
 		onStatusChange: nil,
+		symbols:        symbols,
+		interval:       interval,
 	}
 }
 
@@ -227,7 +239,7 @@ type BinanceEndpointConfig struct {
 // NewBinanceClientWithEndpoints creates a BinanceClient with custom API endpoints.
 // This is useful for testing with mock servers or using alternative endpoints.
 // If WsBaseURL is set, it overrides the global binance.BaseWsMainURL.
-func NewBinanceClientWithEndpoints(config BinanceEndpointConfig) (Provider, error) {
+func NewBinanceClientWithEndpoints(config BinanceEndpointConfig, symbols []string, interval string) (Provider, error) {
 	// Set WebSocket endpoint before creating any connections
 	// Note: This is a global variable change that affects all WebSocket connections
 	if config.WsBaseURL != "" {
@@ -244,7 +256,19 @@ func NewBinanceClientWithEndpoints(config BinanceEndpointConfig) (Provider, erro
 		wsService:      &binanceWebSocketServiceWrapper{},
 		writer:         nil,
 		onStatusChange: nil,
+		symbols:        symbols,
+		interval:       interval,
 	}, nil
+}
+
+// GetSymbols returns the list of symbols configured for streaming.
+func (c *BinanceClient) GetSymbols() []string {
+	return c.symbols
+}
+
+// GetInterval returns the candlestick interval configured for streaming.
+func (c *BinanceClient) GetInterval() string {
+	return c.interval
 }
 
 func (c *BinanceClient) ConfigWriter(w writer.MarketDataWriter) {
@@ -484,8 +508,11 @@ func convertTimespanToBinanceInterval(timespan models.Timespan, multiplier int) 
 // Stream implements Provider.Stream for real-time WebSocket market data.
 // It subscribes to kline streams for all specified symbols and yields data as it arrives.
 // The iterator terminates when the context is cancelled or an unrecoverable error occurs.
-func (c *BinanceClient) Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error] {
+func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, error] {
 	return func(yield func(types.MarketData, error) bool) {
+		symbols := c.symbols
+		interval := c.interval
+
 		if len(symbols) == 0 {
 			//nolint:exhaustruct // empty struct for error case
 			yield(types.MarketData{}, fmt.Errorf("no symbols provided for streaming"))

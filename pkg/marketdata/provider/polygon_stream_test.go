@@ -110,13 +110,13 @@ func (suite *PolygonStreamTestSuite) TestStreamSingleSymbol() {
 	mockWs := newMockPolygonWebSocketService()
 	mockWs.events = events
 
-	client := NewPolygonClientWithWebSocket("test-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("test-api-key", mockWs, []string{"AAPL"}, "1m")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	var received []types.MarketData
-	for data, err := range client.Stream(ctx, []string{"AAPL"}, "1m") {
+	for data, err := range client.Stream(ctx) {
 		if err != nil {
 			break
 		}
@@ -154,13 +154,13 @@ func (suite *PolygonStreamTestSuite) TestStreamMultipleSymbols() {
 	mockWs := newMockPolygonWebSocketService()
 	mockWs.events = events
 
-	client := NewPolygonClientWithWebSocket("test-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("test-api-key", mockWs, []string{"AAPL", "GOOGL"}, "1m")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	symbolsSeen := make(map[string]bool)
-	for data, err := range client.Stream(ctx, []string{"AAPL", "GOOGL"}, "1m") {
+	for data, err := range client.Stream(ctx) {
 		if err != nil {
 			break
 		}
@@ -175,13 +175,13 @@ func (suite *PolygonStreamTestSuite) TestStreamConnectionError() {
 	mockWs := newMockPolygonWebSocketService()
 	mockWs.connectError = errors.New("authentication failed")
 
-	client := NewPolygonClientWithWebSocket("invalid-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("invalid-api-key", mockWs, []string{"AAPL"}, "1m")
 
 	ctx := context.Background()
 	var gotError bool
 	var errorMsg string
 
-	for _, err := range client.Stream(ctx, []string{"AAPL"}, "1m") {
+	for _, err := range client.Stream(ctx) {
 		if err != nil {
 			gotError = true
 			errorMsg = err.Error()
@@ -195,12 +195,12 @@ func (suite *PolygonStreamTestSuite) TestStreamConnectionError() {
 
 func (suite *PolygonStreamTestSuite) TestStreamEmptySymbols() {
 	mockWs := newMockPolygonWebSocketService()
-	client := NewPolygonClientWithWebSocket("test-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("test-api-key", mockWs, []string{}, "1m")
 
 	ctx := context.Background()
 	var gotError bool
 
-	for _, err := range client.Stream(ctx, []string{}, "1m") {
+	for _, err := range client.Stream(ctx) {
 		if err != nil {
 			gotError = true
 			break
@@ -214,7 +214,7 @@ func (suite *PolygonStreamTestSuite) TestStreamContextCancellation() {
 	mockWs := newMockPolygonWebSocketService()
 	// Don't add events - let the context cancellation terminate
 
-	client := NewPolygonClientWithWebSocket("test-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("test-api-key", mockWs, []string{"AAPL"}, "1m")
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -224,7 +224,7 @@ func (suite *PolygonStreamTestSuite) TestStreamContextCancellation() {
 	}()
 
 	iterCount := 0
-	for range client.Stream(ctx, []string{"AAPL"}, "1m") {
+	for range client.Stream(ctx) {
 		iterCount++
 		if iterCount > 10 {
 			break
@@ -238,14 +238,14 @@ func (suite *PolygonStreamTestSuite) TestStreamWebSocketError() {
 	mockWs := newMockPolygonWebSocketService()
 	mockWs.errors = []error{errors.New("websocket disconnected")}
 
-	client := NewPolygonClientWithWebSocket("test-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("test-api-key", mockWs, []string{"AAPL"}, "1m")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	var gotError bool
 	var errorMsg string
-	for _, err := range client.Stream(ctx, []string{"AAPL"}, "1m") {
+	for _, err := range client.Stream(ctx) {
 		if err != nil {
 			gotError = true
 			errorMsg = err.Error()
@@ -296,7 +296,7 @@ func (suite *PolygonStreamTestSuite) TestConvertIntervalToPolygonTopic() {
 }
 
 func (suite *PolygonStreamTestSuite) TestSetOnStatusChange() {
-	client := NewPolygonClientWithWebSocket("test-api-key", nil)
+	client := NewPolygonClientWithWebSocket("test-api-key", nil, []string{"AAPL"}, "1m")
 
 	client.SetOnStatusChange(func(_ types.ProviderConnectionStatus) {
 		// Callback registered successfully
@@ -322,7 +322,7 @@ func (suite *PolygonStreamTestSuite) TestStreamEmitsConnectedStatus() {
 	mockWs := newMockPolygonWebSocketService()
 	mockWs.events = events
 
-	client := NewPolygonClientWithWebSocket("test-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("test-api-key", mockWs, []string{"AAPL"}, "1m")
 
 	var statusChanges []types.ProviderConnectionStatus
 	client.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
@@ -333,7 +333,7 @@ func (suite *PolygonStreamTestSuite) TestStreamEmitsConnectedStatus() {
 	defer cancel()
 
 	// Consume the stream to trigger the connection
-	for range client.Stream(ctx, []string{"AAPL"}, "1m") {
+	for range client.Stream(ctx) {
 		// Just iterate through to completion
 	}
 
@@ -346,7 +346,7 @@ func (suite *PolygonStreamTestSuite) TestStreamEmitsDisconnectedOnError() {
 	mockWs := newMockPolygonWebSocketService()
 	mockWs.connectError = errors.New("authentication failed")
 
-	client := NewPolygonClientWithWebSocket("invalid-api-key", mockWs)
+	client := NewPolygonClientWithWebSocket("invalid-api-key", mockWs, []string{"AAPL"}, "1m")
 
 	var statusChanges []types.ProviderConnectionStatus
 	client.SetOnStatusChange(func(status types.ProviderConnectionStatus) {
@@ -356,7 +356,7 @@ func (suite *PolygonStreamTestSuite) TestStreamEmitsDisconnectedOnError() {
 	ctx := context.Background()
 
 	// Stream should fail to connect
-	for range client.Stream(ctx, []string{"AAPL"}, "1m") {
+	for range client.Stream(ctx) {
 		// Just iterate through to completion
 	}
 

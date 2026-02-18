@@ -165,7 +165,7 @@ func TestBinanceClientSuite(t *testing.T) {
 }
 
 func (suite *BinanceClientTestSuite) TestNewBinanceClient() {
-	client, err := NewBinanceClient()
+	client, err := NewBinanceClient(&BinanceStreamConfig{BaseStreamConfig: BaseStreamConfig{Symbols: []string{"BTCUSDT"}, Interval: "1m"}})
 	suite.NoError(err)
 	suite.NotNil(client)
 
@@ -177,14 +177,14 @@ func (suite *BinanceClientTestSuite) TestNewBinanceClient() {
 
 func (suite *BinanceClientTestSuite) TestNewBinanceClientWithAPI() {
 	mockAPI := &mockBinanceAPIClient{}
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	suite.NotNil(client)
 	suite.Equal(mockAPI, client.apiClient)
 	suite.Nil(client.writer)
 }
 
 func (suite *BinanceClientTestSuite) TestConfigWriter() {
-	client, err := NewBinanceClient()
+	client, err := NewBinanceClient(&BinanceStreamConfig{BaseStreamConfig: BaseStreamConfig{Symbols: []string{"BTCUSDT"}, Interval: "1m"}})
 	suite.Require().NoError(err)
 
 	binanceClient := client.(*BinanceClient)
@@ -196,7 +196,7 @@ func (suite *BinanceClientTestSuite) TestConfigWriter() {
 }
 
 func (suite *BinanceClientTestSuite) TestDownloadWithoutWriter() {
-	client, err := NewBinanceClient()
+	client, err := NewBinanceClient(&BinanceStreamConfig{BaseStreamConfig: BaseStreamConfig{Symbols: []string{"BTCUSDT"}, Interval: "1m"}})
 	suite.Require().NoError(err)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -208,7 +208,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWithoutWriter() {
 }
 
 func (suite *BinanceClientTestSuite) TestDownloadWithInvalidTimespan() {
-	client, err := NewBinanceClient()
+	client, err := NewBinanceClient(&BinanceStreamConfig{BaseStreamConfig: BaseStreamConfig{Symbols: []string{"BTCUSDT"}, Interval: "1m"}})
 	suite.Require().NoError(err)
 
 	binanceClient := client.(*BinanceClient)
@@ -224,7 +224,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWithInvalidTimespan() {
 }
 
 func (suite *BinanceClientTestSuite) TestDownloadWriterInitializationError() {
-	client, err := NewBinanceClient()
+	client, err := NewBinanceClient(&BinanceStreamConfig{BaseStreamConfig: BaseStreamConfig{Symbols: []string{"BTCUSDT"}, Interval: "1m"}})
 	suite.Require().NoError(err)
 
 	binanceClient := client.(*BinanceClient)
@@ -507,7 +507,7 @@ func (suite *BinanceClientTestSuite) TestDownloadSuccess() {
 	mockAPI := &mockBinanceAPIClient{klines: klines}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -525,7 +525,7 @@ func (suite *BinanceClientTestSuite) TestDownloadEmptyKlines() {
 	mockAPI := &mockBinanceAPIClient{klines: []*binance.Kline{}}
 	mockW := &mockWriter{outputPath: "/tmp/empty.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -542,7 +542,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIError() {
 	mockAPI := &mockBinanceAPIClient{klinesErr: errors.New("API rate limit exceeded")}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -559,7 +559,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIErrorWithFinalizeError() {
 	mockAPI := &mockBinanceAPIClient{klinesErr: errors.New("API error")}
 	mockW := &mockWriter{finalizeErr: errors.New("finalize failed")}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -588,7 +588,7 @@ func (suite *BinanceClientTestSuite) TestDownloadFinalizeError() {
 	mockAPI := &mockBinanceAPIClient{klines: klines}
 	mockW := &mockWriter{finalizeErr: errors.New("disk full")}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -619,7 +619,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWriteErrorWithFinalizeError() {
 		finalizeErr: errors.New("finalize failed"),
 	}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -648,7 +648,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWriteErrorWithFinalizeSuccess()
 	mockAPI := &mockBinanceAPIClient{klines: klines}
 	mockW := &mockWriter{writeErr: errors.New("write error")}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -694,7 +694,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPagination() {
 	}
 	mockW := &mockWriter{outputPath: "/tmp/paginated.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -730,7 +730,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithAPIErrorOnSecondP
 	}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -780,7 +780,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWriteErrorOnSecondPag
 		writeErrAfterN: 500, // Fail after first 500 writes
 	}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -808,7 +808,7 @@ func (suite *BinanceClientTestSuite) TestDownloadProgressCallback() {
 	mockAPI := &mockBinanceAPIClient{klines: klines}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -856,7 +856,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationTimeBreak() {
 	}
 	mockW := &mockWriter{outputPath: "/tmp/timebreak.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.UnixMilli(startTimeMs)
@@ -899,7 +899,7 @@ func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteError() {
 		writeErrAfterN: 0, // Fail immediately
 	}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.UnixMilli(startTimeMs)
@@ -937,7 +937,7 @@ func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteErrorWithFinalizeE
 		finalizeErr:    errors.New("finalize also failed"),
 	}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.UnixMilli(startTimeMs)
@@ -952,7 +952,7 @@ func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteErrorWithFinalizeE
 // TestBinanceClientWrapperMethods tests the wrapper methods by verifying the client structure.
 func (suite *BinanceClientTestSuite) TestBinanceClientWrapperMethods() {
 	// Create a real BinanceClient to verify the wrapper is correctly set up
-	client, err := NewBinanceClient()
+	client, err := NewBinanceClient(&BinanceStreamConfig{BaseStreamConfig: BaseStreamConfig{Symbols: []string{"BTCUSDT"}, Interval: "1m"}})
 	suite.NoError(err)
 
 	binanceClient, ok := client.(*BinanceClient)
@@ -1044,7 +1044,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
 	}
 	mockW := &mockWriter{outputPath: "/tmp/large.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.UnixMilli(startTimeMs)
@@ -1074,7 +1074,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIError_DeletesFileWhenNoData(
 	mockAPI := &mockBinanceAPIClient{klinesErr: errors.New("API rate limit exceeded")}
 	mockW := &mockWriter{outputPath: tmpPath}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1122,7 +1122,7 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIError_KeepsFileWhenPartialDa
 	}
 	mockW := &mockWriter{outputPath: tmpPath}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1171,7 +1171,7 @@ func (suite *BinanceClientTestSuite) TestDownloadWriteError_DeletesFileWhenNoDat
 		writeErr:   errors.New("disk full"),
 	}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -1203,7 +1203,7 @@ func (suite *BinanceClientTestSuite) TestDownload_Cancellation() {
 	mockAPI := &mockBinanceAPIClient{klines: klines}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	// Create a cancelled context
@@ -1245,7 +1245,7 @@ func (suite *BinanceClientTestSuite) TestDownload_CancellationCleansUpFile() {
 	mockAPI := &mockBinanceAPIClient{klines: klines}
 	mockW := &mockWriter{outputPath: tmpPath}
 
-	client := NewBinanceClientWithAPI(mockAPI)
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
 	client.ConfigWriter(mockW)
 
 	// Create a cancelled context

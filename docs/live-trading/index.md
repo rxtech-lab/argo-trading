@@ -105,12 +105,6 @@ type LiveTradingEngine interface {
 
 ```go
 type LiveTradingEngineConfig struct {
-    // Symbols to trade/monitor
-    Symbols []string `json:"symbols" yaml:"symbols" validate:"required,min=1"`
-
-    // Interval for market data streaming (e.g., "1m", "5m", "1h")
-    Interval string `json:"interval" yaml:"interval" validate:"required"`
-
     // MarketDataCacheSize is the number of historical data points to cache per symbol
     MarketDataCacheSize int `json:"market_data_cache_size" yaml:"market_data_cache_size"`
 
@@ -123,6 +117,8 @@ type LiveTradingEngineConfig struct {
     // Prefetch configuration for historical data
     Prefetch PrefetchConfig `json:"prefetch" yaml:"prefetch"`
 }
+// Note: symbols and interval are configured via the market data provider, not the engine config.
+```
 
 type PrefetchConfig struct {
     // Enabled enables historical data prefetching
@@ -325,8 +321,6 @@ func main() {
 
     // Configure engine
     config := engine.LiveTradingEngineConfig{
-        Symbols:             []string{"BTCUSDT", "ETHUSDT"},
-        Interval:            "1m",
         MarketDataCacheSize: 1000,
         EnableLogging:       true,
         DataOutputPath:      "./data/live-trading",
@@ -336,6 +330,7 @@ func main() {
             Days:          30,
         },
     }
+    // Note: symbols and interval are configured via the market data provider
 
     if err := eng.Initialize(config); err != nil {
         log.Fatal(err)

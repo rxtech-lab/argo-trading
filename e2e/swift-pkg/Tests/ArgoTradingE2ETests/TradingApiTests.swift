@@ -186,8 +186,6 @@ final class TradingApiTests: XCTestCase {
         let schema = SwiftargoGetLiveTradingEngineConfigSchema()
 
         // Engine config should have these fields
-        XCTAssertTrue(schema.contains("symbols"), "Schema should contain symbols field")
-        XCTAssertTrue(schema.contains("interval"), "Schema should contain interval field")
         XCTAssertTrue(schema.contains("data_output_path"), "Schema should contain data_output_path field")
         XCTAssertTrue(schema.contains("market_data_cache_size"), "Schema should contain market_data_cache_size field")
         XCTAssertTrue(schema.contains("enable_logging"), "Schema should contain enable_logging field")
@@ -214,8 +212,6 @@ final class TradingApiTests: XCTestCase {
             return
         }
 
-        XCTAssertNotNil(properties["symbols"], "Should have symbols property")
-        XCTAssertNotNil(properties["interval"], "Should have interval property")
         XCTAssertNotNil(properties["prefetch"], "Should have prefetch property")
 
         // Prefetch should be inlined (not a $ref)
@@ -225,24 +221,6 @@ final class TradingApiTests: XCTestCase {
         }
         XCTAssertNil(prefetch["$ref"], "Prefetch should not be a $ref")
         XCTAssertNotNil(prefetch["properties"], "Prefetch should have inlined properties")
-    }
-
-    func testGetLiveTradingEngineConfigSchema_IntervalHasEnumValues() {
-        let schema = SwiftargoGetLiveTradingEngineConfigSchema()
-
-        guard let data = schema.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let properties = json["properties"] as? [String: Any],
-              let interval = properties["interval"] as? [String: Any],
-              let enumValues = interval["enum"] as? [String] else {
-            XCTFail("Failed to parse interval enum values")
-            return
-        }
-
-        XCTAssertTrue(enumValues.contains("1m"), "Interval should include 1m")
-        XCTAssertTrue(enumValues.contains("5m"), "Interval should include 5m")
-        XCTAssertTrue(enumValues.contains("1h"), "Interval should include 1h")
-        XCTAssertTrue(enumValues.contains("1d"), "Interval should include 1d")
     }
 
     // MARK: - GetSupportedMarketDataProviders Tests
