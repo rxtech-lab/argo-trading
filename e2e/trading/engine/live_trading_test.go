@@ -77,7 +77,7 @@ func (s *LiveTradingE2ETestSuite) TestBasicEngineExecution() {
 		engineStopped = true
 	})
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -159,7 +159,7 @@ func (s *LiveTradingE2ETestSuite) TestGracefulShutdown() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -242,7 +242,7 @@ func (s *LiveTradingE2ETestSuite) TestStreamErrorHandling() {
 	var dataCountBeforeError int
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -330,7 +330,7 @@ func (s *LiveTradingE2ETestSuite) TestMultiSymbolStreaming() {
 	symbolsSeen := make(map[string]int)
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -419,7 +419,7 @@ func (s *LiveTradingE2ETestSuite) TestStrategyErrorCallback() {
 	var strategyErrors []error
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mockTradingProvider.SetCurrentPrice(data.Symbol, data.Close)
 		return nil
 	})

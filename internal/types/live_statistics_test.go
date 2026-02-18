@@ -185,7 +185,7 @@ func (s *LiveStatisticsTestSuite) TestNewLiveTradeStats() {
 		Version: "2.0.0",
 	}
 
-	stats := NewLiveTradeStats(runID, symbols, strategy)
+	stats := NewLiveTradeStats(runID, "run_5", symbols, strategy)
 
 	// Verify basic fields
 	s.Equal(runID, stats.ID)
@@ -202,7 +202,7 @@ func (s *LiveStatisticsTestSuite) TestNewLiveTradeStats() {
 }
 
 func (s *LiveStatisticsTestSuite) TestNewLiveTradeStats_VerifyDefaults() {
-	stats := NewLiveTradeStats("run_1", []string{"BTCUSDT"}, StrategyInfo{})
+	stats := NewLiveTradeStats("run_1", "run_1", []string{"BTCUSDT"}, StrategyInfo{})
 
 	// Verify all numeric fields default to 0
 	s.Equal(0, stats.TradeResult.NumberOfTrades)

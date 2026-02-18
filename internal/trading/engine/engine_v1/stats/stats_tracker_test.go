@@ -51,7 +51,7 @@ func (s *StatsTrackerTestSuite) TestInitialize() {
 		Name:    "Test Strategy",
 	}
 
-	st.Initialize(symbols, runID, sessionStart, strategyInfo)
+	st.Initialize(symbols, runID, "run_1", sessionStart, strategyInfo)
 
 	s.Equal(runID, st.GetRunID())
 	s.Equal(sessionStart.Format("2006-01-02"), st.GetCurrentDate())
@@ -59,7 +59,7 @@ func (s *StatsTrackerTestSuite) TestInitialize() {
 
 func (s *StatsTrackerTestSuite) TestRecordTrade_WinningTrade() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	trade := types.Trade{
 		Order: types.Order{
@@ -96,7 +96,7 @@ func (s *StatsTrackerTestSuite) TestRecordTrade_WinningTrade() {
 
 func (s *StatsTrackerTestSuite) TestRecordTrade_LosingTrade() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	trade := types.Trade{
 		Order: types.Order{
@@ -133,7 +133,7 @@ func (s *StatsTrackerTestSuite) TestRecordTrade_LosingTrade() {
 
 func (s *StatsTrackerTestSuite) TestRecordTrade_WinRate() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	// Record 3 winning and 2 losing trades
 	trades := []types.Trade{
@@ -157,7 +157,7 @@ func (s *StatsTrackerTestSuite) TestRecordTrade_WinRate() {
 
 func (s *StatsTrackerTestSuite) TestRecordTrade_MaxDrawdown() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	// Simulate: +100, +200 (peak=300), -150 (drawdown=150), +50 (drawdown=100)
 	trades := []types.Trade{
@@ -178,7 +178,7 @@ func (s *StatsTrackerTestSuite) TestRecordTrade_MaxDrawdown() {
 
 func (s *StatsTrackerTestSuite) TestHandleDateBoundary() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	// Record a trade
 	trade := types.Trade{
@@ -225,7 +225,7 @@ func (s *StatsTrackerTestSuite) TestHandleDateBoundary() {
 
 func (s *StatsTrackerTestSuite) TestSetUnrealizedPnL() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	// Record a trade with some realized PnL
 	trade := types.Trade{
@@ -262,7 +262,7 @@ func (s *StatsTrackerTestSuite) TestSetUnrealizedPnL() {
 
 func (s *StatsTrackerTestSuite) TestWriteStatsYAML() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{
 		ID:      "test-strategy",
 		Version: "1.0.0",
 		Name:    "Test Strategy",
@@ -319,7 +319,7 @@ func (s *StatsTrackerTestSuite) TestWriteStatsYAML() {
 
 func (s *StatsTrackerTestSuite) TestHoldingTimeCalculation() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	baseTime := time.Now()
 
@@ -342,7 +342,7 @@ func (s *StatsTrackerTestSuite) TestHoldingTimeCalculation() {
 
 func (s *StatsTrackerTestSuite) TestZeroTrades_WinRateIsZero() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	stats := st.GetCumulativeStats()
 	s.Equal(0, stats.TradeResult.NumberOfTrades)
@@ -355,7 +355,7 @@ func (s *StatsTrackerTestSuite) TestZeroTrades_WinRateIsZero() {
 
 func (s *StatsTrackerTestSuite) TestWriteStatsYAML_NoOutputPath() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	// Don't set file paths - statsOutputPath will be empty
 
@@ -366,7 +366,7 @@ func (s *StatsTrackerTestSuite) TestWriteStatsYAML_NoOutputPath() {
 
 func (s *StatsTrackerTestSuite) TestGetStatsOutputPath() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	// Before setting paths
 	s.Equal("", st.GetStatsOutputPath())
@@ -380,7 +380,7 @@ func (s *StatsTrackerTestSuite) TestGetStatsOutputPath() {
 
 func (s *StatsTrackerTestSuite) TestSetFilePaths() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	ordersPath := "/data/orders.parquet"
 	tradesPath := "/data/trades.parquet"
@@ -403,7 +403,7 @@ func (s *StatsTrackerTestSuite) TestSetFilePaths() {
 func (s *StatsTrackerTestSuite) TestGetDailyStats() {
 	st := NewStatsTracker(s.logger)
 	sessionStart := time.Now()
-	st.Initialize([]string{"BTCUSDT"}, "run_1", sessionStart, types.StrategyInfo{
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", sessionStart, types.StrategyInfo{
 		Name: "TestStrategy",
 	})
 
@@ -440,7 +440,7 @@ func (s *StatsTrackerTestSuite) TestGetDailyStats() {
 
 func (s *StatsTrackerTestSuite) TestRecordTrade_ZeroPnL() {
 	st := NewStatsTracker(s.logger)
-	st.Initialize([]string{"BTCUSDT"}, "run_1", time.Now(), types.StrategyInfo{})
+	st.Initialize([]string{"BTCUSDT"}, "run_1", "run_1", time.Now(), types.StrategyInfo{})
 
 	// Trade with zero PnL (breakeven)
 	trade := types.Trade{

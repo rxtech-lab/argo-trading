@@ -786,7 +786,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_SuccessfulExecution() {
 		return nil
 	})
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 		dataCount++
@@ -979,7 +979,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnMarketDataCallbackError() {
 	err = eng.SetTradingProvider(mockTrading)
 	s.Require().NoError(err)
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		return errors.New("callback error")
 	})
 
@@ -1051,7 +1051,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_ContextCancellation() {
 	var dataCount int
 	var mu sync.Mutex
 
-	onData := engine.OnMarketDataCallback(func(data types.MarketData) error {
+	onData := engine.OnMarketDataCallback(func(_ string, data types.MarketData) error {
 		mu.Lock()
 		defer mu.Unlock()
 		dataCount++
@@ -1264,6 +1264,15 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithDataOutputPath() {
 	// Verify run path exists
 	runPath := e.sessionManager.GetCurrentRunPath()
 	s.DirExists(runPath)
+
+	// Verify market data persistence was initialized
+	s.NotNil(e.streamingWriter)
+	s.NotNil(e.persistentDataSource)
+
+	// Verify market data parquet file was created
+	parquetPath := e.streamingWriter.GetOutputPath()
+	s.FileExists(parquetPath)
+	s.Contains(parquetPath, runPath)
 }
 
 func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Stopped() {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rxtech-lab/argo-trading/internal/logger"
 	"github.com/stretchr/testify/suite"
 )
@@ -46,15 +47,19 @@ func (s *SessionManagerTestSuite) TestInitialize_FirstRun() {
 	err := sm.Initialize(s.tempDir)
 	s.Require().NoError(err)
 
-	// Verify run ID is run_1
-	s.Equal("run_1", sm.GetRunID())
-	s.Equal(1, sm.GetRunNumber())
+	// Verify run ID is a valid UUID
+	runID := sm.GetRunID()
+	_, err = uuid.Parse(runID)
+	s.NoError(err, "runID should be a valid UUID")
 
-	// Verify folder was created
+	// Verify run name is run_1
+	s.Equal("run_1", sm.GetRunName())
+
+	// Verify folder was created using run name
 	runPath := sm.GetCurrentRunPath()
 	s.DirExists(runPath)
 
-	// Verify folder path format
+	// Verify folder path format uses run_N naming
 	today := time.Now().Format("2006-01-02")
 	expectedPath := filepath.Join(s.tempDir, today, "run_1")
 	s.Equal(expectedPath, runPath)
@@ -72,47 +77,24 @@ func (s *SessionManagerTestSuite) TestInitialize_SecondRun() {
 	err = sm.Initialize(s.tempDir)
 	s.Require().NoError(err)
 
-	// Verify run ID is run_2
-	s.Equal("run_2", sm.GetRunID())
-	s.Equal(2, sm.GetRunNumber())
+	// Verify run name is run_2 (incremented from existing run_1)
+	s.Equal("run_2", sm.GetRunName())
 }
 
-func (s *SessionManagerTestSuite) TestInitialize_MultipleExistingRuns() {
-	// Create multiple existing run folders
-	today := time.Now().Format("2006-01-02")
-	for i := 1; i <= 5; i++ {
-		runPath := filepath.Join(s.tempDir, today, "run_"+string(rune('0'+i)))
-		err := os.MkdirAll(runPath, 0755)
-		s.Require().NoError(err)
-	}
-
-	sm := NewSessionManager(s.logger)
-
-	err := sm.Initialize(s.tempDir)
+func (s *SessionManagerTestSuite) TestInitialize_IncrementsRunNumber() {
+	sm1 := NewSessionManager(s.logger)
+	err := sm1.Initialize(s.tempDir)
 	s.Require().NoError(err)
+	s.Equal("run_1", sm1.GetRunName())
 
-	// Verify run ID is run_6
-	s.Equal("run_6", sm.GetRunID())
-	s.Equal(6, sm.GetRunNumber())
-}
-
-func (s *SessionManagerTestSuite) TestInitialize_NonSequentialRuns() {
-	// Create non-sequential run folders (run_1, run_3, run_7)
-	today := time.Now().Format("2006-01-02")
-	for _, num := range []int{1, 3, 7} {
-		runPath := filepath.Join(s.tempDir, today, "run_"+string(rune('0'+num)))
-		err := os.MkdirAll(runPath, 0755)
-		s.Require().NoError(err)
-	}
-
-	sm := NewSessionManager(s.logger)
-
-	err := sm.Initialize(s.tempDir)
+	// Second session in the same directory gets run_2
+	sm2 := NewSessionManager(s.logger)
+	err = sm2.Initialize(s.tempDir)
 	s.Require().NoError(err)
+	s.Equal("run_2", sm2.GetRunName())
 
-	// Verify run ID is run_8 (max + 1)
-	s.Equal("run_8", sm.GetRunID())
-	s.Equal(8, sm.GetRunNumber())
+	// UUIDs should be different
+	s.NotEqual(sm1.GetRunID(), sm2.GetRunID())
 }
 
 func (s *SessionManagerTestSuite) TestHandleDateBoundary_SameDate() {
@@ -135,7 +117,7 @@ func (s *SessionManagerTestSuite) TestHandleDateBoundary_NewDate() {
 	s.Require().NoError(err)
 
 	originalDate := sm.GetCurrentDate()
-	runID := sm.GetRunID()
+	runName := sm.GetRunName()
 
 	// Simulate next day
 	tomorrow := time.Now().AddDate(0, 0, 1)
@@ -144,8 +126,8 @@ func (s *SessionManagerTestSuite) TestHandleDateBoundary_NewDate() {
 	s.Require().NoError(err)
 	s.True(changed)
 
-	// Run ID should remain the same
-	s.Equal(runID, sm.GetRunID())
+	// Run name should remain the same
+	s.Equal(runName, sm.GetRunName())
 
 	// Date should change
 	s.NotEqual(originalDate, sm.GetCurrentDate())
@@ -154,8 +136,8 @@ func (s *SessionManagerTestSuite) TestHandleDateBoundary_NewDate() {
 	// New folder should exist
 	s.DirExists(sm.GetCurrentRunPath())
 
-	// Path should be different
-	expectedPath := filepath.Join(s.tempDir, tomorrow.Format("2006-01-02"), runID)
+	// Path should use run name
+	expectedPath := filepath.Join(s.tempDir, tomorrow.Format("2006-01-02"), runName)
 	s.Equal(expectedPath, sm.GetCurrentRunPath())
 }
 
@@ -173,8 +155,9 @@ func (s *SessionManagerTestSuite) TestGetFilePath() {
 func (s *SessionManagerTestSuite) TestListSessionsForDate() {
 	// Create multiple run folders for today
 	today := time.Now().Format("2006-01-02")
-	for i := 1; i <= 3; i++ {
-		runPath := filepath.Join(s.tempDir, today, "run_"+string(rune('0'+i)))
+	existingFolders := []string{"folder-a", "folder-b", "folder-c"}
+	for _, folder := range existingFolders {
+		runPath := filepath.Join(s.tempDir, today, folder)
 		err := os.MkdirAll(runPath, 0755)
 		s.Require().NoError(err)
 	}
@@ -186,12 +169,12 @@ func (s *SessionManagerTestSuite) TestListSessionsForDate() {
 	sessions, err := sm.ListSessionsForDate(today)
 	s.Require().NoError(err)
 
-	// Should include run_1, run_2, run_3 plus the new run_4
+	// Should include the 3 pre-created folders plus the new run_1 folder
 	s.Len(sessions, 4)
-	s.Contains(sessions, "run_1")
-	s.Contains(sessions, "run_2")
-	s.Contains(sessions, "run_3")
-	s.Contains(sessions, "run_4")
+	for _, folder := range existingFolders {
+		s.Contains(sessions, folder)
+	}
+	s.Contains(sessions, sm.GetRunName())
 }
 
 func (s *SessionManagerTestSuite) TestListSessionsForDate_NoSessions() {
@@ -254,6 +237,7 @@ func (s *SessionManagerTestSuite) TestConcurrentAccess() {
 	for i := 0; i < 10; i++ {
 		go func() {
 			_ = sm.GetRunID()
+			_ = sm.GetRunName()
 			_ = sm.GetCurrentRunPath()
 			_ = sm.GetCurrentDate()
 			_ = sm.GetSessionStart()
@@ -266,35 +250,6 @@ func (s *SessionManagerTestSuite) TestConcurrentAccess() {
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-}
-
-func (s *SessionManagerTestSuite) TestIgnoresNonRunFolders() {
-	// Create various folders that shouldn't be counted as runs
-	today := time.Now().Format("2006-01-02")
-	todayPath := filepath.Join(s.tempDir, today)
-	err := os.MkdirAll(todayPath, 0755)
-	s.Require().NoError(err)
-
-	// Create non-run folders
-	nonRunFolders := []string{"backup", "run", "run_", "run_abc", "test_1"}
-	for _, folder := range nonRunFolders {
-		folderPath := filepath.Join(todayPath, folder)
-		err := os.MkdirAll(folderPath, 0755)
-		s.Require().NoError(err)
-	}
-
-	// Create a valid run folder
-	validRunPath := filepath.Join(todayPath, "run_5")
-	err = os.MkdirAll(validRunPath, 0755)
-	s.Require().NoError(err)
-
-	sm := NewSessionManager(s.logger)
-	err = sm.Initialize(s.tempDir)
-	s.Require().NoError(err)
-
-	// Should be run_6 (5 + 1)
-	s.Equal("run_6", sm.GetRunID())
-	s.Equal(6, sm.GetRunNumber())
 }
 
 // ============================================================================
@@ -336,7 +291,7 @@ func (s *SessionManagerTestSuite) TestListSessionsForDate_WithFilesInDirectory()
 	s.Require().NoError(err)
 
 	// Create valid run folder
-	runPath := filepath.Join(datePath, "run_1")
+	runPath := filepath.Join(datePath, "session-1")
 	err = os.MkdirAll(runPath, 0755)
 	s.Require().NoError(err)
 
@@ -351,9 +306,9 @@ func (s *SessionManagerTestSuite) TestListSessionsForDate_WithFilesInDirectory()
 	sessions, err := sm.ListSessionsForDate(today)
 	s.Require().NoError(err)
 
-	// Should only contain run_1, not the file
+	// Should only contain session-1, not the file
 	s.Len(sessions, 1)
-	s.Contains(sessions, "run_1")
+	s.Contains(sessions, "session-1")
 }
 
 func (s *SessionManagerTestSuite) TestGetAllDates_WithFilesInDirectory() {

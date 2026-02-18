@@ -21,3 +21,4 @@ docs/index.*
 *.html
 !/cmd/data
 trading
+ArgoTradingLocal/.swiftpm/xcode/xcuserdata/qiweili.xcuserdatad/xcschemes/xcschememanagement.plist
