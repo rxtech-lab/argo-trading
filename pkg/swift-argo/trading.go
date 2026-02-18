@@ -11,7 +11,11 @@ import (
 	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/provider"
+	"go.uber.org/zap"
 )
+
+// debugLog is a package-level zap logger for debug output in the swift-argo bridge.
+var debugLog, _ = zap.NewProduction()
 
 // TradingEngineHelper is the callback interface for live trading lifecycle events.
 // Swift consumers implement this interface to receive notifications during trading.
@@ -183,18 +187,31 @@ func (t *TradingEngine) Initialize(configJSON string) error {
 // The providerName should be one of the values returned by GetSupportedTradingProviders().
 // The configJSON must conform to GetTradingProviderSchema(providerName).
 func (t *TradingEngine) SetTradingProvider(providerName string, configJSON string) error {
+	debugLog.Info("SetTradingProvider called",
+		zap.String("providerName", providerName),
+		zap.Int("configJSON_length", len(configJSON)),
+	)
+
 	config, err := tradingprovider.ParseProviderConfig(providerName, configJSON)
 	if err != nil {
+		debugLog.Warn("SetTradingProvider: failed to parse config", zap.Error(err))
+
 		return fmt.Errorf("failed to parse trading provider config: %w", err)
 	}
+
+	debugLog.Info("SetTradingProvider: config parsed, creating provider...")
 
 	tradingProvider, err := tradingprovider.NewTradingSystemProvider(
 		tradingprovider.ProviderType(providerName),
 		config,
 	)
 	if err != nil {
+		debugLog.Warn("SetTradingProvider: failed to create provider", zap.Error(err))
+
 		return fmt.Errorf("failed to create trading provider: %w", err)
 	}
+
+	debugLog.Info("SetTradingProvider: provider created successfully")
 
 	return t.engine.SetTradingProvider(tradingProvider)
 }
@@ -203,18 +220,34 @@ func (t *TradingEngine) SetTradingProvider(providerName string, configJSON strin
 // providerName: "binance" or "polygon"
 // configJSON: JSON config conforming to GetMarketDataProviderSchema(providerName).
 func (t *TradingEngine) SetMarketDataProvider(providerName string, configJSON string) error {
+	debugLog.Info("SetMarketDataProvider called",
+		zap.String("providerName", providerName),
+		zap.Int("configJSON_length", len(configJSON)),
+	)
+
 	config, err := provider.ParseStreamConfig(providerName, configJSON)
 	if err != nil {
+		debugLog.Warn("SetMarketDataProvider: failed to parse config", zap.Error(err))
+
 		return fmt.Errorf("failed to parse market data provider config: %w", err)
 	}
+
+	debugLog.Info("SetMarketDataProvider: config parsed, creating provider...")
 
 	marketProvider, err := provider.NewMarketDataProvider(
 		provider.ProviderType(providerName),
 		config,
 	)
 	if err != nil {
+		debugLog.Warn("SetMarketDataProvider: failed to create provider", zap.Error(err))
+
 		return fmt.Errorf("failed to create market data provider: %w", err)
 	}
+
+	debugLog.Info("SetMarketDataProvider: provider created successfully",
+		zap.Strings("symbols", marketProvider.GetSymbols()),
+		zap.String("interval", marketProvider.GetInterval()),
+	)
 
 	return t.engine.SetMarketDataProvider(marketProvider)
 }

@@ -10,7 +10,11 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/utils"
 	"github.com/rxtech-lab/argo-trading/pkg/errors"
+	"go.uber.org/zap"
 )
+
+// debugLog is a package-level zap logger for debug output in the trading provider.
+var debugLog, _ = zap.NewProduction()
 
 const (
 	// BinanceDecimalPrecision is a default decimal precision used as a fallback.
@@ -270,16 +274,26 @@ type BinanceTradingSystemProvider struct {
 // If useTestnet is true, connects to Binance Testnet (https://testnet.binance.vision/).
 // If config.BaseURL is set, it takes precedence over useTestnet.
 func NewBinanceTradingSystemProvider(config BinanceProviderConfig, useTestnet bool) (*BinanceTradingSystemProvider, error) {
-	if useTestnet {
-		binance.UseTestnet = true
-	}
+	debugLog.Info("NewBinanceTradingSystemProvider",
+		zap.Bool("useTestnet", useTestnet),
+		zap.Bool("hasApiKey", config.ApiKey != ""),
+		zap.Bool("hasSecretKey", config.SecretKey != ""),
+		zap.String("baseURL", config.BaseURL),
+	)
 
+	// Do NOT set the global binance.UseTestnet flag — it contaminates other components
+	// (e.g., market data WebSocket). Instead, set the base URL directly on the client.
 	client := binance.NewClient(config.ApiKey, config.SecretKey)
 
-	// Set custom base URL if provided (takes precedence over useTestnet)
 	if config.BaseURL != "" {
 		client.BaseURL = config.BaseURL
+	} else if useTestnet {
+		client.BaseURL = "https://testnet.binance.vision"
 	}
+
+	debugLog.Info("NewBinanceTradingSystemProvider: client created",
+		zap.String("client.BaseURL", client.BaseURL),
+	)
 
 	return &BinanceTradingSystemProvider{
 		client:           &realBinanceClient{client: client},
@@ -701,10 +715,18 @@ func (b *BinanceTradingSystemProvider) GetMaxSellQuantity(symbol string) (float6
 // CheckConnection verifies if the trading provider is connected by performing a health check.
 // For Binance, it uses the GetAccountService to verify connectivity and authentication.
 func (b *BinanceTradingSystemProvider) CheckConnection(ctx context.Context) error {
+	debugLog.Info("CheckConnection: attempting to connect to Binance API",
+		zap.Bool("binance.UseTestnet", binance.UseTestnet),
+	)
+
 	_, err := b.client.NewGetAccountService().Do(ctx)
 	if err != nil {
+		debugLog.Warn("CheckConnection: failed", zap.Error(err))
+
 		return errors.Wrap(errors.ErrCodeOrderFailed, "failed to connect to Binance API", err)
 	}
+
+	debugLog.Info("CheckConnection: success")
 
 	return nil
 }

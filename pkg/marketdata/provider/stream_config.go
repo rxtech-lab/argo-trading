@@ -23,9 +23,6 @@ type PolygonStreamConfig struct {
 // BinanceStreamConfig contains configuration for Binance streaming market data.
 type BinanceStreamConfig struct {
 	BaseStreamConfig
-
-	ApiKey    string `json:"apiKey,omitempty" jsonschema:"title=API Key,description=Binance API key for authentication"`
-	SecretKey string `json:"secretKey,omitempty" jsonschema:"title=Secret Key,description=Binance secret key for authentication" keychain:"true"`
 }
 
 // Validate validates the BaseStreamConfig fields.

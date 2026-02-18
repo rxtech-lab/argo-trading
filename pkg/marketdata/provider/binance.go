@@ -14,7 +14,11 @@ import (
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/writer"
+	"go.uber.org/zap"
 )
+
+// debugLog is a package-level zap logger for debug output in the market data provider.
+var debugLog, _ = zap.NewProduction()
 
 // BinanceKlinesService defines the interface for fetching klines from Binance.
 type BinanceKlinesService interface {
@@ -154,6 +158,13 @@ type BinanceWebSocketService interface {
 type binanceWebSocketServiceWrapper struct{}
 
 func (w *binanceWebSocketServiceWrapper) WsKlineServe(symbol string, interval string, handler WsKlineHandler, errHandler WsErrorHandler) (chan struct{}, chan struct{}, error) {
+	debugLog.Info("WsKlineServe",
+		zap.String("symbol", symbol),
+		zap.String("interval", interval),
+		zap.Bool("binance.UseTestnet", binance.UseTestnet),
+		zap.String("binance.BaseWsMainURL", binance.BaseWsMainURL),
+	)
+
 	// Convert our handler types to binance handler types
 	binanceHandler := func(event *binance.WsKlineEvent) {
 		handler(&BinanceWsKlineEvent{
@@ -194,7 +205,18 @@ func NewBinanceClient(config *BinanceStreamConfig) (Provider, error) {
 		return nil, fmt.Errorf("config is required for binance provider")
 	}
 
-	client := binance.NewClient(config.ApiKey, config.SecretKey)
+	debugLog.Info("NewBinanceClient",
+		zap.Strings("symbols", config.Symbols),
+		zap.String("interval", config.Interval),
+		zap.Bool("binance.UseTestnet", binance.UseTestnet),
+		zap.String("binance.BaseWsMainURL", binance.BaseWsMainURL),
+	)
+
+	client := binance.NewClient("", "")
+
+	debugLog.Info("NewBinanceClient: client created",
+		zap.String("client.BaseURL", client.BaseURL),
+	)
 
 	return &BinanceClient{
 		apiClient:      &binanceClientWrapper{client: client},
@@ -528,7 +550,9 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 		}
 
 		// Validate that all symbols are valid Binance trading pairs
+		debugLog.Info("Stream: validating symbols", zap.Strings("symbols", symbols))
 		if err := c.ValidateSymbols(ctx, symbols); err != nil {
+			debugLog.Warn("Stream: symbol validation FAILED", zap.Error(err))
 			//nolint:exhaustruct // empty struct for error case
 			yield(types.MarketData{}, err)
 
@@ -595,6 +619,8 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 
 				doneC, stopC, err := c.wsService.WsKlineServe(sym, interval, handler, errHandler)
 				if err != nil {
+					debugLog.Warn("Stream: WebSocket connection FAILED", zap.String("symbol", sym), zap.Error(err))
+
 					select {
 					case errChan <- fmt.Errorf("failed to start websocket for %s: %w", sym, err):
 					default:
@@ -605,6 +631,8 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 
 					return
 				}
+
+				debugLog.Info("Stream: WebSocket connection ESTABLISHED", zap.String("symbol", sym))
 
 				// Emit connected status when WebSocket connection is established
 				c.emitStatus(types.ProviderStatusConnected)

@@ -293,13 +293,13 @@ func (m *Model) startStreaming() tea.Cmd {
 
 // streamMarketData streams market data from Binance and sends messages to the program.
 func streamMarketData(p *tea.Program, ctx context.Context, symbols []string, interval string, apiKey string, secretKey string) {
+	_ = apiKey    // reserved for future authenticated endpoints
+	_ = secretKey // reserved for future authenticated endpoints
 	cfg := &provider.BinanceStreamConfig{
 		BaseStreamConfig: provider.BaseStreamConfig{
 			Symbols:  symbols,
 			Interval: interval,
 		},
-		ApiKey:    apiKey,
-		SecretKey: secretKey,
 	}
 
 	client, err := provider.NewMarketDataProvider(provider.ProviderBinance, cfg)
