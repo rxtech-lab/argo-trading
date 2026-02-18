@@ -4,7 +4,7 @@ package version
 // This value is set at build time using ldflags:
 // -ldflags "-X github.com/rxtech-lab/argo-trading/internal/version.Version=1.2.3"
 // The default value "main" indicates a development build.
-var Version = "v1.14.2"
+var Version = "v1.15.0"
 
 // GetVersion returns the current version of the library.
 func GetVersion() string {
