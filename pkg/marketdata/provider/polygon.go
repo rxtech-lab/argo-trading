@@ -188,9 +188,13 @@ func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate t
 		}
 	}()
 
-	totalIterations := int(endDate.Sub(startDate).Hours()/24) + 1
+	// Calculate total time range in milliseconds for progress tracking
+	totalTimeRange := endDate.Sub(startDate).Milliseconds()
+	startTimeMillis := startDate.UnixMilli()
 
-	bar := progressbar.NewOptions(totalIterations, progressbar.OptionSetDescription(fmt.Sprintf("Downloading %s", ticker)), progressbar.OptionShowCount())
+	// Progress bar based on days for visual display
+	totalDays := int(endDate.Sub(startDate).Hours()/24) + 1
+	bar := progressbar.NewOptions(totalDays, progressbar.OptionSetDescription(fmt.Sprintf("Downloading %s", ticker)), progressbar.OptionShowCount())
 
 	//nolint:exhaustruct // third-party struct with many optional fields
 	params := models.ListAggsParams{
@@ -217,9 +221,13 @@ func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate t
 		default:
 		}
 
-		onProgress(float64(processedCount), float64(totalIterations), fmt.Sprintf("Downloading %s", ticker))
-
 		agg := aggsIter.Item()
+		currentTimeMillis := time.Time(agg.Timestamp).UnixMilli()
+		timeElapsed := currentTimeMillis - startTimeMillis
+
+		// Report progress based on time elapsed vs total time range
+		onProgress(float64(timeElapsed), float64(totalTimeRange), fmt.Sprintf("Downloading %s", ticker))
+
 		marketData := types.MarketData{
 			Id:     "",
 			Symbol: ticker,

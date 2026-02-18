@@ -363,6 +363,49 @@ func (suite *PolygonClientTestSuite) TestDownloadProgressCallback() {
 	suite.True(progressCalled)
 }
 
+// TestDownloadProgressPercentage tests that progress percentage is calculated correctly based on time.
+// This test ensures the fix for the 3000% progress issue is working correctly.
+func (suite *PolygonClientTestSuite) TestDownloadProgressPercentage() {
+	// Create many data points (1500 minutes) across a 2-day period
+	// This simulates downloading minute-level data which previously caused 3000% progress
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC) // 2 days
+	baseTime := time.Date(2024, 1, 1, 9, 30, 0, 0, time.UTC)
+
+	aggs := make([]models.Agg, 1500)
+	for i := 0; i < 1500; i++ {
+		aggs[i] = models.Agg{
+			Timestamp: models.Millis(baseTime.Add(time.Duration(i) * time.Minute)),
+			Open:      100.0,
+			High:      101.0,
+			Low:       99.0,
+			Close:     100.5,
+			Volume:    1000000,
+		}
+	}
+
+	mockIter := &mockPolygonIterator{aggs: aggs}
+	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
+	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
+
+	client := NewPolygonClientWithAPI(mockAPI)
+	client.ConfigWriter(mockW)
+
+	var maxPercentage float64
+	_, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {
+		percentage := (current / total) * 100
+		if percentage > maxPercentage {
+			maxPercentage = percentage
+		}
+		// Progress should never exceed 100%
+		suite.LessOrEqual(percentage, 100.0, "Progress percentage should never exceed 100%%")
+		// Current should never exceed total
+		suite.LessOrEqual(current, total, "Current progress should never exceed total")
+	})
+	suite.NoError(err)
+	suite.Greater(maxPercentage, 0.0, "Progress should be reported")
+}
+
 // TestDownloadWriterCloseWithExistingError tests that close error is logged when another error exists.
 func (suite *PolygonClientTestSuite) TestDownloadWriterCloseWithExistingError() {
 	aggs := []models.Agg{
