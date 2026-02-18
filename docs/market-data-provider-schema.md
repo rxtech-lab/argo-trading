@@ -219,21 +219,12 @@ let schema: String = SwiftargoGetLiveTradingEngineConfigSchema()
 
 ### Engine Config Schema
 
+Note: `symbols` and `interval` are configured via the market data provider (see above), not the engine config.
+
 ```json
 {
   "type": "object",
   "properties": {
-    "symbols": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "List of symbols to stream and trade"
-    },
-    "interval": {
-      "type": "string",
-      "enum": ["1s","1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M"],
-      "description": "Candlestick interval for streaming data",
-      "default": "1m"
-    },
     "market_data_cache_size": {
       "type": "integer",
       "description": "Number of market data points to cache per symbol",
@@ -263,7 +254,7 @@ let schema: String = SwiftargoGetLiveTradingEngineConfigSchema()
       }
     }
   },
-  "required": ["symbols", "interval", "data_output_path"]
+  "required": ["data_output_path"]
 }
 ```
 
@@ -274,8 +265,6 @@ let engine = SwiftargoNewTradingEngine(helper, &error)
 
 let configJSON = """
 {
-    "symbols": ["BTCUSDT"],
-    "interval": "1m",
     "market_data_cache_size": 1000,
     "enable_logging": true,
     "data_output_path": "/path/to/data",
@@ -287,6 +276,15 @@ let configJSON = """
 }
 """
 try engine.initialize(configJSON)
+
+// Symbols and interval are configured via the market data provider
+let providerConfig = """
+{
+    "symbols": ["BTCUSDT"],
+    "interval": "1m"
+}
+"""
+try engine.setMarketDataProvider("binance", providerConfig)
 ```
 
 ## Related Files

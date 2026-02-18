@@ -37,7 +37,12 @@ type Provider interface {
 	// Stream returns an iterator that yields realtime market data via WebSocket.
 	// Uses Go 1.23+ iter.Seq2 pattern for streaming data.
 	// The iterator yields MarketData and error pairs. Cancel the context to stop streaming.
-	Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error]
+	// Symbols and interval are configured via the provider's stream config.
+	Stream(ctx context.Context) iter.Seq2[types.MarketData, error]
+	// GetSymbols returns the list of symbols configured for streaming.
+	GetSymbols() []string
+	// GetInterval returns the candlestick interval configured for streaming.
+	GetInterval() string
 	// SetOnStatusChange sets a callback that will be called when the WebSocket connection
 	// status changes (connected/disconnected). This is used for market data streaming.
 	SetOnStatusChange(callback OnStatusChange)
@@ -47,14 +52,19 @@ type Provider interface {
 func NewMarketDataProvider(providerType ProviderType, config any) (Provider, error) {
 	switch providerType {
 	case ProviderBinance:
-		return NewBinanceClient()
-	case ProviderPolygon:
-		cfg, ok := config.(*PolygonStreamConfig)
-		if !ok {
-			return nil, fmt.Errorf("invalid config type for polygon provider, expected *PolygonStreamConfig")
+		cfg, ok := config.(*BinanceStreamConfig)
+		if !ok || cfg == nil {
+			return nil, fmt.Errorf("invalid config type for binance provider, expected non-nil *BinanceStreamConfig")
 		}
 
-		return NewPolygonClient(cfg.ApiKey)
+		return NewBinanceClient(cfg)
+	case ProviderPolygon:
+		cfg, ok := config.(*PolygonStreamConfig)
+		if !ok || cfg == nil {
+			return nil, fmt.Errorf("invalid config type for polygon provider, expected non-nil *PolygonStreamConfig")
+		}
+
+		return NewPolygonClient(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported market data provider: %s", providerType)
 	}

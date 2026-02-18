@@ -56,14 +56,18 @@ type MockMarketDataConfig struct {
 // It generates mock market data using the existing MockDataGenerator
 // and streams it via the iter.Seq2 pattern.
 type MockMarketDataProvider struct {
-	configs map[string]MockMarketDataConfig
+	configs  map[string]MockMarketDataConfig
+	symbols  []string
+	interval string
 }
 
 // NewMockMarketDataProvider creates a new mock market data provider with the given configurations.
 // Each configuration specifies how data should be generated for a specific symbol.
 func NewMockMarketDataProvider(configs ...MockMarketDataConfig) *MockMarketDataProvider {
 	p := &MockMarketDataProvider{
-		configs: make(map[string]MockMarketDataConfig),
+		configs:  make(map[string]MockMarketDataConfig),
+		symbols:  make([]string, 0, len(configs)),
+		interval: "1m",
 	}
 
 	for _, c := range configs {
@@ -77,6 +81,7 @@ func NewMockMarketDataProvider(configs ...MockMarketDataConfig) *MockMarketDataP
 		}
 
 		p.configs[c.Symbol] = c
+		p.symbols = append(p.symbols, c.Symbol)
 	}
 
 	return p
@@ -105,10 +110,10 @@ func (p *MockMarketDataProvider) Download(
 // Stream implements provider.Provider.
 // Yields generated market data as fast as possible for quick test execution.
 // Data is generated using the MockDataGenerator from backtest testhelper.
-func (p *MockMarketDataProvider) Stream(ctx context.Context, symbols []string, _ string) iter.Seq2[types.MarketData, error] {
+func (p *MockMarketDataProvider) Stream(ctx context.Context) iter.Seq2[types.MarketData, error] {
 	return func(yield func(types.MarketData, error) bool) {
 		// Generate data for each symbol
-		for _, symbol := range symbols {
+		for _, symbol := range p.symbols {
 			config, ok := p.configs[symbol]
 			if !ok {
 				yield(types.MarketData{}, fmt.Errorf("no config for symbol: %s", symbol)) //nolint:exhaustruct // error case
@@ -158,6 +163,16 @@ func (p *MockMarketDataProvider) Stream(ctx context.Context, symbols []string, _
 			}
 		}
 	}
+}
+
+// GetSymbols implements provider.Provider.
+func (p *MockMarketDataProvider) GetSymbols() []string {
+	return p.symbols
+}
+
+// GetInterval implements provider.Provider.
+func (p *MockMarketDataProvider) GetInterval() string {
+	return p.interval
 }
 
 // SetOnStatusChange implements provider.Provider.

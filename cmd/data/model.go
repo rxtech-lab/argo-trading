@@ -237,13 +237,20 @@ func (m *Model) startStreaming() tea.Cmd {
 
 // streamMarketData streams market data from Binance and sends messages to the program.
 func streamMarketData(p *tea.Program, ctx context.Context, symbols []string, interval string) {
-	client, err := provider.NewMarketDataProvider(provider.ProviderBinance, nil)
+	cfg := &provider.BinanceStreamConfig{
+		BaseStreamConfig: provider.BaseStreamConfig{
+			Symbols:  symbols,
+			Interval: interval,
+		},
+	}
+
+	client, err := provider.NewMarketDataProvider(provider.ProviderBinance, cfg)
 	if err != nil {
 		p.Send(StreamErrorMsg{Err: err})
 		return
 	}
 
-	for data, err := range client.Stream(ctx, symbols, interval) {
+	for data, err := range client.Stream(ctx) {
 		if err != nil {
 			p.Send(StreamErrorMsg{Err: err})
 			continue

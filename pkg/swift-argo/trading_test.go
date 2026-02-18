@@ -217,8 +217,6 @@ func (suite *TradingTestSuite) TestGetLiveTradingEngineConfigSchema() {
 	// Check that properties are inlined at top level
 	properties, ok := schemaMap["properties"].(map[string]any)
 	suite.True(ok, "schema should have top-level properties")
-	suite.Contains(properties, "symbols")
-	suite.Contains(properties, "interval")
 	suite.Contains(properties, "market_data_cache_size")
 	suite.Contains(properties, "enable_logging")
 	suite.Contains(properties, "data_output_path")
@@ -277,8 +275,6 @@ func (suite *TradingTestSuite) TestInitialize_ValidConfig() {
 	suite.NoError(err)
 
 	configJSON := `{
-		"symbols": ["BTCUSDT"],
-		"interval": "1m",
 		"market_data_cache_size": 1000,
 		"enable_logging": false
 	}`
@@ -302,10 +298,7 @@ func (suite *TradingTestSuite) TestInitialize_EmptySymbols() {
 	eng, err := NewTradingEngine(helper)
 	suite.NoError(err)
 
-	configJSON := `{
-		"symbols": [],
-		"interval": "1m"
-	}`
+	configJSON := `{}`
 
 	err = eng.Initialize(configJSON)
 	// Should succeed - validation happens at Run time

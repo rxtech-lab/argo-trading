@@ -169,28 +169,6 @@ func (e *LiveTradingEngineV1) Initialize(config engine.LiveTradingEngineConfig) 
 	// Create streaming data source with configured cache size (used as fallback without persistence)
 	e.streamingDataSource = NewStreamingDataSource(config.MarketDataCacheSize)
 
-	// Initialize persistence components if dataDir and providerName are set
-	if e.dataDir != "" && e.providerName != "" {
-		// Create streaming writer for persisting finalized candles
-		e.streamingWriter = writer.NewStreamingDuckDBWriter(e.dataDir, e.providerName, config.Interval)
-		if err := e.streamingWriter.Initialize(); err != nil {
-			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize streaming writer", err)
-		}
-
-		// Create persistent data source for indicator calculations
-		parquetPath := e.streamingWriter.GetOutputPath()
-		e.persistentDataSource = NewPersistentStreamingDataSource(parquetPath, config.Interval)
-		if err := e.persistentDataSource.Initialize(""); err != nil {
-			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize persistent datasource", err)
-		}
-
-		e.log.Info("Data persistence enabled",
-			zap.String("parquet_path", parquetPath),
-			zap.String("provider", e.providerName),
-			zap.String("interval", config.Interval),
-		)
-	}
-
 	// Create marker and log storage if logging is enabled
 	if config.EnableLogging {
 		var err error
@@ -263,8 +241,6 @@ func (e *LiveTradingEngineV1) Initialize(config engine.LiveTradingEngineConfig) 
 	e.initialized = true
 
 	e.log.Debug("Live trading engine initialized",
-		zap.Strings("symbols", config.Symbols),
-		zap.String("interval", config.Interval),
 		zap.Int("cache_size", config.MarketDataCacheSize),
 	)
 
@@ -420,6 +396,31 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		return err
 	}
 
+	// Initialize persistence components now that provider is available
+	if e.dataDir != "" && e.providerName != "" && e.streamingWriter == nil {
+		interval := e.marketDataProvider.GetInterval()
+		e.streamingWriter = writer.NewStreamingDuckDBWriter(e.dataDir, e.providerName, interval)
+		if err := e.streamingWriter.Initialize(); err != nil {
+			runErr = errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize streaming writer", err)
+
+			return runErr
+		}
+
+		parquetPath := e.streamingWriter.GetOutputPath()
+		e.persistentDataSource = NewPersistentStreamingDataSource(parquetPath, interval)
+		if err := e.persistentDataSource.Initialize(""); err != nil {
+			runErr = errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize persistent datasource", err)
+
+			return runErr
+		}
+
+		e.log.Info("Data persistence enabled",
+			zap.String("parquet_path", parquetPath),
+			zap.String("provider", e.providerName),
+			zap.String("interval", interval),
+		)
+	}
+
 	// Set up provider status callbacks
 	e.setupProviderStatusCallbacks(callbacks.OnProviderStatusChange)
 
@@ -446,7 +447,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			Name:    e.strategy.Name(),
 		}
 		e.statsTracker.Initialize(
-			e.config.Symbols,
+			e.marketDataProvider.GetSymbols(),
 			e.sessionManager.GetRunID(),
 			e.sessionManager.GetSessionStart(),
 			strategyInfo,
@@ -471,12 +472,12 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			e.config.Prefetch,
 			e.marketDataProvider,
 			e.streamingWriter,
-			e.config.Interval,
+			e.marketDataProvider.GetInterval(),
 			callbacks.OnStatusUpdate,
 		)
 
 		// Execute prefetch before starting stream
-		if err := e.prefetchManager.ExecutePrefetch(ctx, e.config.Symbols); err != nil {
+		if err := e.prefetchManager.ExecutePrefetch(ctx, e.marketDataProvider.GetSymbols()); err != nil {
 			e.log.Warn("Prefetch failed, continuing without historical data",
 				zap.Error(err),
 			)
@@ -491,7 +492,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			previousDataPath = e.streamingWriter.GetOutputPath()
 		}
 
-		if err := (*callbacks.OnEngineStart)(e.config.Symbols, e.config.Interval, previousDataPath); err != nil {
+		if err := (*callbacks.OnEngineStart)(e.marketDataProvider.GetSymbols(), e.marketDataProvider.GetInterval(), previousDataPath); err != nil {
 			runErr = errors.Wrap(errors.ErrCodeCallbackFailed, "OnEngineStart callback failed", err)
 
 			return runErr
@@ -499,7 +500,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	}
 
 	// Start streaming market data
-	stream := e.marketDataProvider.Stream(ctx, e.config.Symbols, e.config.Interval)
+	stream := e.marketDataProvider.Stream(ctx)
 
 	// Determine which datasource to use for indicator calculations
 	// Use persistent datasource if available (queries parquet directly), otherwise use in-memory streaming datasource
@@ -549,7 +550,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			firstDataReceived = true
 
 			if e.prefetchManager != nil {
-				if err := e.prefetchManager.HandleStreamStart(ctx, data.Time, e.config.Symbols); err != nil {
+				if err := e.prefetchManager.HandleStreamStart(ctx, data.Time, e.marketDataProvider.GetSymbols()); err != nil {
 					e.log.Warn("Failed to handle stream start",
 						zap.Error(err),
 					)
@@ -707,11 +708,11 @@ func (e *LiveTradingEngineV1) preRunCheck() error {
 		return errors.New(errors.ErrCodeBacktestInitFailed, "trading provider not set - call SetTradingProvider() first")
 	}
 
-	if len(e.config.Symbols) == 0 {
+	if len(e.marketDataProvider.GetSymbols()) == 0 {
 		return errors.New(errors.ErrCodeBacktestInitFailed, "no symbols configured")
 	}
 
-	if e.config.Interval == "" {
+	if e.marketDataProvider.GetInterval() == "" {
 		return errors.New(errors.ErrCodeBacktestInitFailed, "no interval configured")
 	}
 

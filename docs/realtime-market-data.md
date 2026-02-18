@@ -27,8 +27,15 @@ type Provider interface {
              multiplier int, timespan models.Timespan, onProgress OnDownloadProgress) (path string, err error)
 
     // Stream returns an iterator that yields realtime market data via WebSocket.
+    // Symbols and interval are configured on the provider at construction time.
     // Uses Go 1.23+ iter.Seq2 pattern for streaming data.
-    Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error]
+    Stream(ctx context.Context) iter.Seq2[types.MarketData, error]
+
+    // GetSymbols returns the symbols configured on this provider.
+    GetSymbols() []string
+
+    // GetInterval returns the interval configured on this provider.
+    GetInterval() string
 }
 ```
 
@@ -46,8 +53,13 @@ import (
 )
 
 func main() {
-    // Create provider
-    client, err := provider.NewBinanceClient()
+    // Create provider with symbols and interval configured at construction
+    client, err := provider.NewBinanceClient(&provider.BinanceStreamConfig{
+        BaseStreamConfig: provider.BaseStreamConfig{
+            Symbols:  []string{"BTCUSDT", "ETHUSDT"},
+            Interval: "1m",
+        },
+    })
     if err != nil {
         log.Fatal(err)
     }
@@ -56,7 +68,7 @@ func main() {
     defer cancel()
 
     // Stream realtime data using Go iterator
-    for data, err := range client.Stream(ctx, []string{"BTCUSDT", "ETHUSDT"}, "1m") {
+    for data, err := range client.Stream(ctx) {
         if err != nil {
             log.Printf("stream error: %v", err)
             break
@@ -101,7 +113,7 @@ func main() {
 Errors are yielded through the iterator. Handle them in your range loop:
 
 ```go
-for data, err := range provider.Stream(ctx, symbols, interval) {
+for data, err := range provider.Stream(ctx) {
     if err != nil {
         // Handle error (connection lost, invalid symbol, etc.)
         log.Printf("error: %v", err)
@@ -121,7 +133,7 @@ ctx, cancel := context.WithCancel(context.Background())
 
 // Start streaming in a goroutine
 go func() {
-    for data, err := range provider.Stream(ctx, symbols, interval) {
+    for data, err := range provider.Stream(ctx) {
         // ...
     }
 }()

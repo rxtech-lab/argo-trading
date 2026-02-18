@@ -84,7 +84,7 @@ type EquityTrade struct {
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                            PolygonClient                                     │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ Stream(ctx, symbols, interval) iter.Seq2[MarketData, error]           │  │
+│  │ Stream(ctx) iter.Seq2[MarketData, error]                              │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                        │
@@ -195,17 +195,19 @@ func (w *polygonWebSocketServiceWrapper) Close() {
 
 ```go
 // Stream implements Provider.Stream for real-time WebSocket market data from Polygon.
-// It subscribes to aggregate streams for all specified symbols and yields data as it arrives.
+// Symbols and interval are configured on the PolygonClient at construction time.
+// It subscribes to aggregate streams for all configured symbols and yields data as it arrives.
 // The iterator terminates when the context is cancelled or an unrecoverable error occurs.
-func (c *PolygonClient) Stream(ctx context.Context, symbols []string, interval string) iter.Seq2[types.MarketData, error] {
+func (c *PolygonClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, error] {
     return func(yield func(types.MarketData, error) bool) {
         // Validate inputs
+        symbols := c.GetSymbols()
         if len(symbols) == 0 {
-            yield(types.MarketData{}, fmt.Errorf("no symbols provided for streaming"))
+            yield(types.MarketData{}, fmt.Errorf("no symbols configured on provider"))
             return
         }
-        
-        topic, err := convertIntervalToPolygonTopic(interval)
+
+        topic, err := convertIntervalToPolygonTopic(c.GetInterval())
         if err != nil {
             yield(types.MarketData{}, err)
             return
@@ -485,13 +487,13 @@ func (suite *PolygonStreamTestSuite) TestStreamSingleSymbol() {
     defer cancel()
     
     var received []types.MarketData
-    for data, err := range client.Stream(ctx, []string{"AAPL"}, "1m") {
+    for data, err := range client.Stream(ctx) {
         if err != nil {
             break
         }
         received = append(received, data)
     }
-    
+
     suite.Len(received, 2)
     suite.Equal("AAPL", received[0].Symbol)
     suite.InDelta(150.00, received[0].Open, 0.01)
@@ -513,7 +515,7 @@ func (suite *PolygonStreamTestSuite) TestStreamMultipleSymbols() {
     defer cancel()
     
     symbolsSeen := make(map[string]bool)
-    for data, err := range client.Stream(ctx, []string{"AAPL", "GOOGL"}, "1m") {
+    for data, err := range client.Stream(ctx) {
         if err != nil {
             break
         }
@@ -534,14 +536,14 @@ func (suite *PolygonStreamTestSuite) TestStreamConnectionError() {
     var gotError bool
     var errorMsg string
     
-    for _, err := range client.Stream(ctx, []string{"AAPL"}, "1m") {
+    for _, err := range client.Stream(ctx) {
         if err != nil {
             gotError = true
             errorMsg = err.Error()
             break
         }
     }
-    
+
     suite.True(gotError)
     suite.Contains(errorMsg, "failed to connect")
 }
@@ -553,7 +555,7 @@ func (suite *PolygonStreamTestSuite) TestStreamEmptySymbols() {
     ctx := context.Background()
     var gotError bool
     
-    for _, err := range client.Stream(ctx, []string{}, "1m") {
+    for _, err := range client.Stream(ctx) {
         if err != nil {
             gotError = true
             break
@@ -577,7 +579,7 @@ func (suite *PolygonStreamTestSuite) TestStreamContextCancellation() {
     }()
     
     iterCount := 0
-    for range client.Stream(ctx, []string{"AAPL"}, "1m") {
+    for range client.Stream(ctx) {
         iterCount++
         if iterCount > 10 {
             break
@@ -636,14 +638,20 @@ func TestPolygonStreamIntegration(t *testing.T) {
         t.Skip("POLYGON_API_KEY not set")
     }
     
-    client, err := NewPolygonClient(apiKey)
+    client, err := NewPolygonClient(&PolygonStreamConfig{
+        BaseStreamConfig: BaseStreamConfig{
+            Symbols:  []string{"AAPL"},
+            Interval: "1m",
+        },
+        ApiKey: apiKey,
+    })
     require.NoError(t, err)
-    
+
     ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
     defer cancel()
-    
+
     dataReceived := false
-    for data, err := range client.Stream(ctx, []string{"AAPL"}, "1m") {
+    for data, err := range client.Stream(ctx) {
         if err != nil {
             t.Logf("Stream error: %v", err)
             break
@@ -732,17 +740,23 @@ func main() {
         log.Fatal("POLYGON_API_KEY environment variable required")
     }
     
-    // Create Polygon provider
-    client, err := provider.NewPolygonClient(apiKey)
+    // Create Polygon provider with symbols and interval configured at construction
+    client, err := provider.NewPolygonClient(&provider.PolygonStreamConfig{
+        BaseStreamConfig: provider.BaseStreamConfig{
+            Symbols:  []string{"AAPL", "GOOGL", "MSFT"},
+            Interval: "1m",
+        },
+        ApiKey: apiKey,
+    })
     if err != nil {
         log.Fatal(err)
     }
-    
+
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
-    
+
     // Stream real-time data for US stocks
-    for data, err := range client.Stream(ctx, []string{"AAPL", "GOOGL", "MSFT"}, "1m") {
+    for data, err := range client.Stream(ctx) {
         if err != nil {
             log.Printf("Stream error: %v", err)
             break

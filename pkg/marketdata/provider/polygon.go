@@ -115,44 +115,66 @@ type PolygonClient struct {
 	apiKey              string
 	writer              writer.MarketDataWriter
 	onStatusChange      OnStatusChange
+	symbols             []string
+	interval            string
 }
 
-func NewPolygonClient(apiKey string) (Provider, error) {
-	if apiKey == "" {
+func NewPolygonClient(config *PolygonStreamConfig) (Provider, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config is required for polygon provider")
+	}
+
+	if config.ApiKey == "" {
 		return nil, fmt.Errorf("apiKey is required")
 	}
 
-	client := polygon.New(apiKey)
+	client := polygon.New(config.ApiKey)
 
 	return &PolygonClient{
 		apiClient:           &polygonClientWrapper{client: client},
 		wsServiceForTesting: nil,
-		apiKey:              apiKey,
+		apiKey:              config.ApiKey,
 		writer:              nil,
 		onStatusChange:      nil,
+		symbols:             config.Symbols,
+		interval:            config.Interval,
 	}, nil
 }
 
 // NewPolygonClientWithAPI creates a PolygonClient with a custom API client (for testing).
-func NewPolygonClientWithAPI(apiClient PolygonAPIClient) *PolygonClient {
+func NewPolygonClientWithAPI(apiClient PolygonAPIClient, symbols []string, interval string) *PolygonClient {
 	return &PolygonClient{
 		apiClient:           apiClient,
 		wsServiceForTesting: nil,
 		apiKey:              "",
 		writer:              nil,
 		onStatusChange:      nil,
+		symbols:             symbols,
+		interval:            interval,
 	}
 }
 
 // NewPolygonClientWithWebSocket creates a PolygonClient with custom WebSocket service (for testing).
-func NewPolygonClientWithWebSocket(apiKey string, wsService PolygonWebSocketService) *PolygonClient {
+func NewPolygonClientWithWebSocket(apiKey string, wsService PolygonWebSocketService, symbols []string, interval string) *PolygonClient {
 	return &PolygonClient{
 		apiClient:           nil,
 		wsServiceForTesting: wsService,
 		apiKey:              apiKey,
 		writer:              nil,
 		onStatusChange:      nil,
+		symbols:             symbols,
+		interval:            interval,
 	}
+}
+
+// GetSymbols returns the list of symbols configured for streaming.
+func (c *PolygonClient) GetSymbols() []string {
+	return c.symbols
+}
+
+// GetInterval returns the candlestick interval configured for streaming.
+func (c *PolygonClient) GetInterval() string {
+	return c.interval
 }
 
 // Ensure iter.Iter[models.Agg] implements PolygonAggsIterator.
@@ -280,8 +302,11 @@ func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate t
 // Stream implements Provider.Stream for real-time WebSocket market data from Polygon.
 // It subscribes to aggregate streams for all specified symbols and yields data as it arrives.
 // The iterator terminates when the context is cancelled or an unrecoverable error occurs.
-func (c *PolygonClient) Stream(ctx context.Context, symbols []string, interval string) goiter.Seq2[types.MarketData, error] {
+func (c *PolygonClient) Stream(ctx context.Context) goiter.Seq2[types.MarketData, error] {
 	return func(yield func(types.MarketData, error) bool) {
+		symbols := c.symbols
+		interval := c.interval
+
 		// Validate inputs
 		if len(symbols) == 0 {
 			//nolint:exhaustruct // empty struct for error case

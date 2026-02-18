@@ -48,8 +48,6 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceEndToEnd() {
 
 	// Initialize engine
 	err = engineWithPersistence.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})
@@ -169,8 +167,6 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceRestart() {
 		s.Require().NoError(err)
 
 		err = engine1.Initialize(engine.LiveTradingEngineConfig{
-			Symbols:             []string{"BTCUSDT"},
-			Interval:            "1m",
 			MarketDataCacheSize: 100,
 			EnableLogging:       false,
 		})
@@ -233,8 +229,6 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceRestart() {
 		s.Require().NoError(err)
 
 		err = engine2.Initialize(engine.LiveTradingEngineConfig{
-			Symbols:             []string{"BTCUSDT"},
-			Interval:            "1m",
 			MarketDataCacheSize: 100,
 			EnableLogging:       false,
 		})
@@ -323,8 +317,6 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceMultiSymbol() {
 	s.Require().NoError(err)
 
 	err = engineWithPersistence.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT", "ETHUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})
@@ -417,8 +409,6 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceLargeDataset() {
 	s.Require().NoError(err)
 
 	err = engineWithPersistence.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})
@@ -504,8 +494,6 @@ func (s *LiveTradingE2ETestSuite) TestStreamingPersistenceWithoutPersistence() {
 	s.Require().NoError(err)
 
 	err = engineWithoutPersistence.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 100,
 		EnableLogging:       false,
 	})

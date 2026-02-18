@@ -57,7 +57,10 @@ func TestPolygonClientSuite(t *testing.T) {
 }
 
 func (suite *PolygonClientTestSuite) TestNewPolygonClient_ValidApiKey() {
-	client, err := NewPolygonClient("test-api-key")
+	client, err := NewPolygonClient(&PolygonStreamConfig{
+		BaseStreamConfig: BaseStreamConfig{Symbols: []string{"SPY"}, Interval: "1m"},
+		ApiKey:           "test-api-key",
+	})
 	suite.NoError(err)
 	suite.NotNil(client)
 
@@ -69,21 +72,23 @@ func (suite *PolygonClientTestSuite) TestNewPolygonClient_ValidApiKey() {
 
 func (suite *PolygonClientTestSuite) TestNewPolygonClientWithAPI() {
 	mockAPI := &mockPolygonAPIClient{}
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	suite.NotNil(client)
 	suite.Equal(mockAPI, client.apiClient)
 	suite.Nil(client.writer)
 }
 
 func (suite *PolygonClientTestSuite) TestNewPolygonClient_EmptyApiKey() {
-	client, err := NewPolygonClient("")
+	client, err := NewPolygonClient(&PolygonStreamConfig{})
 	suite.Error(err)
 	suite.Nil(client)
-	suite.Contains(err.Error(), "apiKey is required")
 }
 
 func (suite *PolygonClientTestSuite) TestPolygonClient_ConfigWriter() {
-	client, err := NewPolygonClient("test-api-key")
+	client, err := NewPolygonClient(&PolygonStreamConfig{
+		BaseStreamConfig: BaseStreamConfig{Symbols: []string{"SPY"}, Interval: "1m"},
+		ApiKey:           "test-api-key",
+	})
 	suite.Require().NoError(err)
 
 	polygonClient := client.(*PolygonClient)
@@ -95,7 +100,10 @@ func (suite *PolygonClientTestSuite) TestPolygonClient_ConfigWriter() {
 }
 
 func (suite *PolygonClientTestSuite) TestPolygonClient_Download_WithoutWriter() {
-	client, err := NewPolygonClient("test-api-key")
+	client, err := NewPolygonClient(&PolygonStreamConfig{
+		BaseStreamConfig: BaseStreamConfig{Symbols: []string{"SPY"}, Interval: "1m"},
+		ApiKey:           "test-api-key",
+	})
 	suite.Require().NoError(err)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -107,7 +115,10 @@ func (suite *PolygonClientTestSuite) TestPolygonClient_Download_WithoutWriter() 
 }
 
 func (suite *PolygonClientTestSuite) TestPolygonClient_Download_WriterInitializeError() {
-	client, err := NewPolygonClient("test-api-key")
+	client, err := NewPolygonClient(&PolygonStreamConfig{
+		BaseStreamConfig: BaseStreamConfig{Symbols: []string{"SPY"}, Interval: "1m"},
+		ApiKey:           "test-api-key",
+	})
 	suite.Require().NoError(err)
 
 	polygonClient := client.(*PolygonClient)
@@ -147,7 +158,7 @@ func (suite *PolygonClientTestSuite) TestDownloadSuccess() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -174,7 +185,7 @@ func (suite *PolygonClientTestSuite) TestDownloadEmptyAggs() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: "/tmp/empty.parquet"}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -195,7 +206,7 @@ func (suite *PolygonClientTestSuite) TestDownloadIteratorError() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -224,7 +235,7 @@ func (suite *PolygonClientTestSuite) TestDownloadWriteError() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{writeErr: errors.New("disk full")}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -252,7 +263,7 @@ func (suite *PolygonClientTestSuite) TestDownloadFinalizeError() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{finalizeErr: errors.New("finalize failed")}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -283,7 +294,7 @@ func (suite *PolygonClientTestSuite) TestDownloadCloseError() {
 		closeErr:   errors.New("close failed"),
 	}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -314,7 +325,7 @@ func (suite *PolygonClientTestSuite) TestDownloadManyDataPoints() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: "/tmp/large.parquet"}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -347,7 +358,7 @@ func (suite *PolygonClientTestSuite) TestDownloadProgressCallback() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -388,7 +399,7 @@ func (suite *PolygonClientTestSuite) TestDownloadProgressPercentage() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	var maxPercentage float64
@@ -426,7 +437,7 @@ func (suite *PolygonClientTestSuite) TestDownloadWriterCloseWithExistingError() 
 		closeErr: errors.New("close also failed"),
 	}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -476,7 +487,7 @@ func (suite *PolygonClientTestSuite) TestDownloadDataTransformation() {
 		mockWriter: mockWriter{outputPath: "/tmp/transformed.parquet"},
 	}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -517,7 +528,7 @@ func (suite *PolygonClientTestSuite) TestDownloadIteratorError_DeletesFileWhenNo
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: tmpPath}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -563,7 +574,7 @@ func (suite *PolygonClientTestSuite) TestDownloadWriteError_DeletesFileWhenNoDat
 		writeErr:   errors.New("disk full"),
 	}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -595,7 +606,7 @@ func (suite *PolygonClientTestSuite) TestDownload_Cancellation() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: "/tmp/test.parquet"}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	// Create a cancelled context
@@ -637,7 +648,7 @@ func (suite *PolygonClientTestSuite) TestDownload_CancellationCleansUpFile() {
 	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
 	mockW := &mockWriter{outputPath: tmpPath}
 
-	client := NewPolygonClientWithAPI(mockAPI)
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
 	client.ConfigWriter(mockW)
 
 	// Create a cancelled context

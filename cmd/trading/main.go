@@ -84,8 +84,6 @@ func main() {
 
 	// Initialize engine
 	config := engine.LiveTradingEngineConfig{
-		Symbols:             symbols,
-		Interval:            *intervalFlag,
 		MarketDataCacheSize: *cacheSizeFlag,
 		EnableLogging:       *logOutputFlag != "",
 		LogOutputPath:       *logOutputFlag,

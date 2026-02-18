@@ -124,8 +124,6 @@ func (s *LiveTradingEngineV1TestSuite) TestInitialize_Success() {
 	s.Require().NoError(err)
 
 	config := engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 500,
 		EnableLogging:       false,
 	}
@@ -146,8 +144,6 @@ func (s *LiveTradingEngineV1TestSuite) TestInitialize_DefaultCacheSize() {
 	s.Require().NoError(err)
 
 	config := engine.LiveTradingEngineConfig{
-		Symbols:             []string{"BTCUSDT"},
-		Interval:            "1m",
 		MarketDataCacheSize: 0, // Should use default
 		EnableLogging:       false,
 	}
@@ -164,8 +160,6 @@ func (s *LiveTradingEngineV1TestSuite) TestInitialize_WithLogging() {
 	s.Require().NoError(err)
 
 	config := engine.LiveTradingEngineConfig{
-		Symbols:       []string{"BTCUSDT"},
-		Interval:      "1m",
 		EnableLogging: true,
 	}
 
@@ -187,8 +181,6 @@ func (s *LiveTradingEngineV1TestSuite) TestInitialize_WithPersistence() {
 	s.Require().NoError(err)
 
 	config := engine.LiveTradingEngineConfig{
-		Symbols:       []string{"BTCUSDT"},
-		Interval:      "1m",
 		EnableLogging: false,
 	}
 
@@ -196,8 +188,12 @@ func (s *LiveTradingEngineV1TestSuite) TestInitialize_WithPersistence() {
 	s.Require().NoError(err)
 
 	e := eng.(*LiveTradingEngineV1)
-	s.NotNil(e.streamingWriter)
-	s.NotNil(e.persistentDataSource)
+	// streamingWriter and persistentDataSource are initialized lazily in Run(),
+	// because they require the provider's interval which is not available at Initialize time.
+	s.Nil(e.streamingWriter)
+	s.Nil(e.persistentDataSource)
+	s.Equal(tempDir, e.dataDir)
+	s.Equal("binance", e.providerName)
 }
 
 // ============================================================================
@@ -301,6 +297,8 @@ func (s *LiveTradingEngineV1TestSuite) TestSetMarketDataProvider() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -340,10 +338,7 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoStrategy() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	e := eng.(*LiveTradingEngineV1)
@@ -356,10 +351,7 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoMarketDataProvider() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -377,10 +369,7 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoTradingProvider() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -390,6 +379,8 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoTradingProvider() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -403,10 +394,7 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoSymbols() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{}, // Empty symbols
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -416,6 +404,8 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoSymbols() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -435,10 +425,7 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoInterval() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "", // Empty interval
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -448,6 +435,8 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_NoInterval() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("").AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -467,10 +456,7 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_Success() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -480,6 +466,8 @@ func (s *LiveTradingEngineV1TestSuite) TestPreRunCheck_Success() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -502,10 +490,7 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_Success() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -532,10 +517,7 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_InitializeApiFails
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -561,10 +543,7 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_GetRuntimeVersionF
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -591,10 +570,7 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_VersionMismatch() 
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -622,10 +598,7 @@ func (s *LiveTradingEngineV1TestSuite) TestInitializeStrategy_InitializeFails() 
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -677,10 +650,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_InitializeStrategyFails() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -692,6 +662,8 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_InitializeStrategyFails() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -720,10 +692,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnEngineStartCallbackError() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -737,6 +706,8 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnEngineStartCallbackError() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
 
@@ -763,10 +734,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_SuccessfulExecution() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -789,7 +757,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_SuccessfulExecution() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -851,10 +821,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StreamError_NonFatal() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -879,7 +846,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StreamError_NonFatal() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, streamErrs))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, streamErrs))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -915,10 +884,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StrategyError_NonFatal() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -943,7 +909,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StrategyError_NonFatal() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -979,10 +947,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnMarketDataCallbackError() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1001,7 +966,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnMarketDataCallbackError() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1029,10 +996,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_ContextCancellation() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1071,7 +1035,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_ContextCancellation() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(stream)
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(stream)
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1113,10 +1079,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithPersistence() {
 	eng, err := NewLiveTradingEngineV1WithPersistence(tempDir, "binance")
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1137,7 +1100,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithPersistence() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1179,10 +1144,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_AllCallbacksNil() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1203,7 +1165,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_AllCallbacksNil() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1235,8 +1199,6 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithDataOutputPath() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:        []string{"BTCUSDT"},
-		Interval:       "1m",
 		DataOutputPath: tempDir, // Enable session management
 		EnableLogging:  true,    // Enable marks and logs
 	})
@@ -1278,7 +1240,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithDataOutputPath() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1303,10 +1267,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Stopped() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1327,7 +1288,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Stopped() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1366,8 +1329,6 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Running_NoPrefetch()
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
 		// No DataOutputPath - no prefetch manager
 	})
 	s.Require().NoError(err)
@@ -1392,7 +1353,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatusUpdate_Running_NoPrefetch()
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1435,8 +1398,6 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Success() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:        []string{"BTCUSDT"},
-		Interval:       "1m",
 		DataOutputPath: tempDir, // Enable stats tracker
 	})
 	s.Require().NoError(err)
@@ -1459,7 +1420,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Success() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1507,8 +1470,6 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Error_Continues() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:        []string{"BTCUSDT"},
-		Interval:       "1m",
 		DataOutputPath: tempDir,
 	})
 	s.Require().NoError(err)
@@ -1531,7 +1492,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Error_Continues() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1570,8 +1533,6 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesMarks() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:        []string{"BTCUSDT"},
-		Interval:       "1m",
 		DataOutputPath: tempDir,
 		EnableLogging:  true, // Enable marks
 	})
@@ -1610,7 +1571,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesMarks() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1641,8 +1604,6 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesLogs() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:        []string{"BTCUSDT"},
-		Interval:       "1m",
 		DataOutputPath: tempDir,
 		EnableLogging:  true, // Enable logs
 	})
@@ -1680,7 +1641,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesLogs() {
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1719,8 +1682,8 @@ func (s *LiveTradingEngineV1TestSuite) TestGetConfigSchema() {
 	s.NoError(err)
 
 	// Verify it contains expected fields
-	s.Contains(schema, "symbols")
-	s.Contains(schema, "interval")
+	s.Contains(schema, "market_data_cache_size")
+	s.Contains(schema, "enable_logging")
 }
 
 // ============================================================================
@@ -1868,10 +1831,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Su
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1892,7 +1852,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Su
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1934,10 +1896,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Ni
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1958,7 +1917,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Ni
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -1982,10 +1943,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Er
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -2006,7 +1964,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Er
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -2045,10 +2005,7 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Tr
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		Symbols:  []string{"BTCUSDT"},
-		Interval: "1m",
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -2069,7 +2026,9 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Tr
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any(), []string{"BTCUSDT"}, "1m").Return(createMockStream(testData, nil))
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
