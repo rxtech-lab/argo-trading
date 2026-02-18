@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/google/uuid"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/rxtech-lab/argo-trading/internal/log"
 )
@@ -51,10 +50,18 @@ func (w *LogsWriter) Initialize() error {
 
 	w.db = db
 
-	// Create the logs table
+	// Create sequence for log IDs
+	_, err = w.db.Exec(`CREATE SEQUENCE IF NOT EXISTS log_id_seq`)
+	if err != nil {
+		w.db.Close()
+
+		return fmt.Errorf("failed to create sequence: %w", err)
+	}
+
+	// Create the logs table (schema matches backtest backtest_log.go)
 	_, err = w.db.Exec(`
 		CREATE TABLE IF NOT EXISTS logs (
-			id TEXT PRIMARY KEY,
+			id INTEGER PRIMARY KEY,
 			timestamp TIMESTAMP,
 			symbol TEXT,
 			level TEXT,
@@ -73,7 +80,6 @@ func (w *LogsWriter) Initialize() error {
 		_, err = w.db.Exec(fmt.Sprintf(`
 			INSERT INTO logs
 			SELECT * FROM read_parquet('%s')
-			ON CONFLICT (id) DO NOTHING
 		`, w.outputPath))
 		if err != nil {
 			// If loading fails, start fresh
@@ -93,21 +99,28 @@ func (w *LogsWriter) Write(entry log.LogEntry) error {
 		return fmt.Errorf("writer not initialized")
 	}
 
-	id := uuid.New().String()
+	// Get the next ID from the sequence
+	var nextID int
+
+	err := w.db.QueryRow("SELECT nextval('log_id_seq')").Scan(&nextID)
+	if err != nil {
+		return fmt.Errorf("failed to get next ID from sequence: %w", err)
+	}
 
 	// Serialize fields to JSON
-	fieldsJSON := "{}"
-	if len(entry.Fields) > 0 {
+	var fieldsJSON string
+
+	if entry.Fields != nil && len(entry.Fields) > 0 {
 		fieldsBytes, err := json.Marshal(entry.Fields)
 		if err == nil {
 			fieldsJSON = string(fieldsBytes)
 		}
 	}
 
-	_, err := w.db.Exec(`
+	_, err = w.db.Exec(`
 		INSERT INTO logs (id, timestamp, symbol, level, message, fields)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, entry.Timestamp, entry.Symbol, string(entry.Level), entry.Message, fieldsJSON)
+	`, nextID, entry.Timestamp, entry.Symbol, string(entry.Level), entry.Message, fieldsJSON)
 	if err != nil {
 		return fmt.Errorf("failed to insert log: %w", err)
 	}

@@ -49,12 +49,11 @@ func (w *OrdersWriter) Initialize() error {
 
 	w.db = db
 
-	// Create the orders table with primary key for upsert support
+	// Create the orders table with primary key for upsert support (schema matches backtest state.go)
 	_, err = w.db.Exec(`
 		CREATE TABLE IF NOT EXISTS orders (
 			order_id TEXT PRIMARY KEY,
 			symbol TEXT,
-			side TEXT,
 			order_type TEXT,
 			quantity DOUBLE,
 			price DOUBLE,
@@ -62,9 +61,8 @@ func (w *OrdersWriter) Initialize() error {
 			is_completed BOOLEAN,
 			status TEXT,
 			reason TEXT,
-			reason_message TEXT,
+			message TEXT,
 			strategy_name TEXT,
-			fee DOUBLE,
 			position_type TEXT
 		)
 	`)
@@ -101,17 +99,16 @@ func (w *OrdersWriter) Write(order types.Order) error {
 
 	// Use INSERT OR REPLACE for upsert behavior (handles status updates)
 	_, err := w.db.Exec(`
-		INSERT INTO orders (order_id, symbol, side, order_type, quantity, price, timestamp,
-			is_completed, status, reason, reason_message, strategy_name, fee, position_type)
-		VALUES (?, ?, ?, 'MARKET', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO orders (order_id, symbol, order_type, quantity, price, timestamp,
+			is_completed, status, reason, message, strategy_name, position_type)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (order_id) DO UPDATE SET
 			is_completed = excluded.is_completed,
-			status = excluded.status,
-			fee = excluded.fee
+			status = excluded.status
 	`, order.OrderID, order.Symbol, string(order.Side), order.Quantity, order.Price,
 		order.Timestamp, order.IsCompleted, string(order.Status),
 		order.Reason.Reason, order.Reason.Message, order.StrategyName,
-		order.Fee, string(order.PositionType))
+		string(order.PositionType))
 	if err != nil {
 		return fmt.Errorf("failed to insert order: %w", err)
 	}

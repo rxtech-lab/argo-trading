@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/google/uuid"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
@@ -50,23 +49,29 @@ func (w *MarksWriter) Initialize() error {
 
 	w.db = db
 
-	// Create the marks table
+	// Create sequence for mark IDs
+	_, err = w.db.Exec(`CREATE SEQUENCE IF NOT EXISTS mark_id_seq`)
+	if err != nil {
+		w.db.Close()
+
+		return fmt.Errorf("failed to create sequence: %w", err)
+	}
+
+	// Create the marks table (schema matches backtest backtest_marker.go)
 	_, err = w.db.Exec(`
 		CREATE TABLE IF NOT EXISTS marks (
-			id TEXT PRIMARY KEY,
+			id INTEGER PRIMARY KEY,
 			market_data_id TEXT,
+			signal_type TEXT,
+			signal_name TEXT,
+			signal_time TIMESTAMP,
+			signal_symbol TEXT,
 			color TEXT,
 			shape TEXT,
 			level TEXT,
 			title TEXT,
 			message TEXT,
-			category TEXT,
-			signal_type TEXT,
-			signal_name TEXT,
-			signal_reason TEXT,
-			signal_raw_value TEXT,
-			signal_symbol TEXT,
-			signal_indicator TEXT
+			category TEXT
 		)
 	`)
 	if err != nil {
@@ -80,7 +85,6 @@ func (w *MarksWriter) Initialize() error {
 		_, err = w.db.Exec(fmt.Sprintf(`
 			INSERT INTO marks
 			SELECT * FROM read_parquet('%s')
-			ON CONFLICT (id) DO NOTHING
 		`, w.outputPath))
 		if err != nil {
 			// If loading fails, start fresh
@@ -100,28 +104,36 @@ func (w *MarksWriter) Write(mark types.Mark) error {
 		return fmt.Errorf("writer not initialized")
 	}
 
-	id := uuid.New().String()
+	// Get the next ID from the sequence
+	var nextID int
+
+	err := w.db.QueryRow("SELECT nextval('mark_id_seq')").Scan(&nextID)
+	if err != nil {
+		return fmt.Errorf("failed to get next ID from sequence: %w", err)
+	}
 
 	// Extract signal fields if present
-	var signalType, signalName, signalReason, signalSymbol, signalIndicator, signalRawValue string
+	var signalType, signalName sql.NullString
+
+	var signalTime sql.NullTime
+
+	var signalSymbol sql.NullString
 
 	if mark.Signal.IsSome() {
 		signal := mark.Signal.Unwrap()
-		signalType = string(signal.Type)
-		signalName = signal.Name
-		signalReason = signal.Reason
-		signalRawValue = fmt.Sprintf("%v", signal.RawValue)
-		signalSymbol = signal.Symbol
-		signalIndicator = string(signal.Indicator)
+		signalType = sql.NullString{String: string(signal.Type), Valid: true}
+		signalName = sql.NullString{String: signal.Name, Valid: true}
+		signalTime = sql.NullTime{Time: signal.Time, Valid: true}
+		signalSymbol = sql.NullString{String: signal.Symbol, Valid: true}
 	}
 
-	_, err := w.db.Exec(`
-		INSERT INTO marks (id, market_data_id, color, shape, level, title, message, category,
-			signal_type, signal_name, signal_reason, signal_raw_value, signal_symbol, signal_indicator)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, mark.MarketDataId, string(mark.Color), string(mark.Shape), string(mark.Level),
-		mark.Title, mark.Message, mark.Category,
-		signalType, signalName, signalReason, signalRawValue, signalSymbol, signalIndicator)
+	_, err = w.db.Exec(`
+		INSERT INTO marks (id, market_data_id, signal_type, signal_name, signal_time, signal_symbol,
+			color, shape, level, title, message, category)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, nextID, mark.MarketDataId, signalType, signalName, signalTime, signalSymbol,
+		string(mark.Color), string(mark.Shape), string(mark.Level),
+		mark.Title, mark.Message, mark.Category)
 	if err != nil {
 		return fmt.Errorf("failed to insert mark: %w", err)
 	}

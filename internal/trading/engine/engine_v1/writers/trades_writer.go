@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/google/uuid"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 )
@@ -50,22 +49,24 @@ func (w *TradesWriter) Initialize() error {
 
 	w.db = db
 
-	// Create the trades table
+	// Create the trades table (schema matches backtest state.go)
 	_, err = w.db.Exec(`
 		CREATE TABLE IF NOT EXISTS trades (
-			id TEXT PRIMARY KEY,
 			order_id TEXT,
 			symbol TEXT,
-			side TEXT,
+			order_type TEXT,
 			quantity DOUBLE,
 			price DOUBLE,
-			order_timestamp TIMESTAMP,
+			timestamp TIMESTAMP,
+			is_completed BOOLEAN,
+			reason TEXT,
+			message TEXT,
+			strategy_name TEXT,
 			executed_at TIMESTAMP,
 			executed_qty DOUBLE,
 			executed_price DOUBLE,
-			fee DOUBLE,
+			commission DOUBLE,
 			pnl DOUBLE,
-			strategy_name TEXT,
 			position_type TEXT
 		)
 	`)
@@ -80,7 +81,6 @@ func (w *TradesWriter) Initialize() error {
 		_, err = w.db.Exec(fmt.Sprintf(`
 			INSERT INTO trades
 			SELECT * FROM read_parquet('%s')
-			ON CONFLICT (id) DO NOTHING
 		`, w.outputPath))
 		if err != nil {
 			// If loading fails, start fresh
@@ -100,16 +100,17 @@ func (w *TradesWriter) Write(trade types.Trade) error {
 		return fmt.Errorf("writer not initialized")
 	}
 
-	id := uuid.New().String()
-
 	_, err := w.db.Exec(`
-		INSERT INTO trades (id, order_id, symbol, side, quantity, price, order_timestamp,
-			executed_at, executed_qty, executed_price, fee, pnl, strategy_name, position_type)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, trade.Order.OrderID, trade.Order.Symbol, string(trade.Order.Side),
+		INSERT INTO trades (order_id, symbol, order_type, quantity, price, timestamp,
+			is_completed, reason, message, strategy_name,
+			executed_at, executed_qty, executed_price, commission, pnl, position_type)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, trade.Order.OrderID, trade.Order.Symbol, string(trade.Order.Side),
 		trade.Order.Quantity, trade.Order.Price, trade.Order.Timestamp,
+		trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
+		trade.Order.StrategyName,
 		trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
-		trade.Fee, trade.PnL, trade.Order.StrategyName, string(trade.Order.PositionType))
+		trade.Fee, trade.PnL, string(trade.Order.PositionType))
 	if err != nil {
 		return fmt.Errorf("failed to insert trade: %w", err)
 	}
@@ -223,7 +224,7 @@ func (w *TradesWriter) GetTotalFees() (float64, error) {
 
 	var totalFees sql.NullFloat64
 
-	err := w.db.QueryRow("SELECT SUM(fee) FROM trades").Scan(&totalFees)
+	err := w.db.QueryRow("SELECT SUM(commission) FROM trades").Scan(&totalFees)
 	if err != nil {
 		return 0, fmt.Errorf("failed to sum fees: %w", err)
 	}
