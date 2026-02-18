@@ -16,6 +16,8 @@ import (
 // Application states.
 const (
 	StateProviderSelect = iota
+	StateApiKeyInput
+	StateSecretKeyInput
 	StateSymbolInput
 	StateIntervalSelect
 	StateDataDisplay
@@ -23,18 +25,22 @@ const (
 
 // Model is the main Bubble Tea model for the real-time data CLI.
 type Model struct {
-	state        int
-	providerList list.Model
-	symbolInput  textinput.Model
-	intervalList list.Model
-	dataTable    table.Model
-	marketData   map[string]types.MarketData
-	prevPrices   map[string]float64
-	symbols      []string
-	interval     string
-	err          error
-	width        int
-	height       int
+	state          int
+	providerList   list.Model
+	apiKeyInput    textinput.Model
+	secretKeyInput textinput.Model
+	symbolInput    textinput.Model
+	intervalList   list.Model
+	dataTable      table.Model
+	marketData     map[string]types.MarketData
+	prevPrices     map[string]float64
+	symbols        []string
+	interval       string
+	apiKey         string
+	secretKey      string
+	err            error
+	width          int
+	height         int
 
 	// Streaming control
 	streamCtx    context.Context
@@ -45,13 +51,15 @@ type Model struct {
 // NewModel creates a new Model with initial state.
 func NewModel() Model {
 	return Model{
-		state:        StateProviderSelect,
-		providerList: NewProviderList(),
-		symbolInput:  NewSymbolInput(),
-		intervalList: NewIntervalList(),
-		dataTable:    NewDataTable(),
-		marketData:   make(map[string]types.MarketData),
-		prevPrices:   make(map[string]float64),
+		state:          StateProviderSelect,
+		providerList:   NewProviderList(),
+		apiKeyInput:    NewApiKeyInput(),
+		secretKeyInput: NewSecretKeyInput(),
+		symbolInput:    NewSymbolInput(),
+		intervalList:   NewIntervalList(),
+		dataTable:      NewDataTable(),
+		marketData:     make(map[string]types.MarketData),
+		prevPrices:     make(map[string]float64),
 	}
 }
 
@@ -77,7 +85,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "q":
 			// Only quit on 'q' if not in text input mode
-			if m.state != StateSymbolInput {
+			if m.state != StateSymbolInput && m.state != StateApiKeyInput && m.state != StateSecretKeyInput {
 				if m.streamCancel != nil {
 					m.streamCancel()
 				}
@@ -118,6 +126,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.state {
 	case StateProviderSelect:
 		return m.updateProviderSelect(msg)
+	case StateApiKeyInput:
+		return m.updateApiKeyInput(msg)
+	case StateSecretKeyInput:
+		return m.updateSecretKeyInput(msg)
 	case StateSymbolInput:
 		return m.updateSymbolInput(msg)
 	case StateIntervalSelect:
@@ -131,8 +143,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleEsc() (tea.Model, tea.Cmd) {
 	switch m.state {
-	case StateSymbolInput:
+	case StateApiKeyInput:
 		m.state = StateProviderSelect
+	case StateSecretKeyInput:
+		m.state = StateApiKeyInput
+		m.apiKeyInput.Focus()
+		return m, textinput.Blink
+	case StateSymbolInput:
+		m.state = StateSecretKeyInput
+		m.secretKeyInput.Focus()
+		return m, textinput.Blink
 	case StateIntervalSelect:
 		m.state = StateSymbolInput
 		m.symbolInput.Focus()
@@ -162,8 +182,8 @@ func (m Model) updateProviderSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if item, ok := m.providerList.SelectedItem().(listItem); ok {
 				_ = item.name // Provider selected (currently only Binance)
-				m.state = StateSymbolInput
-				m.symbolInput.Focus()
+				m.state = StateApiKeyInput
+				m.apiKeyInput.Focus()
 				return m, textinput.Blink
 			}
 		}
@@ -171,6 +191,42 @@ func (m Model) updateProviderSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.providerList, cmd = m.providerList.Update(msg)
+	return m, cmd
+}
+
+func (m Model) updateApiKeyInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			m.apiKey = m.apiKeyInput.Value()
+			m.state = StateSecretKeyInput
+			m.apiKeyInput.Blur()
+			m.secretKeyInput.Focus()
+			return m, textinput.Blink
+		}
+	}
+
+	var cmd tea.Cmd
+	m.apiKeyInput, cmd = m.apiKeyInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) updateSecretKeyInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			m.secretKey = m.secretKeyInput.Value()
+			m.state = StateSymbolInput
+			m.secretKeyInput.Blur()
+			m.symbolInput.Focus()
+			return m, textinput.Blink
+		}
+	}
+
+	var cmd tea.Cmd
+	m.secretKeyInput, cmd = m.secretKeyInput.Update(msg)
 	return m, cmd
 }
 
@@ -229,19 +285,21 @@ func (m *Model) startStreaming() tea.Cmd {
 		m.streamCtx = ctx
 		m.streamCancel = cancel
 
-		go streamMarketData(m.program, ctx, m.symbols, m.interval)
+		go streamMarketData(m.program, ctx, m.symbols, m.interval, m.apiKey, m.secretKey)
 
 		return StreamStartedMsg{}
 	}
 }
 
 // streamMarketData streams market data from Binance and sends messages to the program.
-func streamMarketData(p *tea.Program, ctx context.Context, symbols []string, interval string) {
+func streamMarketData(p *tea.Program, ctx context.Context, symbols []string, interval string, apiKey string, secretKey string) {
 	cfg := &provider.BinanceStreamConfig{
 		BaseStreamConfig: provider.BaseStreamConfig{
 			Symbols:  symbols,
 			Interval: interval,
 		},
+		ApiKey:    apiKey,
+		SecretKey: secretKey,
 	}
 
 	client, err := provider.NewMarketDataProvider(provider.ProviderBinance, cfg)
@@ -270,6 +328,22 @@ func (m Model) View() string {
 		s.WriteString(m.providerList.View())
 		s.WriteString("\n")
 		s.WriteString(HelpStyle.Render("Press Enter to select, q to quit"))
+
+	case StateApiKeyInput:
+		s.WriteString(TitleStyle.Render("Enter API Key"))
+		s.WriteString("\n\n")
+		s.WriteString("Enter your Binance API key (leave empty for public data):\n\n")
+		s.WriteString(m.apiKeyInput.View())
+		s.WriteString("\n\n")
+		s.WriteString(HelpStyle.Render("Press Enter to confirm, Esc to go back"))
+
+	case StateSecretKeyInput:
+		s.WriteString(TitleStyle.Render("Enter Secret Key"))
+		s.WriteString("\n\n")
+		s.WriteString("Enter your Binance secret key (leave empty for public data):\n\n")
+		s.WriteString(m.secretKeyInput.View())
+		s.WriteString("\n\n")
+		s.WriteString(HelpStyle.Render("Press Enter to confirm, Esc to go back"))
 
 	case StateSymbolInput:
 		s.WriteString(TitleStyle.Render("Enter Symbols"))

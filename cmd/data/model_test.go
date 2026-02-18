@@ -79,9 +79,9 @@ func TestProviderSelection(t *testing.T) {
 	// Send Enter to select provider
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Verify state changed to symbol input
+	// Verify state changed to API key input
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return bytes.Contains(bts, []byte("Enter Symbols"))
+		return bytes.Contains(bts, []byte("Enter API Key"))
 	}, teatest.WithDuration(2*time.Second))
 
 	err := tm.Quit()
@@ -138,7 +138,30 @@ func TestIntervalSelection(t *testing.T) {
 }
 
 func TestStateTransitions(t *testing.T) {
-	t.Run("Esc from symbol input goes back to provider select", func(t *testing.T) {
+	t.Run("Esc from API key input goes back to provider select", func(t *testing.T) {
+		m := NewModel()
+		m.state = StateApiKeyInput
+
+		tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+
+		// Wait for API key input view
+		teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
+			return bytes.Contains(bts, []byte("Enter API Key"))
+		}, teatest.WithDuration(2*time.Second))
+
+		// Press Esc
+		tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
+
+		// Verify we're back at provider selection
+		teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
+			return bytes.Contains(bts, []byte("Select Data Provider"))
+		}, teatest.WithDuration(2*time.Second))
+
+		err := tm.Quit()
+		assert.NoError(t, err)
+	})
+
+	t.Run("Esc from symbol input goes back to secret key input", func(t *testing.T) {
 		m := NewModel()
 		m.state = StateSymbolInput
 
@@ -152,9 +175,9 @@ func TestStateTransitions(t *testing.T) {
 		// Press Esc
 		tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
 
-		// Verify we're back at provider selection
+		// Verify we're back at secret key input
 		teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-			return bytes.Contains(bts, []byte("Select Data Provider"))
+			return bytes.Contains(bts, []byte("Enter Secret Key"))
 		}, teatest.WithDuration(2*time.Second))
 
 		err := tm.Quit()

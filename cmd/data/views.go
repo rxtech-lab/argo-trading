@@ -73,6 +73,29 @@ func NewIntervalList() list.Model {
 	return l
 }
 
+// NewApiKeyInput creates a new text input for API key entry.
+func NewApiKeyInput() textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = "your-api-key"
+	ti.CharLimit = 128
+	ti.Width = 70
+	ti.Prompt = "> "
+
+	return ti
+}
+
+// NewSecretKeyInput creates a new text input for secret key entry.
+func NewSecretKeyInput() textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = "your-secret-key"
+	ti.EchoMode = textinput.EchoPassword
+	ti.CharLimit = 128
+	ti.Width = 70
+	ti.Prompt = "> "
+
+	return ti
+}
+
 // NewSymbolInput creates a new text input for symbol entry.
 func NewSymbolInput() textinput.Model {
 	ti := textinput.New()

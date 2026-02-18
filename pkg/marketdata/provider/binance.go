@@ -194,7 +194,7 @@ func NewBinanceClient(config *BinanceStreamConfig) (Provider, error) {
 		return nil, fmt.Errorf("config is required for binance provider")
 	}
 
-	client := binance.NewClient("", "")
+	client := binance.NewClient(config.ApiKey, config.SecretKey)
 
 	return &BinanceClient{
 		apiClient:      &binanceClientWrapper{client: client},
@@ -628,6 +628,16 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 			}(symbol)
 		}
 
+		// allDone is closed when all per-symbol goroutines have completed
+		// (either failed to connect or disconnected). Used to detect when the
+		// stream should terminate instead of blocking forever.
+		allDone := make(chan struct{})
+
+		go func() {
+			wg.Wait()
+			close(allDone)
+		}()
+
 		// Cleanup function - stops all connections and closes channels
 		cleanup := func() {
 			mu.Lock()
@@ -654,7 +664,13 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 
 		go func() {
 			defer cleanupWg.Done()
-			<-ctx.Done()
+
+			select {
+			case <-ctx.Done():
+			case <-allDone:
+				// All goroutines already finished, no cleanup needed
+				return
+			}
 
 			// Wait for all symbol goroutines to finish registering their stop channels
 			wg.Wait()
@@ -672,10 +688,13 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 		// Main loop - yield data to the iterator
 		defer func() {
 			// If we exit early (yield returned false), trigger cleanup
-			// Cancel context would have already triggered cleanup goroutine
+			// Cancel context or allDone would have already triggered cleanup goroutine
 			select {
 			case <-ctx.Done():
 				// Context cancelled, cleanup goroutine handles it
+				cleanupWg.Wait()
+			case <-allDone:
+				// All goroutines finished naturally, cleanup goroutine handles it
 				cleanupWg.Wait()
 			default:
 				// Early exit from iterator, need to cleanup manually
@@ -683,29 +702,69 @@ func (c *BinanceClient) Stream(ctx context.Context) iter.Seq2[types.MarketData, 
 			}
 		}()
 
-		for {
-			select {
-			case <-ctx.Done():
+		yieldLoop(ctx, allDone, dataChan, errChan, yield)
+	}
+}
+
+// yieldLoop is the main data yield loop for Stream, extracted to reduce cyclomatic complexity.
+// It reads from dataChan/errChan and yields to the iterator until the context is cancelled
+// or all WebSocket goroutines have finished.
+func yieldLoop(ctx context.Context, allDone <-chan struct{}, dataChan <-chan types.MarketData, errChan <-chan error, yield func(types.MarketData, error) bool) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-allDone:
+			// All WebSocket goroutines have finished (failed to connect or disconnected).
+			// Drain any remaining buffered errors and data before returning.
+			drainChannels(dataChan, errChan, yield)
+
+			return
+
+		case err, ok := <-errChan:
+			if !ok {
 				return
-
-			case err, ok := <-errChan:
-				if !ok {
-					return
-				}
-				//nolint:exhaustruct // empty struct for error case
-				if !yield(types.MarketData{}, err) {
-					return
-				}
-
-			case data, ok := <-dataChan:
-				if !ok {
-					return
-				}
-
-				if !yield(data, nil) {
-					return
-				}
 			}
+			//nolint:exhaustruct // empty struct for error case
+			if !yield(types.MarketData{}, err) {
+				return
+			}
+
+		case data, ok := <-dataChan:
+			if !ok {
+				return
+			}
+
+			if !yield(data, nil) {
+				return
+			}
+		}
+	}
+}
+
+// drainChannels drains any remaining buffered data and errors from the channels.
+func drainChannels(dataChan <-chan types.MarketData, errChan <-chan error, yield func(types.MarketData, error) bool) {
+	for {
+		select {
+		case err, ok := <-errChan:
+			if !ok {
+				return
+			}
+			//nolint:exhaustruct // empty struct for error case
+			if !yield(types.MarketData{}, err) {
+				return
+			}
+		case data, ok := <-dataChan:
+			if !ok {
+				return
+			}
+
+			if !yield(data, nil) {
+				return
+			}
+		default:
+			return
 		}
 	}
 }

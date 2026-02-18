@@ -437,6 +437,10 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	if err := e.tradingProvider.CheckConnection(ctx); err != nil {
 		e.log.Warn("Trading provider connection check failed", zap.Error(err))
 		e.updateTradingStatus(types.ProviderStatusDisconnected, callbacks.OnProviderStatusChange)
+
+		if callbacks.OnError != nil {
+			(*callbacks.OnError)(fmt.Errorf("trading provider connection check failed: %w", err))
+		}
 	} else {
 		e.updateTradingStatus(types.ProviderStatusConnected, callbacks.OnProviderStatusChange)
 	}

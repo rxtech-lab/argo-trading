@@ -295,6 +295,45 @@ func (suite *BinanceStreamTestSuite) TestStreamContextCancellation() {
 	suite.LessOrEqual(iterationCount, 10)
 }
 
+func (suite *BinanceStreamTestSuite) TestStreamConnectionError_TerminatesWithoutTimeout() {
+	// This test verifies that the stream terminates on its own when all websocket
+	// connections fail, WITHOUT relying on a context timeout. Before the fix,
+	// the stream would hang forever because errChan and dataChan were never closed.
+	mockWs := &mockBinanceWebSocketService{
+		startError: errors.New("bad handshake"),
+	}
+	client := NewBinanceClientWithWebSocket(&mockStreamAPIClient{}, mockWs, []string{"BTCUSDT"}, "1m")
+
+	// Use a background context with NO timeout - the stream must terminate on its own
+	ctx := context.Background()
+
+	streamDone := make(chan struct{})
+	var gotError bool
+	var errorMsg string
+
+	go func() {
+		defer close(streamDone)
+		for _, err := range client.Stream(ctx) {
+			if err != nil {
+				gotError = true
+				errorMsg = err.Error()
+			}
+		}
+	}()
+
+	// Stream should terminate within a reasonable time without any context cancellation
+	select {
+	case <-streamDone:
+		// Stream terminated on its own - correct behavior
+	case <-time.After(5 * time.Second):
+		suite.Fail("Stream hung - did not terminate after all connections failed")
+	}
+
+	suite.True(gotError)
+	suite.Contains(errorMsg, "failed to start websocket")
+	suite.Contains(errorMsg, "bad handshake")
+}
+
 func (suite *BinanceStreamTestSuite) TestStreamConnectionError() {
 	mockWs := &mockBinanceWebSocketService{
 		startError: errors.New("connection refused"),
