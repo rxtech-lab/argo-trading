@@ -86,7 +86,6 @@ func main() {
 	config := engine.LiveTradingEngineConfig{
 		MarketDataCacheSize: *cacheSizeFlag,
 		EnableLogging:       *logOutputFlag != "",
-		LogOutputPath:       *logOutputFlag,
 	}
 	if err := eng.Initialize(config); err != nil {
 		log.Fatalf("Failed to initialize engine: %v", err)

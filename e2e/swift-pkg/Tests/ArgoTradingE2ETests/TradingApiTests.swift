@@ -186,7 +186,6 @@ final class TradingApiTests: XCTestCase {
         let schema = SwiftargoGetLiveTradingEngineConfigSchema()
 
         // Engine config should have these fields
-        XCTAssertTrue(schema.contains("data_output_path"), "Schema should contain data_output_path field")
         XCTAssertTrue(schema.contains("market_data_cache_size"), "Schema should contain market_data_cache_size field")
         XCTAssertTrue(schema.contains("enable_logging"), "Schema should contain enable_logging field")
         XCTAssertTrue(schema.contains("prefetch"), "Schema should contain prefetch field")

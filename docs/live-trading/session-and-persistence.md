@@ -244,14 +244,13 @@ Statistics are updated:
 
 ### Data Folder Parameter
 
-The data output path is passed when initializing the engine:
+The data output path is set via the `SetDataOutputPath` method before running the engine:
 
 ```go
-config := engine.LiveTradingEngineConfig{
-    DataOutputPath: "./data/live-trading",
-    // ... other config
-}
 eng.Initialize(config)
+
+// Set data output path for persistence
+eng.SetDataOutputPath("./data/live-trading")
 ```
 
 ### Persistence Timing

@@ -186,11 +186,8 @@ func (s *LiveTradingE2ETestSuite) TestBasicStrategyExecution() {
 
     // Configure engine
     eng, _ := engine.NewLiveTradingEngineV1()
-    eng.Initialize(engine.LiveTradingEngineConfig{
-        Symbols:        []string{"BTCUSDT"},
-        Interval:       "1m",
-        DataOutputPath: s.T().TempDir(),
-    })
+    eng.Initialize(engine.LiveTradingEngineConfig{})
+    eng.SetDataOutputPath(s.T().TempDir())
     eng.SetMockMarketDataProvider(mockMarketData)
     eng.SetMockTradingProvider(mockTrading)
     eng.LoadStrategyFromFile("./test_strategy.wasm")
@@ -432,8 +429,6 @@ func (s *PrefetchTestSuite) TestPrefetchDownloadsHistoricalData() {
 
     dataPath := s.T().TempDir()
     config := engine.LiveTradingEngineConfig{
-        Symbols:        []string{"BTCUSDT"},
-        DataOutputPath: dataPath,
         Prefetch: engine.PrefetchConfig{
             Enabled:       true,
             StartTimeType: "days",
@@ -442,6 +437,7 @@ func (s *PrefetchTestSuite) TestPrefetchDownloadsHistoricalData() {
     }
 
     eng.Initialize(config)
+    eng.SetDataOutputPath(dataPath)
     eng.SetMockMarketDataProvider(mockProvider)
     eng.Run(ctx, callbacks)
 
@@ -554,13 +550,13 @@ func (s *PrefetchTestSuite) TestRestartRecovery() {
     // Restart with same data path
     eng2, _ := engine.NewLiveTradingEngineV1()
     eng2.Initialize(engine.LiveTradingEngineConfig{
-        DataOutputPath: dataPath,
         Prefetch: engine.PrefetchConfig{
             Enabled:       true,
             StartTimeType: "days",
             Days:          30,
         },
     })
+    eng2.SetDataOutputPath(dataPath)
 
     // Verify prefetch starts from lastStored, not 30 days ago
     var prefetchStart time.Time
@@ -622,12 +618,12 @@ func (s *LiveTradingE2ETestSuite) SetupTest() {
     s.Require().NoError(err)
 
     err = s.engine.Initialize(engine.LiveTradingEngineConfig{
-        Symbols:             []string{"BTCUSDT"},
-        Interval:            "1m",
         MarketDataCacheSize: 100,
         EnableLogging:       false,
-        DataOutputPath:      s.T().TempDir(),
     })
+    s.Require().NoError(err)
+
+    err = s.engine.SetDataOutputPath(s.T().TempDir())
     s.Require().NoError(err)
 }
 ```

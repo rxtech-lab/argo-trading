@@ -219,7 +219,6 @@ func (suite *TradingTestSuite) TestGetLiveTradingEngineConfigSchema() {
 	suite.True(ok, "schema should have top-level properties")
 	suite.Contains(properties, "market_data_cache_size")
 	suite.Contains(properties, "enable_logging")
-	suite.Contains(properties, "data_output_path")
 	suite.Contains(properties, "prefetch")
 
 	// Verify prefetch is inlined (not a $ref)

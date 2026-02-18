@@ -1199,9 +1199,12 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WithDataOutputPath() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		DataOutputPath: tempDir, // Enable session management
-		EnableLogging:  true,    // Enable marks and logs
+		EnableLogging: true, // Enable marks and logs
 	})
+	s.Require().NoError(err)
+
+	// Set data output path to enable session management
+	err = eng.SetDataOutputPath(tempDir)
 	s.Require().NoError(err)
 
 	e := eng.(*LiveTradingEngineV1)
@@ -1397,9 +1400,11 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Success() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		DataOutputPath: tempDir, // Enable stats tracker
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
+	s.Require().NoError(err)
+
+	// Enable stats tracker via SetDataOutputPath
+	err = eng.SetDataOutputPath(tempDir)
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1469,9 +1474,10 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StatsUpdate_Error_Continues() {
 	eng, err := NewLiveTradingEngineV1()
 	s.Require().NoError(err)
 
-	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		DataOutputPath: tempDir,
-	})
+	err = eng.Initialize(engine.LiveTradingEngineConfig{})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
 	s.Require().NoError(err)
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
@@ -1533,9 +1539,11 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesMarks() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		DataOutputPath: tempDir,
-		EnableLogging:  true, // Enable marks
+		EnableLogging: true, // Enable marks
 	})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
 	s.Require().NoError(err)
 
 	e := eng.(*LiveTradingEngineV1)
@@ -1604,9 +1612,11 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesLogs() {
 	s.Require().NoError(err)
 
 	err = eng.Initialize(engine.LiveTradingEngineConfig{
-		DataOutputPath: tempDir,
-		EnableLogging:  true, // Enable logs
+		EnableLogging: true, // Enable logs
 	})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
 	s.Require().NoError(err)
 
 	e := eng.(*LiveTradingEngineV1)

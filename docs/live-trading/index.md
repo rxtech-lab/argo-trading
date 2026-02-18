@@ -28,7 +28,6 @@ The Live Trading Engine is designed to:
 │  │  - Trading Provider Type + Config                                      │ │
 │  │  - Strategy WASM Path + Config                                         │ │
 │  │  - Symbols to trade                                                    │ │
-│  │  - Data output path for persistence                                    │ │
 │  │  - Prefetch settings                                                   │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -92,6 +91,10 @@ type LiveTradingEngine interface {
     // SetTradingProvider configures the trading provider.
     SetTradingProvider(provider tradingprovider.TradingSystemProvider) error
 
+    // SetDataOutputPath sets the base directory for session data output (orders, trades, marks, logs, stats).
+    // Must be called before Run() if persistence is desired.
+    SetDataOutputPath(path string) error
+
     // Run starts the live trading engine.
     // Blocks until context is cancelled or a fatal error occurs.
     Run(ctx context.Context, callbacks LiveTradingCallbacks) error
@@ -111,13 +114,11 @@ type LiveTradingEngineConfig struct {
     // EnableLogging enables strategy log storage
     EnableLogging bool `json:"enable_logging" yaml:"enable_logging"`
 
-    // DataOutputPath is the directory for persisting session data
-    DataOutputPath string `json:"data_output_path" yaml:"data_output_path" validate:"required"`
-
     // Prefetch configuration for historical data
     Prefetch PrefetchConfig `json:"prefetch" yaml:"prefetch"`
 }
 // Note: symbols and interval are configured via the market data provider, not the engine config.
+// Note: data output path is set via SetDataOutputPath(), not in config.
 ```
 
 type PrefetchConfig struct {
@@ -275,7 +276,6 @@ engine:
   interval: "1m"
   market_data_cache_size: 1000
   enable_logging: true
-  data_output_path: "./data/live-trading"
   prefetch:
     enabled: true
     start_time_type: days
@@ -323,7 +323,6 @@ func main() {
     config := engine.LiveTradingEngineConfig{
         MarketDataCacheSize: 1000,
         EnableLogging:       true,
-        DataOutputPath:      "./data/live-trading",
         Prefetch: engine.PrefetchConfig{
             Enabled:       true,
             StartTimeType: "days",
@@ -333,6 +332,11 @@ func main() {
     // Note: symbols and interval are configured via the market data provider
 
     if err := eng.Initialize(config); err != nil {
+        log.Fatal(err)
+    }
+
+    // Set data output path for persistence
+    if err := eng.SetDataOutputPath("./data/live-trading"); err != nil {
         log.Fatal(err)
     }
 

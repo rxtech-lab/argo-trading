@@ -184,60 +184,6 @@ func (e *LiveTradingEngineV1) Initialize(config engine.LiveTradingEngineConfig) 
 		}
 	}
 
-	// Initialize session management if DataOutputPath is configured
-	if config.DataOutputPath != "" {
-		e.sessionManager = session.NewSessionManager(e.log)
-		if err := e.sessionManager.Initialize(config.DataOutputPath); err != nil {
-			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize session manager", err)
-		}
-
-		runPath := e.sessionManager.GetCurrentRunPath()
-
-		e.log.Info("Session initialized",
-			zap.String("run_id", e.sessionManager.GetRunID()),
-			zap.String("run_path", runPath),
-		)
-
-		// Initialize parquet writers in the session folder
-		ordersPath := filepath.Join(runPath, "orders.parquet")
-		e.ordersWriter = writers.NewOrdersWriter(ordersPath)
-		if err := e.ordersWriter.Initialize(); err != nil {
-			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize orders writer", err)
-		}
-
-		tradesPath := filepath.Join(runPath, "trades.parquet")
-		e.tradesWriter = writers.NewTradesWriter(tradesPath)
-		if err := e.tradesWriter.Initialize(); err != nil {
-			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize trades writer", err)
-		}
-
-		marksPath := filepath.Join(runPath, "marks.parquet")
-		e.marksWriter = writers.NewMarksWriter(marksPath)
-		if err := e.marksWriter.Initialize(); err != nil {
-			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize marks writer", err)
-		}
-
-		logsPath := filepath.Join(runPath, "logs.parquet")
-		e.logsWriter = writers.NewLogsWriter(logsPath)
-		if err := e.logsWriter.Initialize(); err != nil {
-			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize logs writer", err)
-		}
-
-		// Initialize stats tracker (will be fully initialized after strategy loads with strategy info)
-		e.statsTracker = stats.NewStatsTracker(e.log)
-		e.statsTracker.SetFilePaths(
-			ordersPath,
-			tradesPath,
-			marksPath,
-			logsPath,
-			"", // market data path set later
-			filepath.Join(runPath, "stats.yaml"),
-		)
-
-		// Initialize prefetch manager (will be fully initialized before Run with provider)
-		e.prefetchManager = prefetch.NewPrefetchManager(e.log)
-	}
-
 	e.initialized = true
 
 	e.log.Debug("Live trading engine initialized",
@@ -305,6 +251,69 @@ func (e *LiveTradingEngineV1) SetMarketDataProvider(marketProvider provider.Prov
 func (e *LiveTradingEngineV1) SetTradingProvider(tradingProvider tradingprovider.TradingSystemProvider) error {
 	e.tradingProvider = tradingProvider
 	e.log.Debug("Trading provider set")
+
+	return nil
+}
+
+// SetDataOutputPath implements engine.LiveTradingEngine.
+// Sets the base directory for session data output (orders, trades, marks, logs, stats).
+// Must be called before Run() if persistence is desired.
+func (e *LiveTradingEngineV1) SetDataOutputPath(path string) error {
+	if path == "" {
+		return errors.New(errors.ErrCodeBacktestInitFailed, "data output path cannot be empty")
+	}
+
+	// Initialize session management
+	e.sessionManager = session.NewSessionManager(e.log)
+	if err := e.sessionManager.Initialize(path); err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize session manager", err)
+	}
+
+	runPath := e.sessionManager.GetCurrentRunPath()
+
+	e.log.Info("Session initialized",
+		zap.String("run_id", e.sessionManager.GetRunID()),
+		zap.String("run_path", runPath),
+	)
+
+	// Initialize parquet writers in the session folder
+	ordersPath := filepath.Join(runPath, "orders.parquet")
+	e.ordersWriter = writers.NewOrdersWriter(ordersPath)
+	if err := e.ordersWriter.Initialize(); err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize orders writer", err)
+	}
+
+	tradesPath := filepath.Join(runPath, "trades.parquet")
+	e.tradesWriter = writers.NewTradesWriter(tradesPath)
+	if err := e.tradesWriter.Initialize(); err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize trades writer", err)
+	}
+
+	marksPath := filepath.Join(runPath, "marks.parquet")
+	e.marksWriter = writers.NewMarksWriter(marksPath)
+	if err := e.marksWriter.Initialize(); err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize marks writer", err)
+	}
+
+	logsPath := filepath.Join(runPath, "logs.parquet")
+	e.logsWriter = writers.NewLogsWriter(logsPath)
+	if err := e.logsWriter.Initialize(); err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize logs writer", err)
+	}
+
+	// Initialize stats tracker (will be fully initialized after strategy loads with strategy info)
+	e.statsTracker = stats.NewStatsTracker(e.log)
+	e.statsTracker.SetFilePaths(
+		ordersPath,
+		tradesPath,
+		marksPath,
+		logsPath,
+		"", // market data path set later
+		filepath.Join(runPath, "stats.yaml"),
+	)
+
+	// Initialize prefetch manager (will be fully initialized before Run with provider)
+	e.prefetchManager = prefetch.NewPrefetchManager(e.log)
 
 	return nil
 }

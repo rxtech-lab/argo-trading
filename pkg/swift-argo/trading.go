@@ -219,6 +219,12 @@ func (t *TradingEngine) SetMarketDataProvider(providerName string, configJSON st
 	return t.engine.SetMarketDataProvider(marketProvider)
 }
 
+// SetDataOutputPath sets the base directory for session data output (orders, trades, marks, logs, stats).
+// Must be called before Run() if persistence is desired.
+func (t *TradingEngine) SetDataOutputPath(path string) error {
+	return t.engine.SetDataOutputPath(path)
+}
+
 // SetWasm loads a WASM strategy from the given file path.
 func (t *TradingEngine) SetWasm(wasmPath string) error {
 	return t.engine.LoadStrategyFromFile(wasmPath)
