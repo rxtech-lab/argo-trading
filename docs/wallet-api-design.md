@@ -22,14 +22,10 @@ This document describes the wallet API design for the frontend (Swift) wallet fe
      - `usdBalance`: Optional USD-equivalent value as a string
    - USD balance is optional because not all assets have a direct USD conversion, or the conversion rate may not be available
 
-2. **Wallet Balance Callback**
-   - The live trading engine should emit wallet balance updates via a callback
-   - The callback should be triggered on order fills, trades, and periodic refreshes
-   - The frontend can subscribe to this callback to keep the wallet UI up to date
-
-3. **On-Demand Query**
-   - The Swift API should expose a method to query the current wallet balance on demand
-   - This is needed for initial load and manual refresh
+2. **Periodic Polling**
+   - The frontend periodically fetches wallet balances from the trading provider
+   - No push-based callback is needed; the frontend controls the refresh interval
+   - This simplifies the engine and avoids coupling wallet updates to trading events
 
 ## Types
 
@@ -57,36 +53,6 @@ type WalletAsset struct {
 }
 ```
 
-### Protocol Buffer Messages
-
-**File: `pkg/strategy/strategy.proto`**
-
-```protobuf
-// WalletAsset represents a single asset balance in the user's wallet.
-message WalletAsset {
-  string title = 1;                  // Human-readable asset name
-  string symbol = 2;                 // Ticker symbol (e.g., "BTC")
-  string balance = 3;                // Balance as string for precision
-  optional string usd_balance = 4;   // Optional USD-equivalent value
-}
-
-// GetWalletResponse contains all wallet asset balances.
-message GetWalletResponse {
-  repeated WalletAsset assets = 1;
-}
-```
-
-Add the RPC method to the `StrategyApi` service:
-
-```protobuf
-service StrategyApi {
-  // ... existing methods ...
-
-  // GetWallet returns the current wallet balances for all assets.
-  rpc GetWallet(google.protobuf.Empty) returns (GetWalletResponse) {}
-}
-```
-
 ## Swift API
 
 ### Gomobile-Compatible Collection
@@ -110,33 +76,30 @@ type WalletAssetItem struct {
 }
 ```
 
-### TradingEngineHelper Callback
+### GetWallet Method
 
-Add a new callback to `TradingEngineHelper` for wallet balance updates:
-
-```go
-type TradingEngineHelper interface {
-    // ... existing callbacks ...
-
-    // OnWalletUpdate is called when wallet balances change (e.g., after order fills).
-    // assets is a collection of WalletAssetItem that can be iterated with Get(i)/Size().
-    OnWalletUpdate(assets WalletAssetCollection) error
-}
-```
-
-### Engine Callback Type
-
-Add a new callback type in `internal/trading/engine/engine.go`:
+The `TradingEngine` exposes a `GetWallet` method that the frontend calls periodically to fetch the current wallet balances:
 
 ```go
-// OnWalletUpdateCallback is called when wallet balances are updated.
-type OnWalletUpdateCallback func(assets []types.WalletAsset) error
+// GetWallet returns the current wallet balances from the trading provider.
+// The frontend should call this periodically to refresh the wallet UI.
+func (t *TradingEngine) GetWallet() (WalletAssetCollection, error) {
+    assets, err := t.engine.GetWallet()
+    if err != nil {
+        return nil, err
+    }
 
-type LiveTradingCallbacks struct {
-    // ... existing callbacks ...
+    items := make([]*WalletAssetItem, len(assets))
+    for i, a := range assets {
+        items[i] = &WalletAssetItem{
+            Title:      a.Title,
+            Symbol:     a.Symbol,
+            Balance:    a.Balance,
+            UsdBalance: a.UsdBalance,
+        }
+    }
 
-    // OnWalletUpdate is called when wallet balances change.
-    OnWalletUpdate *OnWalletUpdateCallback
+    return &WalletAssetArray{items: items}, nil
 }
 ```
 
@@ -148,6 +111,9 @@ import Swiftargo
 
 struct WalletView: View {
     @State private var assets: [WalletDisplayItem] = []
+    @State private var engine: SwiftargoTradingEngine?
+
+    let timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         List(assets, id: \.symbol) { asset in
@@ -172,6 +138,29 @@ struct WalletView: View {
             }
         }
         .navigationTitle("Wallet")
+        .onAppear { fetchWallet() }
+        .onReceive(timer) { _ in fetchWallet() }
+    }
+
+    private func fetchWallet() {
+        guard let engine = engine else { return }
+        do {
+            let collection = try engine.getWallet()
+            var items: [WalletDisplayItem] = []
+            for i in 0..<collection.size() {
+                if let asset = collection.get(i) {
+                    items.append(WalletDisplayItem(
+                        title: asset.title,
+                        symbol: asset.symbol,
+                        balance: asset.balance,
+                        usdBalance: asset.usdBalance
+                    ))
+                }
+            }
+            self.assets = items
+        } catch {
+            print("Failed to fetch wallet: \(error)")
+        }
     }
 }
 
@@ -180,31 +169,6 @@ struct WalletDisplayItem {
     let symbol: String
     let balance: String
     let usdBalance: String
-}
-
-// In your TradingEngineHelper implementation:
-class MyTradingHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
-    weak var walletDelegate: WalletDelegate?
-
-    func onWalletUpdate(_ assets: SwiftargoWalletAssetCollection?) throws {
-        guard let assets = assets else { return }
-        var items: [WalletDisplayItem] = []
-        for i in 0..<assets.size() {
-            if let asset = assets.get(i) {
-                items.append(WalletDisplayItem(
-                    title: asset.title,
-                    symbol: asset.symbol,
-                    balance: asset.balance,
-                    usdBalance: asset.usdBalance
-                ))
-            }
-        }
-        DispatchQueue.main.async {
-            self.walletDelegate?.didUpdateWallet(items)
-        }
-    }
-
-    // ... other existing callbacks ...
 }
 ```
 
@@ -284,13 +248,10 @@ func (b *BacktestTrading) GetWallet() ([]types.WalletAsset, error) {
 
 | File | Change |
 |------|--------|
-| `pkg/strategy/strategy.proto` | Add `WalletAsset` message, `GetWalletResponse` message, and `GetWallet` RPC |
 | `internal/trading/provider/trading_provider.go` | Add `GetWallet()` to `TradingSystemProvider` interface |
 | `internal/trading/provider/binance.go` | Implement `GetWallet()` for Binance |
 | `internal/backtest/engine/engine_v1/backtest_trading.go` | Implement `GetWallet()` for backtest |
-| `internal/trading/engine/engine.go` | Add `OnWalletUpdateCallback` and update `LiveTradingCallbacks` |
-| `internal/trading/engine/engine_v1/live_trading_v1.go` | Call wallet callback after order fills |
-| `pkg/swift-argo/trading.go` | Add `OnWalletUpdate` to `TradingEngineHelper`, bridge callback |
+| `pkg/swift-argo/trading.go` | Add `GetWallet()` method to `TradingEngine` |
 | `pkg/swift-argo/collections.go` | Add `WalletAssetCollection` and `WalletAssetItem` types |
 
 ## Implementation TODOs
@@ -298,34 +259,24 @@ func (b *BacktestTrading) GetWallet() ([]types.WalletAsset, error) {
 ### Phase 1: Core Types
 
 - [ ] **TODO-1**: Create `internal/types/wallet.go` with `WalletAsset` struct
-- [ ] **TODO-2**: Add `WalletAsset` and `GetWalletResponse` messages to `strategy.proto`
-- [ ] **TODO-3**: Add `GetWallet` RPC to `StrategyApi` service in `strategy.proto`
-- [ ] **TODO-4**: Run `make generate` to regenerate protobuf code
 
 ### Phase 2: Provider Integration
 
-- [ ] **TODO-5**: Add `GetWallet()` method to `TradingSystemProvider` interface
-- [ ] **TODO-6**: Implement `GetWallet()` in Binance trading provider
-- [ ] **TODO-7**: Implement `GetWallet()` in backtest trading system
+- [ ] **TODO-2**: Add `GetWallet()` method to `TradingSystemProvider` interface
+- [ ] **TODO-3**: Implement `GetWallet()` in Binance trading provider
+- [ ] **TODO-4**: Implement `GetWallet()` in backtest trading system
 
-### Phase 3: Engine Callbacks
+### Phase 3: Swift API
 
-- [ ] **TODO-8**: Add `OnWalletUpdateCallback` to `LiveTradingCallbacks` in `engine.go`
-- [ ] **TODO-9**: Trigger wallet callback after order fills in `live_trading_v1.go`
-- [ ] **TODO-10**: Add periodic wallet refresh (optional, for providers that support streaming balance updates)
+- [ ] **TODO-5**: Add `WalletAssetCollection` and `WalletAssetItem` to `pkg/swift-argo/collections.go`
+- [ ] **TODO-6**: Add `GetWallet()` method to `TradingEngine` in `pkg/swift-argo/trading.go`
 
-### Phase 4: Swift API
+### Phase 4: Testing
 
-- [ ] **TODO-11**: Add `WalletAssetCollection` and `WalletAssetItem` to `pkg/swift-argo/collections.go`
-- [ ] **TODO-12**: Add `OnWalletUpdate` callback to `TradingEngineHelper` interface
-- [ ] **TODO-13**: Bridge the wallet callback in `TradingEngine.createCallbacks()`
-
-### Phase 5: Testing
-
-- [ ] **TODO-14**: Add unit tests for `WalletAsset` JSON serialization
-- [ ] **TODO-15**: Add unit tests for Binance `GetWallet()` implementation
-- [ ] **TODO-16**: Add unit tests for backtest `GetWallet()` implementation
-- [ ] **TODO-17**: Add integration tests for wallet callback in live trading
+- [ ] **TODO-7**: Add unit tests for `WalletAsset` JSON serialization
+- [ ] **TODO-8**: Add unit tests for Binance `GetWallet()` implementation
+- [ ] **TODO-9**: Add unit tests for backtest `GetWallet()` implementation
+- [ ] **TODO-10**: Add unit tests for `GetWallet()` in Swift bridge
 
 ## Test Plan
 
@@ -389,11 +340,10 @@ func TestBinanceTradingProvider_GetWallet(t *testing.T) {
 ### Integration Tests
 
 ```go
-func TestLiveTrading_WalletCallback(t *testing.T) {
-    // 1. Set up live trading engine with mock provider
-    // 2. Register OnWalletUpdate callback
-    // 3. Simulate an order fill
-    // 4. Verify callback is invoked with updated balances
+func TestTradingEngine_GetWallet(t *testing.T) {
+    // 1. Set up trading engine with mock provider
+    // 2. Call GetWallet()
+    // 3. Verify returned assets match provider balances
 }
 ```
 
@@ -438,19 +388,16 @@ func TestLiveTrading_WalletCallback(t *testing.T) {
 
 3. **Flat Asset List**: The wallet returns a flat list of assets rather than a nested structure. This keeps the API simple and maps directly to the UI list view.
 
-4. **Callback-Based Updates**: Wallet updates are pushed via callbacks (not polling) to keep the UI responsive and avoid unnecessary API calls to the trading provider.
+4. **Polling-Based Updates**: The frontend periodically fetches wallet balances rather than relying on push-based callbacks. This simplifies the engine, avoids coupling wallet updates to trading events, and gives the frontend full control over refresh frequency.
 
 ## Backward Compatibility
 
 1. **Existing `AccountInfo`**: The current `AccountInfo` struct and `GetAccountInfo` RPC are preserved. The wallet API is additive and does not replace existing account functionality.
-2. **Optional Callback**: The `OnWalletUpdate` callback is a pointer (nil by default), so existing code that does not use it continues to work unchanged.
-3. **Provider Interface**: Adding `GetWallet()` to `TradingSystemProvider` requires all implementations to add the method. A default implementation returning the balance as a single USD asset can ease migration.
+2. **Provider Interface**: Adding `GetWallet()` to `TradingSystemProvider` requires all implementations to add the method. A default implementation returning the balance as a single USD asset can ease migration.
 
 ## Related Files
 
 - [account.go](../internal/types/account.go) - Existing `AccountInfo` struct
 - [trading_provider.go](../internal/trading/provider/trading_provider.go) - `TradingSystemProvider` interface
-- [engine.go](../internal/trading/engine/engine.go) - Live trading engine callbacks
 - [trading.go](../pkg/swift-argo/trading.go) - Swift bindings
 - [collections.go](../pkg/swift-argo/collections.go) - Gomobile collection types
-- [strategy.proto](../pkg/strategy/strategy.proto) - Protobuf definitions
