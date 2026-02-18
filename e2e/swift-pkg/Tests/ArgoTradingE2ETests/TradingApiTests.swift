@@ -188,6 +188,61 @@ final class TradingApiTests: XCTestCase {
         // Engine config should have these fields
         XCTAssertTrue(schema.contains("symbols"), "Schema should contain symbols field")
         XCTAssertTrue(schema.contains("interval"), "Schema should contain interval field")
+        XCTAssertTrue(schema.contains("data_output_path"), "Schema should contain data_output_path field")
+        XCTAssertTrue(schema.contains("market_data_cache_size"), "Schema should contain market_data_cache_size field")
+        XCTAssertTrue(schema.contains("enable_logging"), "Schema should contain enable_logging field")
+        XCTAssertTrue(schema.contains("prefetch"), "Schema should contain prefetch field")
+    }
+
+    func testGetLiveTradingEngineConfigSchema_HasInlinedProperties() {
+        let schema = SwiftargoGetLiveTradingEngineConfigSchema()
+
+        // Parse schema JSON
+        guard let data = schema.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            XCTFail("Failed to parse schema JSON")
+            return
+        }
+
+        // Should NOT have $ref at top level (types should be inlined)
+        XCTAssertNil(json["$ref"], "Schema should not use $ref at top level")
+        XCTAssertNil(json["$defs"], "Schema should not have $defs (types inlined)")
+
+        // Should have properties directly at top level
+        guard let properties = json["properties"] as? [String: Any] else {
+            XCTFail("Schema should have top-level properties")
+            return
+        }
+
+        XCTAssertNotNil(properties["symbols"], "Should have symbols property")
+        XCTAssertNotNil(properties["interval"], "Should have interval property")
+        XCTAssertNotNil(properties["prefetch"], "Should have prefetch property")
+
+        // Prefetch should be inlined (not a $ref)
+        guard let prefetch = properties["prefetch"] as? [String: Any] else {
+            XCTFail("Prefetch should be a dict")
+            return
+        }
+        XCTAssertNil(prefetch["$ref"], "Prefetch should not be a $ref")
+        XCTAssertNotNil(prefetch["properties"], "Prefetch should have inlined properties")
+    }
+
+    func testGetLiveTradingEngineConfigSchema_IntervalHasEnumValues() {
+        let schema = SwiftargoGetLiveTradingEngineConfigSchema()
+
+        guard let data = schema.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let properties = json["properties"] as? [String: Any],
+              let interval = properties["interval"] as? [String: Any],
+              let enumValues = interval["enum"] as? [String] else {
+            XCTFail("Failed to parse interval enum values")
+            return
+        }
+
+        XCTAssertTrue(enumValues.contains("1m"), "Interval should include 1m")
+        XCTAssertTrue(enumValues.contains("5m"), "Interval should include 5m")
+        XCTAssertTrue(enumValues.contains("1h"), "Interval should include 1h")
+        XCTAssertTrue(enumValues.contains("1d"), "Interval should include 1d")
     }
 
     // MARK: - GetSupportedMarketDataProviders Tests
@@ -364,6 +419,72 @@ final class TradingApiTests: XCTestCase {
         }
     }
 
+    // MARK: - GetMarketDataProviderSchema Tests
+
+    func testGetMarketDataProviderSchema_BinanceReturnsValidJSON() {
+        let schema = SwiftargoGetMarketDataProviderSchema("binance")
+
+        XCTAssertFalse(schema.isEmpty, "Binance market data schema should not be empty")
+        XCTAssertTrue(isValidJSON(schema), "Binance market data schema should be valid JSON")
+    }
+
+    func testGetMarketDataProviderSchema_BinanceContainsRequiredFields() {
+        let schema = SwiftargoGetMarketDataProviderSchema("binance")
+
+        XCTAssertTrue(schema.contains("symbols"), "Binance schema should contain symbols field")
+        XCTAssertTrue(schema.contains("interval"), "Binance schema should contain interval field")
+        XCTAssertFalse(schema.contains("apiKey"), "Binance schema should NOT contain apiKey field")
+    }
+
+    func testGetMarketDataProviderSchema_PolygonReturnsValidJSON() {
+        let schema = SwiftargoGetMarketDataProviderSchema("polygon")
+
+        XCTAssertFalse(schema.isEmpty, "Polygon market data schema should not be empty")
+        XCTAssertTrue(isValidJSON(schema), "Polygon market data schema should be valid JSON")
+    }
+
+    func testGetMarketDataProviderSchema_PolygonContainsRequiredFields() {
+        let schema = SwiftargoGetMarketDataProviderSchema("polygon")
+
+        XCTAssertTrue(schema.contains("symbols"), "Polygon schema should contain symbols field")
+        XCTAssertTrue(schema.contains("interval"), "Polygon schema should contain interval field")
+        XCTAssertTrue(schema.contains("apiKey"), "Polygon schema should contain apiKey field")
+    }
+
+    func testGetMarketDataProviderSchema_InvalidProviderReturnsEmptyString() {
+        let schema = SwiftargoGetMarketDataProviderSchema("invalid")
+
+        XCTAssertEqual(schema, "", "Invalid provider should return empty string")
+    }
+
+    func testGetMarketDataProviderSchema_EmptyProviderReturnsEmptyString() {
+        let schema = SwiftargoGetMarketDataProviderSchema("")
+
+        XCTAssertEqual(schema, "", "Empty provider should return empty string")
+    }
+
+    // MARK: - GetMarketDataProviderKeychainFields Tests
+
+    func testGetMarketDataProviderKeychainFields_PolygonReturnsApiKey() {
+        let fields = SwiftargoGetMarketDataProviderKeychainFields("polygon")
+
+        XCTAssertNotNil(fields, "Polygon should have keychain fields")
+        XCTAssertEqual(fields!.size(), 1, "Polygon should have 1 keychain field")
+        XCTAssertEqual(fields!.get(0), "apiKey", "Keychain field should be apiKey")
+    }
+
+    func testGetMarketDataProviderKeychainFields_BinanceReturnsNil() {
+        let fields = SwiftargoGetMarketDataProviderKeychainFields("binance")
+
+        XCTAssertNil(fields, "Binance should not have keychain fields")
+    }
+
+    func testGetMarketDataProviderKeychainFields_InvalidProviderReturnsNil() {
+        let fields = SwiftargoGetMarketDataProviderKeychainFields("invalid")
+
+        XCTAssertNil(fields, "Invalid provider should return nil")
+    }
+
     // MARK: - SetMarketDataProvider Tests
 
     func testSetMarketDataProvider_WithBinance_Succeeds() throws {
@@ -371,8 +492,11 @@ final class TradingApiTests: XCTestCase {
         var error: NSError?
         let engine = SwiftargoNewTradingEngine(helper, &error)!
 
-        // Binance doesn't require config
-        XCTAssertNoThrow(try engine.setMarketDataProvider("binance", configJSON: "{}"))
+        // Binance requires symbols and interval
+        let config = """
+        {"symbols": ["BTCUSDT"], "interval": "1m"}
+        """
+        XCTAssertNoThrow(try engine.setMarketDataProvider("binance", configJSON: config))
     }
 
     func testSetMarketDataProvider_WithInvalidProvider_ThrowsError() throws {
@@ -390,9 +514,26 @@ final class TradingApiTests: XCTestCase {
         var error: NSError?
         let engine = SwiftargoNewTradingEngine(helper, &error)!
 
-        // Polygon requires apiKey
-        XCTAssertThrowsError(try engine.setMarketDataProvider("polygon", configJSON: "{}")) { err in
+        // Polygon requires apiKey, symbols, and interval
+        let config = """
+        {"symbols": ["SPY"], "interval": "1m"}
+        """
+        XCTAssertThrowsError(try engine.setMarketDataProvider("polygon", configJSON: config)) { err in
             XCTAssertNotNil(err, "Should throw error for missing apiKey")
+        }
+    }
+
+    func testSetMarketDataProvider_BinanceMissingSymbols_ThrowsError() throws {
+        let helper = MockTradingEngineHelper()
+        var error: NSError?
+        let engine = SwiftargoNewTradingEngine(helper, &error)!
+
+        // Missing required symbols field
+        let config = """
+        {"interval": "1m"}
+        """
+        XCTAssertThrowsError(try engine.setMarketDataProvider("binance", configJSON: config)) { err in
+            XCTAssertNotNil(err, "Should throw error for missing symbols")
         }
     }
 

@@ -95,8 +95,18 @@ func main() {
 	}
 
 	// Set market data provider
+	var marketDataConfig any
+	if *marketDataProviderFlag == "polygon" {
+		marketDataConfig = &provider.PolygonStreamConfig{
+			BaseStreamConfig: provider.BaseStreamConfig{
+				Symbols:  symbols,
+				Interval: *intervalFlag,
+			},
+			ApiKey: *polygonApiKeyFlag,
+		}
+	}
 	marketDataProvider, err := provider.NewMarketDataProvider(
-		provider.ProviderType(*marketDataProviderFlag), *polygonApiKeyFlag)
+		provider.ProviderType(*marketDataProviderFlag), marketDataConfig)
 	if err != nil {
 		log.Fatalf("Failed to create market data provider: %v", err)
 	}

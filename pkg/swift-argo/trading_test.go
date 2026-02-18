@@ -206,13 +206,33 @@ func (suite *TradingTestSuite) TestGetLiveTradingEngineConfigSchema() {
 	suite.NotEmpty(schema)
 
 	// Verify it's valid JSON
-	var schemaMap map[string]interface{}
+	var schemaMap map[string]any
 	err := json.Unmarshal([]byte(schema), &schemaMap)
 	suite.NoError(err)
 
-	// Check that schema contains expected fields
-	suite.Contains(schema, "symbols")
-	suite.Contains(schema, "interval")
+	// Should NOT have $ref at top level (DoNotReference: true)
+	suite.NotContains(schemaMap, "$ref")
+	suite.NotContains(schemaMap, "$defs")
+
+	// Check that properties are inlined at top level
+	properties, ok := schemaMap["properties"].(map[string]any)
+	suite.True(ok, "schema should have top-level properties")
+	suite.Contains(properties, "symbols")
+	suite.Contains(properties, "interval")
+	suite.Contains(properties, "market_data_cache_size")
+	suite.Contains(properties, "enable_logging")
+	suite.Contains(properties, "data_output_path")
+	suite.Contains(properties, "prefetch")
+
+	// Verify prefetch is inlined (not a $ref)
+	prefetch, ok := properties["prefetch"].(map[string]any)
+	suite.True(ok)
+	suite.NotContains(prefetch, "$ref")
+	prefetchProps, ok := prefetch["properties"].(map[string]any)
+	suite.True(ok, "prefetch should have inlined properties")
+	suite.Contains(prefetchProps, "enabled")
+	suite.Contains(prefetchProps, "start_time_type")
+	suite.Contains(prefetchProps, "days")
 }
 
 // Test GetSupportedMarketDataProviders
@@ -328,8 +348,8 @@ func (suite *TradingTestSuite) TestSetMarketDataProvider_Binance() {
 	eng, err := NewTradingEngine(helper)
 	suite.NoError(err)
 
-	// Binance doesn't require config
-	err = eng.SetMarketDataProvider("binance", `{}`)
+	// Binance requires symbols and interval
+	err = eng.SetMarketDataProvider("binance", `{"symbols": ["BTCUSDT"], "interval": "1m"}`)
 	suite.NoError(err)
 }
 
@@ -338,10 +358,10 @@ func (suite *TradingTestSuite) TestSetMarketDataProvider_PolygonMissingApiKey() 
 	eng, err := NewTradingEngine(helper)
 	suite.NoError(err)
 
-	// Polygon requires apiKey
-	err = eng.SetMarketDataProvider("polygon", `{}`)
+	// Polygon requires apiKey, symbols, and interval
+	err = eng.SetMarketDataProvider("polygon", `{"symbols": ["SPY"], "interval": "1m"}`)
 	suite.Error(err)
-	suite.Contains(err.Error(), "apiKey")
+	suite.Contains(err.Error(), "ApiKey")
 }
 
 func (suite *TradingTestSuite) TestSetMarketDataProvider_PolygonEmptyApiKey() {
@@ -349,9 +369,9 @@ func (suite *TradingTestSuite) TestSetMarketDataProvider_PolygonEmptyApiKey() {
 	eng, err := NewTradingEngine(helper)
 	suite.NoError(err)
 
-	err = eng.SetMarketDataProvider("polygon", `{"apiKey": ""}`)
+	err = eng.SetMarketDataProvider("polygon", `{"symbols": ["SPY"], "interval": "1m", "apiKey": ""}`)
 	suite.Error(err)
-	suite.Contains(err.Error(), "apiKey")
+	suite.Contains(err.Error(), "ApiKey")
 }
 
 func (suite *TradingTestSuite) TestSetMarketDataProvider_InvalidProvider() {

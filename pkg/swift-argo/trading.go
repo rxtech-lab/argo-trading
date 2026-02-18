@@ -128,6 +128,30 @@ func GetSupportedMarketDataProviders() StringCollection {
 	}}
 }
 
+// GetMarketDataProviderSchema returns the JSON schema for a market data provider's streaming configuration.
+// The providerName should be one of the values returned by GetSupportedMarketDataProviders().
+// Returns empty string if the provider is not found.
+func GetMarketDataProviderSchema(providerName string) string {
+	schema, err := provider.GetStreamConfigSchema(providerName)
+	if err != nil {
+		return ""
+	}
+
+	return schema
+}
+
+// GetMarketDataProviderKeychainFields returns the keychain field names for a market data provider's configuration.
+// The providerName should be one of the values returned by GetSupportedMarketDataProviders().
+// Returns nil if the provider is not found.
+func GetMarketDataProviderKeychainFields(providerName string) StringCollection {
+	fields, err := provider.GetStreamKeychainFields(providerName)
+	if err != nil || len(fields) == 0 {
+		return nil
+	}
+
+	return &StringArray{items: fields}
+}
+
 // NewTradingEngine creates a new TradingEngine with the given helper for callbacks.
 // The helper can be nil if no callbacks are needed.
 func NewTradingEngine(helper TradingEngineHelper) (*TradingEngine, error) {
@@ -177,32 +201,17 @@ func (t *TradingEngine) SetTradingProvider(providerName string, configJSON strin
 
 // SetMarketDataProvider sets the market data provider for streaming data.
 // providerName: "binance" or "polygon"
-// configJSON: JSON config (polygon requires {"apiKey": "your-key"}, binance can be empty "{}").
+// configJSON: JSON config conforming to GetMarketDataProviderSchema(providerName).
 func (t *TradingEngine) SetMarketDataProvider(providerName string, configJSON string) error {
-	var marketProvider provider.Provider
-	var err error
-
-	switch provider.ProviderType(providerName) {
-	case provider.ProviderBinance:
-		marketProvider, err = provider.NewBinanceClient()
-	case provider.ProviderPolygon:
-		if configJSON == "" || configJSON == "{}" {
-			return fmt.Errorf("polygon provider requires apiKey in config")
-		}
-		var config struct {
-			ApiKey string `json:"apiKey"`
-		}
-		if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-			return fmt.Errorf("failed to parse polygon config: %w", err)
-		}
-		if config.ApiKey == "" {
-			return fmt.Errorf("polygon provider requires apiKey in config")
-		}
-		marketProvider, err = provider.NewPolygonClient(config.ApiKey)
-	default:
-		return fmt.Errorf("unsupported market data provider: %s", providerName)
+	config, err := provider.ParseStreamConfig(providerName, configJSON)
+	if err != nil {
+		return fmt.Errorf("failed to parse market data provider config: %w", err)
 	}
 
+	marketProvider, err := provider.NewMarketDataProvider(
+		provider.ProviderType(providerName),
+		config,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create market data provider: %w", err)
 	}
