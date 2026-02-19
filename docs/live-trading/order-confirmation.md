@@ -29,14 +29,16 @@ Order confirmation is configured via the `LiveTradingEngineConfig` struct. The `
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `order_confirmation` | `OrderConfirmationMode` | `"auto"` | `"auto"` to auto-confirm, `"manual"` to require callback confirmation |
+| `confirmation_timeout` | `duration` | `30s` | Maximum time to wait for a confirmation response. If the timeout expires, the order is rejected. Only used when `order_confirmation` is `"manual"`. |
 
 ### Go Configuration
 
 ```go
 config := engine.LiveTradingEngineConfig{
-    MarketDataCacheSize: 1000,
-    EnableLogging:       true,
-    OrderConfirmation:   engine.OrderConfirmationManual, // require manual confirmation
+    MarketDataCacheSize:  1000,
+    EnableLogging:        true,
+    OrderConfirmation:    engine.OrderConfirmationManual, // require manual confirmation
+    ConfirmationTimeout:  60 * time.Second,               // reject if no response within 60s
     Prefetch: engine.PrefetchConfig{
         Enabled:       true,
         StartTimeType: "days",
@@ -51,7 +53,8 @@ config := engine.LiveTradingEngineConfig{
 engine:
   market_data_cache_size: 1000
   enable_logging: true
-  order_confirmation: manual  # "auto" (default) or "manual"
+  order_confirmation: manual    # "auto" (default) or "manual"
+  confirmation_timeout: 30s     # timeout for manual confirmation (default: 30s)
   prefetch:
     enabled: true
     start_time_type: days
@@ -92,7 +95,7 @@ Strategy.ProcessData()
 
 ### Manual Confirm
 
-When `order_confirmation` is `"manual"`, the engine intercepts the order and invokes the `OnConfirmOrder` callback:
+When `order_confirmation` is `"manual"`, the engine intercepts the order and invokes the `OnConfirmOrder` callback. If the callback does not respond within `confirmation_timeout`, the order is automatically rejected:
 
 ```
 Strategy.ProcessData()
@@ -103,11 +106,11 @@ Strategy.ProcessData()
         ▼
   OnConfirmOrder(order)
         │
-    ┌───┴───┐
-    │       │
-  true    false
-    │       │
-    ▼       ▼
+    ┌───┼───────┐
+    │   │       │
+  true false  timeout
+    │   │       │
+    ▼   ▼       ▼
   Trading   Order
   Provider  rejected
   (order    (not sent to
@@ -257,6 +260,31 @@ If `order_confirmation` is `"manual"` but the `OnConfirmOrder` callback is `nil`
 | `true` | Order is confirmed and sent to the trading provider |
 | `false` | Order is rejected and not sent to the trading provider |
 
+### Confirmation Timeout
+
+When `order_confirmation` is `"manual"`, the engine enforces a timeout on the `OnConfirmOrder` callback via the `confirmation_timeout` setting (default: `30s`). If the callback does not return within the timeout period, the order is automatically **rejected** — it will not be sent to the trading provider.
+
+This prevents the engine from stalling indefinitely if the user does not respond (e.g., app in background, UI not visible).
+
+**Go configuration example:**
+
+```go
+config := engine.LiveTradingEngineConfig{
+    OrderConfirmation:   engine.OrderConfirmationManual,
+    ConfirmationTimeout: 60 * time.Second, // 60-second timeout
+}
+```
+
+**YAML configuration example:**
+
+```yaml
+engine:
+  order_confirmation: manual
+  confirmation_timeout: 60s
+```
+
+> **Note:** The timeout is only enforced when `order_confirmation` is `"manual"`. In `"auto"` mode, the timeout setting is ignored.
+
 ### Interaction with Other Callbacks
 
 - `OnOrderPlaced` is only called if the order is confirmed (callback returns `true` or mode is `"auto"`).
@@ -277,6 +305,7 @@ import (
     "os"
     "os/signal"
     "syscall"
+    "time"
 
     "github.com/rxtech-lab/argo-trading/internal/trading/engine"
     "github.com/rxtech-lab/argo-trading/internal/types"
@@ -289,9 +318,10 @@ func main() {
     }
 
     config := engine.LiveTradingEngineConfig{
-        MarketDataCacheSize: 1000,
-        EnableLogging:       true,
-        OrderConfirmation:   engine.OrderConfirmationManual,
+        MarketDataCacheSize:  1000,
+        EnableLogging:        true,
+        OrderConfirmation:    engine.OrderConfirmationManual,
+        ConfirmationTimeout:  30 * time.Second,
         Prefetch: engine.PrefetchConfig{
             Enabled:       true,
             StartTimeType: "days",
@@ -355,6 +385,7 @@ class TradingApp: TradingEngineHelper {
             "market_data_cache_size": 1000,
             "enable_logging": true,
             "order_confirmation": "manual",
+            "confirmation_timeout": "30s",
             "prefetch": {
                 "enabled": true,
                 "start_time_type": "days",
