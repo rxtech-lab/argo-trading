@@ -97,7 +97,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: macos-binaries-${{ needs.get-version.outputs.version }}
           path: |
@@ -141,7 +141,7 @@ jobs:
         run: zip -j ArgoTrading_Linux_amd64.zip output/trading-backtest
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: linux-binaries-${{ needs.get-version.outputs.version }}
           path: ArgoTrading_Linux_amd64.zip
@@ -168,18 +168,18 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Download xcframework artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: xcframework-${{ needs.get-version.outputs.version }}
 
       - name: Download macOS binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: macos-binaries-${{ needs.get-version.outputs.version }}
           path: macos-binaries
 
       - name: Download Linux binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: linux-binaries-${{ needs.get-version.outputs.version }}
 
@@ -195,7 +195,7 @@ jobs:
           cat internal/version/version.go
 
       - name: Setup SSH for deploy key
-        uses: webfactory/ssh-agent@v0.9.1
+        uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_KEY }}
 
