@@ -22,3 +22,4 @@ docs/index.*
 !/cmd/data
 trading
 ArgoTradingLocal/.swiftpm/xcode/xcuserdata/qiweili.xcuserdatad/xcschemes/xcschememanagement.plist
+.claude/settings.json
