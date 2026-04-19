@@ -533,8 +533,10 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				{
 					Symbol: "AAPL",
 					TradePnl: types.TradePnl{
-						RealizedPnL:   0, // Position fully closed, system shows 0
-						TotalPnL:      0, // Position fully closed, system shows 0
+						// Two round-trips: buy 100@100, sell 100@110, buy 100@105, sell 100@115
+						// realized = (22500 - 2) - (20500 + 2) = 1996
+						RealizedPnL:   1996.0,
+						TotalPnL:      1996.0,
 						UnrealizedPnL: 0,
 						MaximumLoss:   0,
 						MaximumProfit: 1248.0, // From trades table MAX(pnl)
@@ -1319,6 +1321,97 @@ func (suite *BacktestStateTestSuite) TestGetPosition() {
 			suite.Assert().Equal(tc.expected.TotalLongOutFee, position.TotalLongOutFee, "Total out fee mismatch")
 			suite.Assert().Equal(tc.expected.OpenTimestamp.UTC(), position.OpenTimestamp.UTC(), "Open timestamp mismatch")
 			suite.Assert().Equal(tc.expected.StrategyName, position.StrategyName, "Strategy name mismatch")
+		})
+	}
+}
+
+// TestCalculateUnrealizedPnL_FlatPositionRealizedPnL is a regression test for the bug
+// where realized PnL was reported as 0 whenever the final position was flat.
+// See: BTCUSDT backtest produced 12 trades (6 round-trips) but reported realized_pnl=0.
+func (suite *BacktestStateTestSuite) TestCalculateUnrealizedPnL_FlatPositionRealizedPnL() {
+	tests := []struct {
+		name         string
+		position     types.Position
+		lastPrice    float64
+		wantRealized float64
+		wantUnrealzd float64
+		wantTotal    float64
+	}{
+		{
+			name: "Flat long position with multiple closed round-trips reports realized PnL",
+			// Two round-trips, both profitable: buy 100@100, sell 100@110, buy 100@105, sell 100@115.
+			// Fee of 1 per leg → realized = (22500 - 2) - (20500 + 2) = 1996.
+			position: types.Position{
+				Symbol:                       "AAPL",
+				TotalLongPositionQuantity:    0,
+				TotalLongInPositionQuantity:  200,
+				TotalLongOutPositionQuantity: 200,
+				TotalLongInPositionAmount:    20500,
+				TotalLongOutPositionAmount:   22500,
+				TotalLongInFee:               2,
+				TotalLongOutFee:              2,
+			},
+			lastPrice:    120,
+			wantRealized: 1996,
+			wantUnrealzd: 0,
+			wantTotal:    1996,
+		},
+		{
+			name: "Flat long position with net loss reports negative realized PnL",
+			// Mirrors the user-reported BTCUSDT case: 6 round-trips, mix of wins and losses,
+			// ending flat with net loss. Before the fix this returned 0,0,0.
+			position: types.Position{
+				Symbol:                       "BTCUSDT",
+				TotalLongPositionQuantity:    0,
+				TotalLongInPositionQuantity:  6,
+				TotalLongOutPositionQuantity: 6,
+				TotalLongInPositionAmount:    582526.19,
+				TotalLongOutPositionAmount:   582161.685,
+				TotalLongInFee:               6,
+				TotalLongOutFee:              6,
+			},
+			lastPrice:    94000,
+			wantRealized: -376.505,
+			wantUnrealzd: 0,
+			wantTotal:    -376.505,
+		},
+		{
+			name: "Open long position reports both realized (from prior closes) and unrealized",
+			// One closed round-trip: buy 100@100/sell 100@110, then buy 100@105 still open.
+			position: types.Position{
+				Symbol:                       "AAPL",
+				TotalLongPositionQuantity:    100,
+				TotalLongInPositionQuantity:  200,
+				TotalLongOutPositionQuantity: 100,
+				TotalLongInPositionAmount:    20500,
+				TotalLongOutPositionAmount:   11000,
+				TotalLongInFee:               2,
+				TotalLongOutFee:              1,
+			},
+			lastPrice: 120,
+			// avgEntry = (20500 + 2)/200 = 102.51; avgExit = (11000 - 1)/100 = 109.99.
+			// realized = 100*109.99 - 100*102.51 = 748.
+			// unrealized = 100*(120 - 102.51) = 1749.
+			wantRealized: 748,
+			wantUnrealzd: 1749,
+			wantTotal:    2497,
+		},
+		{
+			name:         "No trades produces zero across the board",
+			position:     types.Position{Symbol: "AAPL"},
+			lastPrice:    100,
+			wantRealized: 0,
+			wantUnrealzd: 0,
+			wantTotal:    0,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			got := calculateUnrealizedPnL(tc.position, tc.lastPrice)
+			suite.InDelta(tc.wantRealized, got.RealizedPnL, 1e-6, "RealizedPnL")
+			suite.InDelta(tc.wantUnrealzd, got.UnrealizedPnL, 1e-6, "UnrealizedPnL")
+			suite.InDelta(tc.wantTotal, got.TotalPnL, 1e-6, "TotalPnL")
 		})
 	}
 }

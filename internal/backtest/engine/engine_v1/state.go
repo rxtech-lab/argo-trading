@@ -614,24 +614,17 @@ func createZeroStats(symbol string, params statsParams) types.TradeStats {
 	}
 }
 
-// calculateUnrealizedPnL calculates the unrealized PnL for an open position.
+// calculateUnrealizedPnL calculates the realized and unrealized PnL for a position.
+// Realized PnL is always populated from closed round-trips, even when the final position is flat.
 func calculateUnrealizedPnL(position types.Position, lastPrice float64) types.TradePnl {
-	tradePnl := types.TradePnl{
-		RealizedPnL:   0,
-		UnrealizedPnL: 0,
-		TotalPnL:      0,
-		MaximumLoss:   0,
-		MaximumProfit: 0,
-	}
+	realizedPnl := position.GetTotalPnL()
+
+	var unrealizedPnL float64
 
 	if position.TotalLongPositionQuantity > 0 {
 		entryDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(position.GetAverageLongPositionEntryPrice()))
 		exitDec := decimal.NewFromFloat(position.TotalLongPositionQuantity).Mul(decimal.NewFromFloat(lastPrice))
-		unrealizedPnL, _ := exitDec.Sub(entryDec).Float64()
-		realizedPnl := position.GetTotalPnL()
-		tradePnl.TotalPnL = realizedPnl + unrealizedPnL
-		tradePnl.RealizedPnL = realizedPnl
-		tradePnl.UnrealizedPnL = unrealizedPnL
+		unrealizedPnL, _ = exitDec.Sub(entryDec).Float64()
 	} else if position.TotalShortPositionQuantity < 0 {
 		shortQuantity := -position.TotalShortPositionQuantity
 
@@ -640,14 +633,16 @@ func calculateUnrealizedPnL(position types.Position, lastPrice float64) types.Tr
 			entryPrice = position.TotalShortOutPositionAmount / position.TotalShortOutPositionQuantity
 		}
 
-		unrealizedPnL := (entryPrice - lastPrice) * shortQuantity
-		realizedPnl := position.GetTotalPnL()
-		tradePnl.TotalPnL = realizedPnl + unrealizedPnL
-		tradePnl.RealizedPnL = realizedPnl
-		tradePnl.UnrealizedPnL = unrealizedPnL
+		unrealizedPnL = (entryPrice - lastPrice) * shortQuantity
 	}
 
-	return tradePnl
+	return types.TradePnl{
+		RealizedPnL:   realizedPnl,
+		UnrealizedPnL: unrealizedPnL,
+		TotalPnL:      realizedPnl + unrealizedPnL,
+		MaximumLoss:   0,
+		MaximumProfit: 0,
+	}
 }
 
 // GetStats returns the statistics of the backtest for all symbols.
