@@ -470,6 +470,7 @@ message TradeRecord {
   PositionType position_type = 9;
   string strategy_name = 10;
   Reason reason = 11;
+  double cumulative_pnl = 12;
 }
 
 // LogLevel represents the severity of a log message

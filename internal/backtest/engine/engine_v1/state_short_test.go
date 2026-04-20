@@ -62,6 +62,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 100.0,
 					Fee:           1.0,
 					PnL:           0,
+					CumulativePnL: 0,
 				},
 			},
 			expectedPosition: ExpectPosition{
@@ -131,6 +132,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 100.0,
 					Fee:           1.0,
 					PnL:           0,
+					CumulativePnL: 0,
 				},
 				{
 					Order: types.Order{
@@ -153,6 +155,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 110.0,
 					Fee:           1.0,
 					PnL:           -1002,
+					CumulativePnL: -1002,
 				},
 			},
 			expectedPosition: ExpectPosition{
@@ -221,6 +224,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 100.0,
 					Fee:           1.0,
 					PnL:           0,
+					CumulativePnL: 0,
 				},
 				{
 					Order: types.Order{
@@ -243,6 +247,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 110.0,
 					Fee:           1.0,
 					PnL:           -501.5,
+					CumulativePnL: -501.5,
 				},
 			},
 			expectedPosition: ExpectPosition{
@@ -373,6 +378,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 100.0,
 					Fee:           1.0,
 					PnL:           0,
+					CumulativePnL: 0,
 				},
 				{
 					Order: types.Order{
@@ -392,6 +398,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 90.0,
 					Fee:           1.0,
 					PnL:           0,
+					CumulativePnL: 0,
 				},
 				{
 					Order: types.Order{
@@ -411,6 +418,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedPrice: 80.0,
 					Fee:           1.0,
 					PnL:           0,
+					CumulativePnL: 0,
 				},
 				{
 					Order: types.Order{
@@ -429,7 +437,12 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedQty:   100,
 					ExecutedPrice: 110.0,
 					Fee:           1.0,
-					PnL:           -2002,
+					// FIFO: matched with Buy 1 (100@$100, fee $1)
+					// PnL = (100*100 - 1) - (110*100 + 1) = 9999 - 11001 = -1002
+					PnL: -1002,
+					// Cumulative: avg entry = (27000-3)/300 = 89.99
+					// PnL = 89.99*100 - (110*100 + 1) = 8999 - 11001 = -2002
+					CumulativePnL: -2002,
 				},
 				{
 					Order: types.Order{
@@ -448,7 +461,12 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedQty:   100,
 					ExecutedPrice: 120.0,
 					Fee:           1.0,
-					PnL:           -3002,
+					// FIFO: matched with Buy 2 (100@$90, fee $1)
+					// PnL = (90*100 - 1) - (120*100 + 1) = 8999 - 12001 = -3002
+					PnL: -3002,
+					// Cumulative: avg entry = 89.99
+					// PnL = 89.99*100 - (120*100 + 1) = 8999 - 12001 = -3002
+					CumulativePnL: -3002,
 				},
 				{
 					Order: types.Order{
@@ -467,7 +485,12 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					ExecutedQty:   100,
 					ExecutedPrice: 130.0,
 					Fee:           1.0,
-					PnL:           -4002,
+					// FIFO: matched with Buy 3 (100@$80, fee $1)
+					// PnL = (80*100 - 1) - (130*100 + 1) = 7999 - 13001 = -5002
+					PnL: -5002,
+					// Cumulative: avg entry = 89.99
+					// PnL = 89.99*100 - (130*100 + 1) = 8999 - 13001 = -4002
+					CumulativePnL: -4002,
 				},
 			},
 			expectedPosition: ExpectPosition{
@@ -514,6 +537,7 @@ func (suite *BacktestStateTestSuite) TestUpdate_ShortPosition() {
 					suite.Assert().Equal(expected.ExecutedPrice, trades[i].ExecutedPrice, "ExecutedPrice mismatch")
 					suite.Assert().Equal(expected.Fee, trades[i].Fee, "Commission mismatch")
 					suite.Assert().Equal(expected.PnL, trades[i].PnL, "PnL mismatch")
+					suite.Assert().Equal(expected.CumulativePnL, trades[i].CumulativePnL, "CumulativePnL mismatch")
 				}
 			}
 

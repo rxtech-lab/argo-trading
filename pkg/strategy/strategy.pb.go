@@ -1874,17 +1874,18 @@ type TradeRecord struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	OrderId      string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	Symbol       string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Side         PurchaseType           `protobuf:"varint,3,opt,name=side,proto3,enum=strategy.PurchaseType" json:"side,omitempty"`
-	Quantity     float64                `protobuf:"fixed64,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	Price        float64                `protobuf:"fixed64,5,opt,name=price,proto3" json:"price,omitempty"`
-	ExecutedAt   *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=executed_at,json=executedAt,proto3" json:"executed_at,omitempty"`
-	Fee          float64                `protobuf:"fixed64,7,opt,name=fee,proto3" json:"fee,omitempty"`
-	Pnl          float64                `protobuf:"fixed64,8,opt,name=pnl,proto3" json:"pnl,omitempty"`
-	PositionType PositionType           `protobuf:"varint,9,opt,name=position_type,json=positionType,proto3,enum=strategy.PositionType" json:"position_type,omitempty"`
-	StrategyName string                 `protobuf:"bytes,10,opt,name=strategy_name,json=strategyName,proto3" json:"strategy_name,omitempty"`
-	Reason       *Reason                `protobuf:"bytes,11,opt,name=reason,proto3" json:"reason,omitempty"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side          PurchaseType           `protobuf:"varint,3,opt,name=side,proto3,enum=strategy.PurchaseType" json:"side,omitempty"`
+	Quantity      float64                `protobuf:"fixed64,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	Price         float64                `protobuf:"fixed64,5,opt,name=price,proto3" json:"price,omitempty"`
+	ExecutedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=executed_at,json=executedAt,proto3" json:"executed_at,omitempty"`
+	Fee           float64                `protobuf:"fixed64,7,opt,name=fee,proto3" json:"fee,omitempty"`
+	Pnl           float64                `protobuf:"fixed64,8,opt,name=pnl,proto3" json:"pnl,omitempty"`
+	PositionType  PositionType           `protobuf:"varint,9,opt,name=position_type,json=positionType,proto3,enum=strategy.PositionType" json:"position_type,omitempty"`
+	StrategyName  string                 `protobuf:"bytes,10,opt,name=strategy_name,json=strategyName,proto3" json:"strategy_name,omitempty"`
+	Reason        *Reason                `protobuf:"bytes,11,opt,name=reason,proto3" json:"reason,omitempty"`
+	CumulativePnl float64                `protobuf:"fixed64,12,opt,name=cumulative_pnl,json=cumulativePnl,proto3" json:"cumulative_pnl,omitempty"`
 }
 
 func (x *TradeRecord) ProtoReflect() protoreflect.Message {
@@ -1966,6 +1967,13 @@ func (x *TradeRecord) GetReason() *Reason {
 		return x.Reason
 	}
 	return nil
+}
+
+func (x *TradeRecord) GetCumulativePnl() float64 {
+	if x != nil {
+		return x.CumulativePnl
+	}
+	return 0
 }
 
 // LogRequest contains a log message from the strategy
