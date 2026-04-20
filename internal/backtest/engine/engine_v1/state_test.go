@@ -539,7 +539,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 						TotalPnL:      1996.0,
 						UnrealizedPnL: 0,
 						MaximumLoss:   0,
-						MaximumProfit: 1248.0, // From trades table MAX(pnl)
+						MaximumProfit: 998.0, // From trades table MAX(pnl) - FIFO matched
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        4,

@@ -113,6 +113,31 @@ initial_capital: 100000
 		}
 		s.Require().Greater(buyCount, 0, "Should have at least one buy trade")
 
+		// Verify PnL calculations for all trades
+		for _, trade := range trades {
+			if trade.Order.Side == types.PurchaseTypeBuy {
+				// Buy trades should always have zero PnL (both FIFO and cumulative)
+				s.Require().Equal(0.0, trade.PnL, "Buy trade FIFO PnL should be 0")
+				s.Require().Equal(0.0, trade.CumulativePnL, "Buy trade cumulative PnL should be 0")
+			}
+		}
+
+		// If we have sell trades, verify PnL consistency properties
+		if sellCount > 0 {
+			// For a fully closed position, total FIFO PnL should equal total cumulative PnL
+			// Note: this only holds when all positions are closed
+			var totalFIFO, totalCumulative float64
+			for _, trade := range trades {
+				totalFIFO += trade.PnL
+				totalCumulative += trade.CumulativePnL
+			}
+			// If the position is fully closed (buyCount == sellCount), totals should match
+			if buyCount == sellCount {
+				s.Require().InDelta(totalCumulative, totalFIFO, 0.01,
+					"Total FIFO PnL should equal total cumulative PnL for fully closed positions")
+			}
+		}
+
 		// Read and verify orders
 		orders, err := testhelper.ReadOrders(&s.E2ETestSuite, tmpFolder)
 		s.Require().NoError(err, "Failed to read orders")
