@@ -22,9 +22,10 @@ import (
 )
 
 type BacktestState struct {
-	db     *sql.DB
-	logger *logger.Logger
-	sq     squirrel.StatementBuilderType
+	db             *sql.DB
+	logger         *logger.Logger
+	sq             squirrel.StatementBuilderType
+	initialBalance float64
 }
 
 // CalculatePNL calculates the profit/loss for a trade
@@ -46,10 +47,16 @@ func NewBacktestState(logger *logger.Logger) (*BacktestState, error) {
 	}
 
 	return &BacktestState{
-		logger: logger,
-		db:     db,
-		sq:     squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
+		logger:         logger,
+		db:             db,
+		sq:             squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
+		initialBalance: 0,
 	}, nil
+}
+
+// SetInitialBalance sets the initial cash balance for the backtest run.
+func (b *BacktestState) SetInitialBalance(balance float64) {
+	b.initialBalance = balance
 }
 
 // Initialize creates the necessary tables for tracking trades and positions.
@@ -105,7 +112,9 @@ func (b *BacktestState) Initialize() error {
 			commission DOUBLE,
 			pnl DOUBLE,
 			cumulative_pnl DOUBLE,
-			position_type TEXT
+			position_type TEXT,
+			open_position_qty DOUBLE,
+			balance DOUBLE
 		)
 	`)
 	if err != nil {
@@ -174,26 +183,11 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		// Calculate FIFO PnL for closing trades; buys have zero individual PnL.
-		var fifoPnl float64 = 0
+		fifoPnl, err := b.computeClosingFIFOPnL(order, currentPosition)
+		if err != nil {
+			tx.Rollback()
 
-		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && currentPosition.TotalLongPositionQuantity > 0 {
-			var err error
-			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
-			if err != nil {
-				tx.Rollback()
-
-				return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
-			}
-		}
-
-		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && currentPosition.TotalShortPositionQuantity > 0 {
-			var err error
-			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
-			if err != nil {
-				tx.Rollback()
-
-				return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
-			}
+			return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
 		}
 
 		// Cumulative PnL is the running sum of per-trade PnL for this symbol.
@@ -205,6 +199,19 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		cumulativePnl := priorPnlSum + fifoPnl
+
+		openPositionQty := computeOpenPositionQty(order, currentPosition)
+
+		// Calculate cash balance after this trade.
+		var prevBalance float64
+		err = b.db.QueryRow(`SELECT COALESCE((SELECT balance FROM trades ORDER BY rowid DESC LIMIT 1), ?)`, b.initialBalance).Scan(&prevBalance)
+		if err != nil {
+			tx.Rollback()
+
+			return nil, fmt.Errorf("failed to query previous balance: %w", err)
+		}
+
+		balance := computeCashBalance(prevBalance, order)
 
 		// Create trade record
 		trade := types.Trade{
@@ -222,12 +229,14 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				Fee:          order.Fee,
 				PositionType: order.PositionType,
 			},
-			ExecutedAt:    order.Timestamp,
-			ExecutedQty:   order.Quantity,
-			ExecutedPrice: order.Price,
-			Fee:           order.Fee,
-			PnL:           fifoPnl,
-			CumulativePnL: cumulativePnl,
+			ExecutedAt:      order.Timestamp,
+			ExecutedQty:     order.Quantity,
+			ExecutedPrice:   order.Price,
+			Fee:             order.Fee,
+			PnL:             fifoPnl,
+			CumulativePnL:   cumulativePnl,
+			OpenPositionQty: openPositionQty,
+			Balance:         balance,
 		}
 
 		// Insert trade using Squirrel
@@ -237,12 +246,14 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 				"is_completed", "reason", "message", "strategy_name",
 				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
+				"open_position_qty", "balance",
 			).
 			Values(
 				orderID, trade.Order.Symbol, trade.Order.Side, trade.Order.Quantity, trade.Order.Price,
 				trade.Order.Timestamp, trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
 				order.StrategyName, trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
 				trade.Fee, trade.PnL, trade.CumulativePnL, trade.Order.PositionType,
+				trade.OpenPositionQty, trade.Balance,
 			).
 			RunWith(tx)
 
@@ -251,21 +262,6 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			tx.Rollback()
 
 			return nil, fmt.Errorf("failed to insert trade: %w", err)
-		}
-
-		// Determine if this is a new position
-		var isNewPosition bool = false
-
-		if order.Side == types.PurchaseTypeBuy && order.PositionType == types.PositionTypeLong {
-			if currentPosition.TotalLongPositionQuantity == 0 {
-				isNewPosition = true
-			}
-		}
-
-		if order.Side == types.PurchaseTypeBuy && order.PositionType == types.PositionTypeShort {
-			if currentPosition.TotalShortPositionQuantity == 0 {
-				isNewPosition = true
-			}
 		}
 
 		// Commit transaction
@@ -279,7 +275,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		results = append(results, UpdateResult{
 			Order:         order,
 			Trade:         trade,
-			IsNewPosition: isNewPosition,
+			IsNewPosition: isNewPositionOpened(order, currentPosition),
 		})
 	}
 
@@ -593,7 +589,7 @@ type statsParams struct {
 }
 
 // createZeroStats creates a TradeStats with zero values for a symbol without trades.
-func createZeroStats(symbol string, params statsParams) types.TradeStats {
+func createZeroStats(symbol string, params statsParams, initialBalance float64) types.TradeStats {
 	return types.TradeStats{
 		ID:        params.runID,
 		Timestamp: time.Now(),
@@ -627,6 +623,8 @@ func createZeroStats(symbol string, params statsParams) types.TradeStats {
 		Strategy:       params.strategyInfo,
 		StrategyPath:   params.strategyPath,
 		DataPath:       params.dataPath,
+		InitialBalance: initialBalance,
+		FinalBalance:   initialBalance,
 	}
 }
 
@@ -901,6 +899,58 @@ func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	}
 
 	return orders, nil
+}
+
+// computeClosingFIFOPnL calculates the FIFO PnL for a closing trade based on position state.
+func (b *BacktestState) computeClosingFIFOPnL(order types.Order, position types.Position) (float64, error) {
+	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
+	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
+
+	if isLongClose || isShortClose {
+		return b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+	}
+
+	return 0, nil
+}
+
+// computeOpenPositionQty calculates the open position quantity after a trade.
+func computeOpenPositionQty(order types.Order, position types.Position) float64 {
+	if order.PositionType == types.PositionTypeLong {
+		if order.Side == types.PurchaseTypeBuy {
+			return position.TotalLongPositionQuantity + order.Quantity
+		}
+
+		return position.TotalLongPositionQuantity - order.Quantity
+	}
+
+	if order.Side == types.PurchaseTypeSell {
+		return position.TotalShortPositionQuantity + order.Quantity
+	}
+
+	return position.TotalShortPositionQuantity - order.Quantity
+}
+
+// computeCashBalance calculates the cash balance after a trade.
+func computeCashBalance(prevBalance float64, order types.Order) float64 {
+	tradeCost := order.Quantity * order.Price
+	if order.Side == types.PurchaseTypeBuy {
+		return prevBalance - tradeCost - order.Fee
+	}
+
+	return prevBalance + tradeCost - order.Fee
+}
+
+// isNewPositionOpened checks if the order opens a new position.
+func isNewPositionOpened(order types.Order, position types.Position) bool {
+	if order.Side != types.PurchaseTypeBuy {
+		return false
+	}
+
+	if order.PositionType == types.PositionTypeLong {
+		return position.TotalLongPositionQuantity == 0
+	}
+
+	return order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity == 0
 }
 
 // calculateFIFOPnL calculates the individual PnL for a sell order using FIFO matching.
@@ -1261,7 +1311,7 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	}
 
 	if !hasTrades {
-		return createZeroStats(symbol, params), nil
+		return createZeroStats(symbol, params, b.initialBalance), nil
 	}
 
 	tradeResult, err := b.calculateTradeResult(symbol)
@@ -1299,6 +1349,11 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 		return types.TradeStats{}, fmt.Errorf("failed to calculate buy-and-hold PnL: %w", err)
 	}
 
+	// Calculate final balance as equity: initial balance + total PnL.
+	// TotalPnL already includes fee impacts (fees are embedded in average entry/exit prices),
+	// so we don't subtract fees separately.
+	finalBalance := b.initialBalance + tradePnl.TotalPnL
+
 	return types.TradeStats{
 		ID:               params.runID,
 		Timestamp:        time.Now(),
@@ -1315,5 +1370,7 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 		Strategy:         params.strategyInfo,
 		StrategyPath:     params.strategyPath,
 		DataPath:         params.dataPath,
+		InitialBalance:   b.initialBalance,
+		FinalBalance:     finalBalance,
 	}, nil
 }

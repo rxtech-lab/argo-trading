@@ -836,12 +836,14 @@ func convertBinanceTradeToTrade(bt *binance.TradeV3, symbol string) types.Trade 
 			Fee:          commission,
 			PositionType: types.PositionTypeLong,
 		},
-		ExecutedAt:    time.UnixMilli(bt.Time),
-		ExecutedQty:   quantity,
-		ExecutedPrice: price,
-		Fee:           commission,
-		PnL:           0, // Not directly available from trade
-		CumulativePnL: 0, // Not directly available from trade
+		ExecutedAt:      time.UnixMilli(bt.Time),
+		ExecutedQty:     quantity,
+		ExecutedPrice:   price,
+		Fee:             commission,
+		PnL:             0, // Not directly available from trade
+		CumulativePnL:   0, // Not directly available from trade
+		OpenPositionQty: 0,
+		Balance:         0,
 	}
 }
 

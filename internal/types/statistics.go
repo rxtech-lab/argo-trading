@@ -87,6 +87,10 @@ type TradeStats struct {
 	StrategyPath string `yaml:"strategy_path" json:"strategy_path"`
 	// DataPath is the path to the market data file used for this backtest.
 	DataPath string `yaml:"data_path" json:"data_path"`
+	// InitialBalance is the starting cash balance for this backtest run.
+	InitialBalance float64 `yaml:"initial_balance" json:"initial_balance"`
+	// FinalBalance is the portfolio equity at the end of this backtest run (initial_balance + total_pnl).
+	FinalBalance float64 `yaml:"final_balance" json:"final_balance"`
 }
 
 func WriteTradeStats(path string, stats []TradeStats) error {

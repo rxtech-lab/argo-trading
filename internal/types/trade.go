@@ -22,6 +22,12 @@ type Trade struct {
 	// the CumulativePnL values are 8, 16, 14. Buys contribute 0 to the sum and
 	// inherit the prior cumulative value unchanged.
 	CumulativePnL float64 `csv:"cumulative_pnl"`
+	// OpenPositionQty is the open position quantity after this trade.
+	// For long positions, it is the net long quantity. For short positions, it is the net short quantity.
+	OpenPositionQty float64 `csv:"open_position_qty"`
+	// Balance is the cash balance after this trade.
+	// Calculated as: initialCapital - Σ(buy_cost + buy_fee) + Σ(sell_proceeds - sell_fee).
+	Balance float64 `csv:"balance"`
 }
 
 // Position represents current holdings of an asset.
