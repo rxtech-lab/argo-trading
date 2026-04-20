@@ -115,115 +115,6 @@ func (b *BacktestState) Initialize() error {
 	return nil
 }
 
-// calculateFIFOPnL calculates the individual PnL for a sell order using FIFO matching.
-// It matches the sell quantity against the earliest unmatched buy orders to determine
-// the actual entry cost for this specific trade.
-func (b *BacktestState) calculateFIFOPnL(symbol string, positionType types.PositionType, sellQty float64, sellPrice float64, sellFee float64) (float64, error) {
-	// Get all entry (buy) trades for this symbol+positionType in FIFO order
-	entryQuery := b.sq.
-		Select("executed_qty", "executed_price", "commission").
-		From("trades").
-		Where(squirrel.Eq{
-			"symbol":        symbol,
-			"order_type":    types.PurchaseTypeBuy,
-			"position_type": positionType,
-		}).
-		OrderBy("executed_at ASC").
-		RunWith(b.db)
-
-	entryRows, err := entryQuery.Query()
-	if err != nil {
-		return 0, fmt.Errorf("failed to query entry trades for FIFO: %w", err)
-	}
-	defer entryRows.Close()
-
-	type entryTrade struct {
-		qty   float64
-		price float64
-		fee   float64
-	}
-
-	var entries []entryTrade
-	for entryRows.Next() {
-		var e entryTrade
-		if err := entryRows.Scan(&e.qty, &e.price, &e.fee); err != nil {
-			return 0, fmt.Errorf("failed to scan entry trade: %w", err)
-		}
-		entries = append(entries, e)
-	}
-	if err := entryRows.Err(); err != nil {
-		return 0, fmt.Errorf("error iterating entry trades: %w", err)
-	}
-
-	// Get total quantity previously sold (exited) for this symbol+positionType
-	prevSoldQuery := b.sq.
-		Select("COALESCE(SUM(executed_qty), 0)").
-		From("trades").
-		Where(squirrel.Eq{
-			"symbol":        symbol,
-			"order_type":    types.PurchaseTypeSell,
-			"position_type": positionType,
-		}).
-		RunWith(b.db)
-
-	var prevSoldQty float64
-	if err := prevSoldQuery.QueryRow().Scan(&prevSoldQty); err != nil {
-		return 0, fmt.Errorf("failed to query previous sold qty: %w", err)
-	}
-
-	// FIFO matching: walk through entries, skip consumed portions, match remaining
-	remaining := sellQty
-	skipQty := prevSoldQty
-	fifoCost := decimal.Zero
-
-	for _, entry := range entries {
-		if remaining <= 0 {
-			break
-		}
-
-		if skipQty >= entry.qty {
-			skipQty -= entry.qty
-			continue
-		}
-
-		availableQty := entry.qty - skipQty
-		skipQty = 0
-
-		matchedQty := math.Min(availableQty, remaining)
-		matchedDec := decimal.NewFromFloat(matchedQty)
-
-		// Pro-rate the entry fee
-		entryFeeProrated := decimal.NewFromFloat(entry.fee).Mul(matchedDec).Div(decimal.NewFromFloat(entry.qty))
-
-		if positionType == types.PositionTypeLong {
-			// Long: entry cost = price * qty + fee
-			cost := decimal.NewFromFloat(entry.price).Mul(matchedDec).Add(entryFeeProrated)
-			fifoCost = fifoCost.Add(cost)
-		} else {
-			// Short: entry value = price * qty - fee
-			value := decimal.NewFromFloat(entry.price).Mul(matchedDec).Sub(entryFeeProrated)
-			fifoCost = fifoCost.Add(value)
-		}
-
-		remaining -= matchedQty
-	}
-
-	sellValue := decimal.NewFromFloat(sellPrice).Mul(decimal.NewFromFloat(sellQty))
-	sellFeeDec := decimal.NewFromFloat(sellFee)
-
-	var result decimal.Decimal
-	if positionType == types.PositionTypeLong {
-		// Long PnL = exit_value - sell_fee - entry_cost
-		result = sellValue.Sub(sellFeeDec).Sub(fifoCost)
-	} else {
-		// Short PnL = entry_value - (exit_value + sell_fee)
-		result = fifoCost.Sub(sellValue.Add(sellFeeDec))
-	}
-
-	pnl, _ := result.Float64()
-	return pnl, nil
-}
-
 // UpdateResult contains the results of processing an order.
 type UpdateResult struct {
 	Order         types.Order
@@ -299,6 +190,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
 			if err != nil {
 				tx.Rollback()
+
 				return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
 			}
 		}
@@ -316,6 +208,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
 			if err != nil {
 				tx.Rollback()
+
 				return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
 			}
 		}
@@ -1014,6 +907,117 @@ func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	}
 
 	return orders, nil
+}
+
+// calculateFIFOPnL calculates the individual PnL for a sell order using FIFO matching.
+// It matches the sell quantity against the earliest unmatched buy orders to determine
+// the actual entry cost for this specific trade.
+func (b *BacktestState) calculateFIFOPnL(symbol string, positionType types.PositionType, sellQty float64, sellPrice float64, sellFee float64) (float64, error) {
+	// Get all entry (buy) trades for this symbol+positionType in FIFO order
+	entryQuery := b.sq.
+		Select("executed_qty", "executed_price", "commission").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"order_type":    types.PurchaseTypeBuy,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC").
+		RunWith(b.db)
+
+	entryRows, err := entryQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query entry trades for FIFO: %w", err)
+	}
+	defer entryRows.Close()
+
+	type entryTrade struct {
+		qty   float64
+		price float64
+		fee   float64
+	}
+
+	var entries []entryTrade
+	for entryRows.Next() {
+		var e entryTrade
+		if err := entryRows.Scan(&e.qty, &e.price, &e.fee); err != nil {
+			return 0, fmt.Errorf("failed to scan entry trade: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := entryRows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating entry trades: %w", err)
+	}
+
+	// Get total quantity previously sold (exited) for this symbol+positionType
+	prevSoldQuery := b.sq.
+		Select("COALESCE(SUM(executed_qty), 0)").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"order_type":    types.PurchaseTypeSell,
+			"position_type": positionType,
+		}).
+		RunWith(b.db)
+
+	var prevSoldQty float64
+	if err := prevSoldQuery.QueryRow().Scan(&prevSoldQty); err != nil {
+		return 0, fmt.Errorf("failed to query previous sold qty: %w", err)
+	}
+
+	// FIFO matching: walk through entries, skip consumed portions, match remaining
+	remaining := sellQty
+	skipQty := prevSoldQty
+	fifoCost := decimal.Zero
+
+	for _, entry := range entries {
+		if remaining <= 0 {
+			break
+		}
+
+		if skipQty >= entry.qty {
+			skipQty -= entry.qty
+
+			continue
+		}
+
+		availableQty := entry.qty - skipQty
+		skipQty = 0
+
+		matchedQty := math.Min(availableQty, remaining)
+		matchedDec := decimal.NewFromFloat(matchedQty)
+
+		// Pro-rate the entry fee
+		entryFeeProrated := decimal.NewFromFloat(entry.fee).Mul(matchedDec).Div(decimal.NewFromFloat(entry.qty))
+
+		if positionType == types.PositionTypeLong {
+			// Long: entry cost = price * qty + fee
+			cost := decimal.NewFromFloat(entry.price).Mul(matchedDec).Add(entryFeeProrated)
+			fifoCost = fifoCost.Add(cost)
+		} else {
+			// Short: entry value = price * qty - fee
+			value := decimal.NewFromFloat(entry.price).Mul(matchedDec).Sub(entryFeeProrated)
+			fifoCost = fifoCost.Add(value)
+		}
+
+		remaining -= matchedQty
+	}
+
+	sellValue := decimal.NewFromFloat(sellPrice).Mul(decimal.NewFromFloat(sellQty))
+	sellFeeDec := decimal.NewFromFloat(sellFee)
+
+	var result decimal.Decimal
+	if positionType == types.PositionTypeLong {
+		// Long PnL = exit_value - sell_fee - entry_cost
+		result = sellValue.Sub(sellFeeDec).Sub(fifoCost)
+	} else {
+		// Short PnL = entry_value - (exit_value + sell_fee)
+		result = fifoCost.Sub(sellValue.Add(sellFeeDec))
+	}
+
+	pnl, _ := result.Float64()
+
+	return pnl, nil
 }
 
 // calculateTradeResult calculates the trade result statistics for a symbol.
