@@ -792,7 +792,125 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				suite.Assert().Equal(expected.TradeHoldingTime.Max, actual.TradeHoldingTime.Max, "Max holding time mismatch")
 				suite.Assert().Equal(expected.TradeHoldingTime.Avg, actual.TradeHoldingTime.Avg, "Avg holding time mismatch")
 				suite.Assert().Equal(expected.BuyAndHoldPnl, actual.BuyAndHoldPnl, "Buy and hold PnL mismatch")
+
+				// Verify final balance consistency: final_balance = initial_balance + total_pnl
+				// TotalPnL already includes fee impacts (fees are in avg entry/exit prices)
+				expectedFinalBalance := actual.InitialBalance + actual.TradePnl.TotalPnL
+				suite.Assert().Equal(expectedFinalBalance, actual.FinalBalance, "FinalBalance should equal InitialBalance + TotalPnL")
 			}
+		})
+	}
+}
+
+// TestFinalBalanceEquity verifies that FinalBalance represents equity (initial_balance + total_pnl - total_fees)
+// rather than just the cash balance, especially when there are open positions.
+func (suite *BacktestStateTestSuite) TestFinalBalanceEquity() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockSource := mocks.NewMockDataSource(ctrl)
+	mockSource.EXPECT().ReadLastData("AAPL").Return(types.MarketData{
+		Symbol: "AAPL",
+		Close:  120.0,
+		Time:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
+	}, nil).AnyTimes()
+
+	tests := []struct {
+		name                 string
+		initialBalance       float64
+		orders               []types.Order
+		expectedFinalBalance float64
+	}{
+		{
+			name:           "Closed position - final balance equals initial + realized PnL - fees",
+			initialBalance: 1_000_000,
+			orders: []types.Order{
+				{
+					Symbol: "AAPL", Side: types.PurchaseTypeBuy, PositionType: types.PositionTypeLong,
+					Quantity: 100, Price: 100.0, Fee: 1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true, StrategyName: "test",
+					Reason: types.Reason{Reason: "test", Message: "buy"},
+				},
+				{
+					Symbol: "AAPL", Side: types.PurchaseTypeSell, PositionType: types.PositionTypeLong,
+					Quantity: 100, Price: 110.0, Fee: 1.0,
+					Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
+					IsCompleted: true, StrategyName: "test",
+					Reason: types.Reason{Reason: "test", Message: "sell"},
+				},
+			},
+			// realized PnL (net of fees) = ((110*100-1)/100 - (100*100+1)/100)*100 = 998, unrealized = 0
+			// total PnL = 998, final_balance = 1,000,000 + 998 = 1,000,998
+			expectedFinalBalance: 1_000_998,
+		},
+		{
+			name:           "Open position - final balance includes unrealized PnL",
+			initialBalance: 1_000_000,
+			orders: []types.Order{
+				{
+					Symbol: "AAPL", Side: types.PurchaseTypeBuy, PositionType: types.PositionTypeLong,
+					Quantity: 100, Price: 100.0, Fee: 1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true, StrategyName: "test",
+					Reason: types.Reason{Reason: "test", Message: "buy"},
+				},
+			},
+			// unrealized PnL = (120 - 100.01) * 100 = 1999 (close=120, avg entry includes fee)
+			// realized PnL = 0, total PnL = 1999
+			// final_balance = 1,000,000 + 1999 = 1,001,999
+			expectedFinalBalance: 1_001_999,
+		},
+		{
+			name:           "Partial close - final balance includes both realized and unrealized",
+			initialBalance: 1_000_000,
+			orders: []types.Order{
+				{
+					Symbol: "AAPL", Side: types.PurchaseTypeBuy, PositionType: types.PositionTypeLong,
+					Quantity: 100, Price: 100.0, Fee: 1.0,
+					Timestamp:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+					IsCompleted: true, StrategyName: "test",
+					Reason: types.Reason{Reason: "test", Message: "buy"},
+				},
+				{
+					Symbol: "AAPL", Side: types.PurchaseTypeSell, PositionType: types.PositionTypeLong,
+					Quantity: 50, Price: 110.0, Fee: 1.0,
+					Timestamp:   time.Date(2024, 1, 1, 11, 0, 0, 0, time.UTC),
+					IsCompleted: true, StrategyName: "test",
+					Reason: types.Reason{Reason: "test", Message: "sell"},
+				},
+			},
+			// realized PnL = 498.5 (from 50 shares closed), unrealized PnL = 999.5 (50 shares open at 120)
+			// total PnL = 1498
+			// final_balance = 1,000,000 + 1498 = 1,001,498
+			expectedFinalBalance: 1_001_498,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			err := suite.state.Cleanup()
+			suite.Require().NoError(err)
+
+			suite.state.SetInitialBalance(tc.initialBalance)
+
+			for _, order := range tc.orders {
+				_, err := suite.state.Update([]types.Order{order})
+				suite.Require().NoError(err)
+			}
+
+			mockStrategy := &testMockStrategyRuntime{}
+			stats, err := suite.state.GetStats(runtime.RuntimeContext{
+				DataSource: mockSource,
+			}, mockStrategy, "test-run-id", "", "", "", "", "", "")
+			suite.Require().NoError(err)
+			suite.Require().Len(stats, 1)
+
+			suite.Assert().Equal(tc.initialBalance, stats[0].InitialBalance, "InitialBalance mismatch")
+			suite.Assert().Equal(tc.expectedFinalBalance, stats[0].FinalBalance, "FinalBalance mismatch")
+			// Verify the invariant: FinalBalance = InitialBalance + TotalPnL
+			computed := stats[0].InitialBalance + stats[0].TradePnl.TotalPnL
+			suite.Assert().Equal(computed, stats[0].FinalBalance, "FinalBalance should equal InitialBalance + TotalPnL")
 		})
 	}
 }
