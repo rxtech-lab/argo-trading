@@ -615,16 +615,17 @@ func (s StrategyApiForWasm) GetTrades(ctx context.Context, req *strategy.GetTrad
 
 	for i, trade := range trades {
 		response.Trades[i] = &strategy.TradeRecord{
-			OrderId:      trade.Order.OrderID,
-			Symbol:       trade.Order.Symbol,
-			Side:         runtime.PurchaseTypeToStrategyPurchaseType(trade.Order.Side),
-			Quantity:     trade.ExecutedQty,
-			Price:        trade.ExecutedPrice,
-			ExecutedAt:   timestamppb.New(trade.ExecutedAt),
-			Fee:          trade.Fee,
-			Pnl:          trade.PnL,
-			PositionType: runtime.PositionTypeToStrategyPositionType(trade.Order.PositionType),
-			StrategyName: trade.Order.StrategyName,
+			OrderId:       trade.Order.OrderID,
+			Symbol:        trade.Order.Symbol,
+			Side:          runtime.PurchaseTypeToStrategyPurchaseType(trade.Order.Side),
+			Quantity:      trade.ExecutedQty,
+			Price:         trade.ExecutedPrice,
+			ExecutedAt:    timestamppb.New(trade.ExecutedAt),
+			Fee:           trade.Fee,
+			Pnl:           trade.PnL,
+			CumulativePnl: trade.CumulativePnL,
+			PositionType:  runtime.PositionTypeToStrategyPositionType(trade.Order.PositionType),
+			StrategyName:  trade.Order.StrategyName,
 			Reason: &strategy.Reason{
 				Reason:  trade.Order.Reason.Reason,
 				Message: trade.Order.Reason.Message,

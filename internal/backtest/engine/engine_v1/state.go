@@ -104,6 +104,7 @@ func (b *BacktestState) Initialize() error {
 			executed_price DOUBLE,
 			commission DOUBLE,
 			pnl DOUBLE,
+			cumulative_pnl DOUBLE,
 			position_type TEXT
 		)
 	`)
@@ -172,26 +173,38 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			return nil, fmt.Errorf("failed to get position: %w", err)
 		}
 
-		// Calculate PnL if closing position
-		var pnl float64 = 0
+		// Calculate FIFO PnL for closing trades; buys have zero individual PnL.
+		var fifoPnl float64 = 0
 
 		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && currentPosition.TotalLongPositionQuantity > 0 {
-			// For sell orders, calculate PnL using decimal arithmetic
-			avgEntryPrice := currentPosition.GetAverageLongPositionEntryPrice()
-			entryDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(avgEntryPrice))
-			exitDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(order.Price)).Sub(decimal.NewFromFloat(order.Fee))
-			resultDec := exitDec.Sub(entryDec)
-			pnl, _ = resultDec.Float64()
+			var err error
+			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+			if err != nil {
+				tx.Rollback()
+
+				return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
+			}
 		}
 
 		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && currentPosition.TotalShortPositionQuantity > 0 {
-			// For sell orders, calculate PnL using decimal arithmetic
-			avgEntryPrice := currentPosition.GetAverageShortPositionEntryPrice()
-			entryDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(avgEntryPrice))
-			exitDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(order.Price)).Add(decimal.NewFromFloat(order.Fee))
-			resultDec := entryDec.Sub(exitDec)
-			pnl, _ = resultDec.Float64()
+			var err error
+			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+			if err != nil {
+				tx.Rollback()
+
+				return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
+			}
 		}
+
+		// Cumulative PnL is the running sum of per-trade PnL for this symbol.
+		var priorPnlSum float64
+		if err := b.db.QueryRow(`SELECT COALESCE(SUM(pnl), 0) FROM trades WHERE symbol = ?`, order.Symbol).Scan(&priorPnlSum); err != nil {
+			tx.Rollback()
+
+			return nil, fmt.Errorf("failed to query prior pnl sum: %w", err)
+		}
+
+		cumulativePnl := priorPnlSum + fifoPnl
 
 		// Create trade record
 		trade := types.Trade{
@@ -213,7 +226,8 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			ExecutedQty:   order.Quantity,
 			ExecutedPrice: order.Price,
 			Fee:           order.Fee,
-			PnL:           pnl,
+			PnL:           fifoPnl,
+			CumulativePnL: cumulativePnl,
 		}
 
 		// Insert trade using Squirrel
@@ -222,13 +236,13 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			Columns(
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 				"is_completed", "reason", "message", "strategy_name",
-				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "position_type",
+				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
 			).
 			Values(
 				orderID, trade.Order.Symbol, trade.Order.Side, trade.Order.Quantity, trade.Order.Price,
 				trade.Order.Timestamp, trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
 				order.StrategyName, trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
-				trade.Fee, trade.PnL, trade.Order.PositionType,
+				trade.Fee, trade.PnL, trade.CumulativePnL, trade.Order.PositionType,
 			).
 			RunWith(tx)
 
@@ -440,7 +454,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 		Select(
 			"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 			"is_completed", "reason", "message", "strategy_name",
-			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "position_type",
+			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
 		).
 		From("trades").
 		OrderBy("executed_at ASC").
@@ -473,6 +487,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 			&trade.ExecutedPrice,
 			&trade.Fee,
 			&trade.PnL,
+			&trade.CumulativePnL,
 			&trade.Order.PositionType,
 		)
 		if err != nil {
@@ -585,6 +600,7 @@ func createZeroStats(symbol string, params statsParams) types.TradeStats {
 		Symbol:    symbol,
 		TradeResult: types.TradeResult{
 			NumberOfTrades:        0,
+			NumberOfTradingPairs:  0,
 			NumberOfWinningTrades: 0,
 			NumberOfLosingTrades:  0,
 			WinRate:               0,
@@ -887,13 +903,127 @@ func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	return orders, nil
 }
 
+// calculateFIFOPnL calculates the individual PnL for a sell order using FIFO matching.
+// It matches the sell quantity against the earliest unmatched buy orders to determine
+// the actual entry cost for this specific trade.
+func (b *BacktestState) calculateFIFOPnL(symbol string, positionType types.PositionType, sellQty float64, sellPrice float64, sellFee float64) (float64, error) {
+	// Get all entry (buy) trades for this symbol+positionType in FIFO order
+	entryQuery := b.sq.
+		Select("executed_qty", "executed_price", "commission").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"order_type":    types.PurchaseTypeBuy,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC").
+		RunWith(b.db)
+
+	entryRows, err := entryQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query entry trades for FIFO: %w", err)
+	}
+	defer entryRows.Close()
+
+	type entryTrade struct {
+		qty   float64
+		price float64
+		fee   float64
+	}
+
+	var entries []entryTrade
+	for entryRows.Next() {
+		var e entryTrade
+		if err := entryRows.Scan(&e.qty, &e.price, &e.fee); err != nil {
+			return 0, fmt.Errorf("failed to scan entry trade: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := entryRows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating entry trades: %w", err)
+	}
+
+	// Get total quantity previously sold (exited) for this symbol+positionType
+	prevSoldQuery := b.sq.
+		Select("COALESCE(SUM(executed_qty), 0)").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"order_type":    types.PurchaseTypeSell,
+			"position_type": positionType,
+		}).
+		RunWith(b.db)
+
+	var prevSoldQty float64
+	if err := prevSoldQuery.QueryRow().Scan(&prevSoldQty); err != nil {
+		return 0, fmt.Errorf("failed to query previous sold qty: %w", err)
+	}
+
+	// FIFO matching: walk through entries, skip consumed portions, match remaining
+	remaining := sellQty
+	skipQty := prevSoldQty
+	fifoCost := decimal.Zero
+
+	for _, entry := range entries {
+		if remaining <= 0 {
+			break
+		}
+
+		if skipQty >= entry.qty {
+			skipQty -= entry.qty
+
+			continue
+		}
+
+		availableQty := entry.qty - skipQty
+		skipQty = 0
+
+		matchedQty := math.Min(availableQty, remaining)
+		matchedDec := decimal.NewFromFloat(matchedQty)
+
+		// Pro-rate the entry fee
+		entryFeeProrated := decimal.NewFromFloat(entry.fee).Mul(matchedDec).Div(decimal.NewFromFloat(entry.qty))
+
+		if positionType == types.PositionTypeLong {
+			// Long: entry cost = price * qty + fee
+			cost := decimal.NewFromFloat(entry.price).Mul(matchedDec).Add(entryFeeProrated)
+			fifoCost = fifoCost.Add(cost)
+		} else {
+			// Short: entry value = price * qty - fee
+			value := decimal.NewFromFloat(entry.price).Mul(matchedDec).Sub(entryFeeProrated)
+			fifoCost = fifoCost.Add(value)
+		}
+
+		remaining -= matchedQty
+	}
+
+	sellValue := decimal.NewFromFloat(sellPrice).Mul(decimal.NewFromFloat(sellQty))
+	sellFeeDec := decimal.NewFromFloat(sellFee)
+
+	var result decimal.Decimal
+	if positionType == types.PositionTypeLong {
+		// Long PnL = exit_value - sell_fee - entry_cost
+		result = sellValue.Sub(sellFeeDec).Sub(fifoCost)
+	} else {
+		// Short PnL = entry_value - (exit_value + sell_fee)
+		result = fifoCost.Sub(sellValue.Add(sellFeeDec))
+	}
+
+	pnl, _ := result.Float64()
+
+	return pnl, nil
+}
+
 // calculateTradeResult calculates the trade result statistics for a symbol.
+// NumberOfTrades counts all fills (entries and exits). NumberOfTradingPairs counts
+// round trips — each exit trade closes a pair against one or more prior entry trades.
+// Win/lose counts and win rate are computed against trading pairs.
 func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
-	// Using raw SQL for CTE query - Squirrel doesn't natively support CTEs well
 	query := `
 		WITH trade_stats AS (
-			SELECT 
+			SELECT
 				COUNT(*) as total_trades,
+				SUM(CASE WHEN order_type = ? THEN 1 ELSE 0 END) as trading_pairs,
 				SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
 				SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
 				MIN(pnl) as min_pnl,
@@ -901,19 +1031,21 @@ func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, 
 			FROM trades
 			WHERE symbol = ?
 		)
-		SELECT 
-			total_trades,
-			winning_trades,
-			losing_trades,
-			CASE WHEN total_trades > 0 THEN CAST(winning_trades AS DOUBLE) / total_trades ELSE 0 END as win_rate,
+		SELECT
+			COALESCE(total_trades, 0) as total_trades,
+			COALESCE(trading_pairs, 0) as trading_pairs,
+			COALESCE(winning_trades, 0) as winning_trades,
+			COALESCE(losing_trades, 0) as losing_trades,
+			CASE WHEN COALESCE(trading_pairs, 0) > 0 THEN CAST(winning_trades AS DOUBLE) / trading_pairs ELSE 0 END as win_rate,
 			CASE WHEN min_pnl < 0 THEN ABS(min_pnl) ELSE 0 END as max_drawdown
 		FROM trade_stats
 	`
 
 	var result types.TradeResult
 
-	err := b.db.QueryRow(query, symbol).Scan(
+	err := b.db.QueryRow(query, types.PurchaseTypeSell, symbol).Scan(
 		&result.NumberOfTrades,
+		&result.NumberOfTradingPairs,
 		&result.NumberOfWinningTrades,
 		&result.NumberOfLosingTrades,
 		&result.WinRate,

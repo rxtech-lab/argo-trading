@@ -113,6 +113,22 @@ initial_capital: 100000
 		}
 		s.Require().Greater(buyCount, 0, "Should have at least one buy trade")
 
+		// Buys have zero individual PnL (FIFO matches only on exit).
+		for _, trade := range trades {
+			if trade.Order.Side == types.PurchaseTypeBuy {
+				s.Require().Equal(0.0, trade.PnL, "Buy trade FIFO PnL should be 0")
+			}
+		}
+
+		// CumulativePnL is a running sum of PnL: each trade's cumulative should equal
+		// the previous cumulative plus the current trade's PnL.
+		var runningSum float64
+		for i, trade := range trades {
+			runningSum += trade.PnL
+			s.Require().InDelta(runningSum, trade.CumulativePnL, 1e-6,
+				"trade %d: CumulativePnL should equal running sum of PnL", i)
+		}
+
 		// Read and verify orders
 		orders, err := testhelper.ReadOrders(&s.E2ETestSuite, tmpFolder)
 		s.Require().NoError(err, "Failed to read orders")

@@ -32,6 +32,7 @@ initial_capital: 10000
 		stats, err := testhelper.ReadStats(&s.E2ETestSuite, tmpFolder)
 		s.Require().NoError(err)
 		s.Require().Equal(stats[0].TradeResult.NumberOfTrades, 1)
+		s.Require().Equal(stats[0].TradeResult.NumberOfTradingPairs, 0)
 		s.Require().Equal(stats[0].Symbol, "AAPL")
 
 		// Verify strategy metadata is present in stats
@@ -45,6 +46,10 @@ initial_capital: 10000
 		s.Require().Equal(len(trades), 1)
 		s.Require().Greater(trades[0].ExecutedPrice, 0.0)
 		s.Require().Equal(trades[0].ExecutedQty, 1.0)
+
+		// Verify PnL for buy-only trade
+		s.Require().Equal(0.0, trades[0].PnL, "Buy trade FIFO PnL should be 0")
+		s.Require().Equal(0.0, trades[0].CumulativePnL, "Buy trade cumulative PnL should be 0")
 
 		// check marker
 		marker, err := testhelper.ReadMarker(&s.E2ETestSuite, tmpFolder)

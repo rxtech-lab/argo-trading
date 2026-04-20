@@ -12,6 +12,7 @@ import (
 // StatsAccumulator holds running statistics for trades.
 type StatsAccumulator struct {
 	TotalTrades   int
+	TradingPairs  int
 	WinningTrades int
 	LosingTrades  int
 	RealizedPnL   float64
@@ -85,6 +86,7 @@ func NewStatsTracker(log *logger.Logger) *StatsTracker {
 func newStatsAccumulator() *StatsAccumulator {
 	return &StatsAccumulator{
 		TotalTrades:   0,
+		TradingPairs:  0,
 		WinningTrades: 0,
 		LosingTrades:  0,
 		RealizedPnL:   0,
@@ -162,6 +164,11 @@ func (s *StatsTracker) updateAccumulator(acc *StatsAccumulator, trade types.Trad
 	acc.TotalTrades++
 	acc.TotalFees += trade.Fee
 	acc.RealizedPnL += trade.PnL
+
+	// Closing trades (sells) form a trading pair with a prior entry (buy)
+	if trade.Order.Side == types.PurchaseTypeSell {
+		acc.TradingPairs++
+	}
 
 	// Track winning/losing trades
 	if trade.PnL > 0 {
@@ -249,10 +256,10 @@ func (s *StatsTracker) GetCumulativeStats() types.LiveTradeStats {
 //
 //nolint:funcorder // helper method used by GetDailyStats, GetCumulativeStats, WriteStatsYAML
 func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) types.LiveTradeStats {
-	// Calculate win rate
+	// Calculate win rate against trading pairs (round trips)
 	winRate := 0.0
-	if acc.TotalTrades > 0 {
-		winRate = float64(acc.WinningTrades) / float64(acc.TotalTrades)
+	if acc.TradingPairs > 0 {
+		winRate = float64(acc.WinningTrades) / float64(acc.TradingPairs)
 	}
 
 	// Calculate holding time stats
@@ -292,6 +299,7 @@ func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) t
 		Symbols:      s.symbols,
 		TradeResult: types.TradeResult{
 			NumberOfTrades:        acc.TotalTrades,
+			NumberOfTradingPairs:  acc.TradingPairs,
 			NumberOfWinningTrades: acc.WinningTrades,
 			NumberOfLosingTrades:  acc.LosingTrades,
 			WinRate:               winRate,

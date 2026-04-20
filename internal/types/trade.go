@@ -13,12 +13,15 @@ type Trade struct {
 	ExecutedPrice float64   `csv:"executed_price"`
 	// Fee is the fee for this trade
 	Fee float64 `csv:"fee"`
-	// PnL is the profit and loss for this trade
-	// For example, you have 300 shares of AAPL at $100.01 average entry price
-	// And you sell 100 shares at $110.0
-	// Then the PnL is (110.0-100.01)*100 = $999.
-	// Note, the fee is included in the average entry price and pnl would be 0 if the order is buy.
+	// PnL is the individual profit and loss for this trade using FIFO matching.
+	// For sell orders, it matches against the earliest unmatched buy orders to calculate
+	// the individual PnL for this specific trade. For buy orders, PnL is 0.
 	PnL float64 `csv:"pnl"`
+	// CumulativePnL is the running sum of per-trade PnL for this symbol up to and
+	// including this trade. For example, if three sells produce PnL +8, +8, -2,
+	// the CumulativePnL values are 8, 16, 14. Buys contribute 0 to the sum and
+	// inherit the prior cumulative value unchanged.
+	CumulativePnL float64 `csv:"cumulative_pnl"`
 }
 
 // Position represents current holdings of an asset.

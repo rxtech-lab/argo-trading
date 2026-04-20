@@ -832,6 +832,7 @@ func (suite *StrategyApiTestSuite) TestGetTrades() {
 			ExecutedAt:    now,
 			Fee:           5.0,
 			PnL:           0.0,
+			CumulativePnL: 0.0,
 		},
 		{
 			Order: types.Order{
@@ -850,6 +851,7 @@ func (suite *StrategyApiTestSuite) TestGetTrades() {
 			ExecutedAt:    now.Add(time.Hour),
 			Fee:           5.2,
 			PnL:           1990.0,
+			CumulativePnL: 1990.0,
 		},
 	}
 
@@ -881,6 +883,7 @@ func (suite *StrategyApiTestSuite) TestGetTrades() {
 	suite.Equal(50000.0, response.Trades[0].Price)
 	suite.Equal(5.0, response.Trades[0].Fee)
 	suite.Equal(0.0, response.Trades[0].Pnl)
+	suite.Equal(0.0, response.Trades[0].CumulativePnl)
 	suite.Equal("test-strategy", response.Trades[0].StrategyName)
 	suite.NotNil(response.Trades[0].Reason)
 	suite.Equal("entry signal", response.Trades[0].Reason.Reason)
@@ -888,6 +891,7 @@ func (suite *StrategyApiTestSuite) TestGetTrades() {
 	// Verify second trade
 	suite.Equal("trade-order-2", response.Trades[1].OrderId)
 	suite.Equal(1990.0, response.Trades[1].Pnl)
+	suite.Equal(1990.0, response.Trades[1].CumulativePnl)
 }
 
 // TestGetTradesWithTimeFilter tests the GetTrades method with time filters

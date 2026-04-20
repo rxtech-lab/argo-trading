@@ -149,6 +149,7 @@ func NewLiveTradeStats(runID string, runName string, symbols []string, strategy 
 		Symbols:      symbols,
 		TradeResult: TradeResult{
 			NumberOfTrades:        0,
+			NumberOfTradingPairs:  0,
 			NumberOfWinningTrades: 0,
 			NumberOfLosingTrades:  0,
 			WinRate:               0,
