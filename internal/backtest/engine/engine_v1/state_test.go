@@ -290,9 +290,10 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        2,
+						NumberOfTradingPairs:  1,
 						NumberOfWinningTrades: 1,
 						NumberOfLosingTrades:  0,
-						WinRate:               0.5,
+						WinRate:               1.0,
 						MaxDrawdown:           0,
 					},
 					TotalFees: 2.0,
@@ -354,6 +355,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        1,
+						NumberOfTradingPairs:  0,
 						NumberOfWinningTrades: 0,
 						NumberOfLosingTrades:  0,
 						WinRate:               0,
@@ -378,6 +380,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        1,
+						NumberOfTradingPairs:  0,
 						NumberOfWinningTrades: 0,
 						NumberOfLosingTrades:  0,
 						WinRate:               0,
@@ -457,6 +460,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        1,
+						NumberOfTradingPairs:  1,
 						NumberOfWinningTrades: 0,
 						NumberOfLosingTrades:  0,
 						WinRate:               0,
@@ -543,9 +547,10 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        4,
+						NumberOfTradingPairs:  2,
 						NumberOfWinningTrades: 2,
 						NumberOfLosingTrades:  0,
-						WinRate:               0.5,
+						WinRate:               1.0,
 						MaxDrawdown:           0,
 					},
 					TotalFees: 4.0,
@@ -614,9 +619,10 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        3,
+						NumberOfTradingPairs:  1,
 						NumberOfWinningTrades: 1,
 						NumberOfLosingTrades:  0,
-						WinRate:               0.3333333333333333,
+						WinRate:               1.0,
 						MaxDrawdown:           0,
 					},
 					TotalFees: 3.0,
@@ -672,6 +678,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        2,
+						NumberOfTradingPairs:  0,
 						NumberOfWinningTrades: 0,
 						NumberOfLosingTrades:  0,
 						WinRate:               0,
@@ -717,6 +724,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 					},
 					TradeResult: types.TradeResult{
 						NumberOfTrades:        1,
+						NumberOfTradingPairs:  0,
 						NumberOfWinningTrades: 0,
 						NumberOfLosingTrades:  0,
 						WinRate:               0,
@@ -769,6 +777,7 @@ func (suite *BacktestStateTestSuite) TestGetStats() {
 				actual := stats[i]
 				suite.Assert().Equal(expected.Symbol, actual.Symbol, "Symbol mismatch")
 				suite.Assert().Equal(expected.TradeResult.NumberOfTrades, actual.TradeResult.NumberOfTrades, "Number of trades mismatch")
+				suite.Assert().Equal(expected.TradeResult.NumberOfTradingPairs, actual.TradeResult.NumberOfTradingPairs, "Number of trading pairs mismatch")
 				suite.Assert().Equal(expected.TradeResult.NumberOfWinningTrades, actual.TradeResult.NumberOfWinningTrades, "Number of winning trades mismatch")
 				suite.Assert().Equal(expected.TradeResult.NumberOfLosingTrades, actual.TradeResult.NumberOfLosingTrades, "Number of losing trades mismatch")
 				suite.Assert().Equal(expected.TradeResult.WinRate, actual.TradeResult.WinRate, "Win rate mismatch")

@@ -173,19 +173,10 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			return nil, fmt.Errorf("failed to get position: %w", err)
 		}
 
-		// Calculate PnL if closing position
-		var cumulativePnl float64 = 0
+		// Calculate FIFO PnL for closing trades; buys have zero individual PnL.
 		var fifoPnl float64 = 0
 
 		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && currentPosition.TotalLongPositionQuantity > 0 {
-			// Cumulative PnL using average entry price
-			avgEntryPrice := currentPosition.GetAverageLongPositionEntryPrice()
-			entryDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(avgEntryPrice))
-			exitDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(order.Price)).Sub(decimal.NewFromFloat(order.Fee))
-			resultDec := exitDec.Sub(entryDec)
-			cumulativePnl, _ = resultDec.Float64()
-
-			// FIFO PnL using matched buy orders
 			var err error
 			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
 			if err != nil {
@@ -196,14 +187,6 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		if order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && currentPosition.TotalShortPositionQuantity > 0 {
-			// Cumulative PnL using average entry price
-			avgEntryPrice := currentPosition.GetAverageShortPositionEntryPrice()
-			entryDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(avgEntryPrice))
-			exitDec := decimal.NewFromFloat(order.Quantity).Mul(decimal.NewFromFloat(order.Price)).Add(decimal.NewFromFloat(order.Fee))
-			resultDec := entryDec.Sub(exitDec)
-			cumulativePnl, _ = resultDec.Float64()
-
-			// FIFO PnL using matched buy orders
 			var err error
 			fifoPnl, err = b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
 			if err != nil {
@@ -212,6 +195,16 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				return nil, fmt.Errorf("failed to calculate FIFO PnL: %w", err)
 			}
 		}
+
+		// Cumulative PnL is the running sum of per-trade PnL for this symbol.
+		var priorPnlSum float64
+		if err := b.db.QueryRow(`SELECT COALESCE(SUM(pnl), 0) FROM trades WHERE symbol = ?`, order.Symbol).Scan(&priorPnlSum); err != nil {
+			tx.Rollback()
+
+			return nil, fmt.Errorf("failed to query prior pnl sum: %w", err)
+		}
+
+		cumulativePnl := priorPnlSum + fifoPnl
 
 		// Create trade record
 		trade := types.Trade{
@@ -607,6 +600,7 @@ func createZeroStats(symbol string, params statsParams) types.TradeStats {
 		Symbol:    symbol,
 		TradeResult: types.TradeResult{
 			NumberOfTrades:        0,
+			NumberOfTradingPairs:  0,
 			NumberOfWinningTrades: 0,
 			NumberOfLosingTrades:  0,
 			WinRate:               0,
@@ -1021,12 +1015,15 @@ func (b *BacktestState) calculateFIFOPnL(symbol string, positionType types.Posit
 }
 
 // calculateTradeResult calculates the trade result statistics for a symbol.
+// NumberOfTrades counts all fills (entries and exits). NumberOfTradingPairs counts
+// round trips — each exit trade closes a pair against one or more prior entry trades.
+// Win/lose counts and win rate are computed against trading pairs.
 func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
-	// Using raw SQL for CTE query - Squirrel doesn't natively support CTEs well
 	query := `
 		WITH trade_stats AS (
-			SELECT 
+			SELECT
 				COUNT(*) as total_trades,
+				SUM(CASE WHEN order_type = ? THEN 1 ELSE 0 END) as trading_pairs,
 				SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
 				SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
 				MIN(pnl) as min_pnl,
@@ -1034,19 +1031,21 @@ func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, 
 			FROM trades
 			WHERE symbol = ?
 		)
-		SELECT 
-			total_trades,
-			winning_trades,
-			losing_trades,
-			CASE WHEN total_trades > 0 THEN CAST(winning_trades AS DOUBLE) / total_trades ELSE 0 END as win_rate,
+		SELECT
+			COALESCE(total_trades, 0) as total_trades,
+			COALESCE(trading_pairs, 0) as trading_pairs,
+			COALESCE(winning_trades, 0) as winning_trades,
+			COALESCE(losing_trades, 0) as losing_trades,
+			CASE WHEN COALESCE(trading_pairs, 0) > 0 THEN CAST(winning_trades AS DOUBLE) / trading_pairs ELSE 0 END as win_rate,
 			CASE WHEN min_pnl < 0 THEN ABS(min_pnl) ELSE 0 END as max_drawdown
 		FROM trade_stats
 	`
 
 	var result types.TradeResult
 
-	err := b.db.QueryRow(query, symbol).Scan(
+	err := b.db.QueryRow(query, types.PurchaseTypeSell, symbol).Scan(
 		&result.NumberOfTrades,
+		&result.NumberOfTradingPairs,
 		&result.NumberOfWinningTrades,
 		&result.NumberOfLosingTrades,
 		&result.WinRate,

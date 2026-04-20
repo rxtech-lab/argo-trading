@@ -441,9 +441,8 @@ func (suite *BacktestStateTestSuite) TestUpdate_LongPosition() {
 					// FIFO: matched with Buy 1 (100@$100, fee $1)
 					// PnL = (110*100 - 1) - (100*100 + 1) = 998
 					PnL: 998,
-					// Cumulative: avg entry = (27000+3)/300 = 90.01
-					// PnL = (110*100 - 1) - (90.01*100) = 1998
-					CumulativePnL: 1998,
+					// Cumulative (running sum): 0 + 998 = 998
+					CumulativePnL: 998,
 				},
 				{
 					Order: types.Order{
@@ -465,9 +464,8 @@ func (suite *BacktestStateTestSuite) TestUpdate_LongPosition() {
 					// FIFO: matched with Buy 2 (100@$90, fee $1)
 					// PnL = (120*100 - 1) - (90*100 + 1) = 2998
 					PnL: 2998,
-					// Cumulative: avg entry = 90.01
-					// PnL = (120*100 - 1) - (90.01*100) = 2998
-					CumulativePnL: 2998,
+					// Cumulative (running sum): 998 + 2998 = 3996
+					CumulativePnL: 3996,
 				},
 				{
 					Order: types.Order{
@@ -489,9 +487,8 @@ func (suite *BacktestStateTestSuite) TestUpdate_LongPosition() {
 					// FIFO: matched with Buy 3 (100@$80, fee $1)
 					// PnL = (130*100 - 1) - (80*100 + 1) = 4998
 					PnL: 4998,
-					// Cumulative: avg entry = 90.01
-					// PnL = (130*100 - 1) - (90.01*100) = 3998
-					CumulativePnL: 3998,
+					// Cumulative (running sum): 3996 + 4998 = 8994
+					CumulativePnL: 8994,
 				},
 			},
 			expectedPosition: ExpectPosition{

@@ -97,11 +97,9 @@ func (suite *BacktestStateTestSuite) TestFIFOPnL_LongPosition() {
 			//   PnL = (120*100 - 1) - (50*100 + 1) = 11999 - 5001 = 6998
 			// FIFO: sell2 matches buy2 (100@$150, fee $1)
 			//   PnL = (120*100 - 1) - (150*100 + 1) = 11999 - 15001 = -3002
-			// Cumulative: avg entry = (50*100 + 150*100 + 2) / 200 = 20002/200 = 100.01
-			//   sell1 PnL = (120*100 - 1) - (100.01*100) = 11999 - 10001 = 1998
-			//   sell2 PnL = (120*100 - 1) - (100.01*100) = 11999 - 10001 = 1998
+			// Cumulative (running sum of FIFO PnL): 0, 0, 6998, 6998 + (-3002) = 3996
 			expectedPnL:    []float64{0, 0, 6998, -3002},
-			expectedCumPnL: []float64{0, 0, 1998, 1998},
+			expectedCumPnL: []float64{0, 0, 6998, 3996},
 		},
 		{
 			name: "Partial sell crosses multiple buys (FIFO)",
@@ -130,10 +128,9 @@ func (suite *BacktestStateTestSuite) TestFIFOPnL_LongPosition() {
 			//   buy2 cost: 200*20 + 1*20/50 = 4000.4
 			//   total cost: 5001 + 4000.4 = 9001.4
 			//   PnL = 160*70 - 1 - 9001.4 = 11200 - 1 - 9001.4 = 2197.6
-			// Cumulative: avg entry = (100*50 + 200*50 + 2) / 100 = 15002/100 = 150.02
-			//   PnL = (160*70 - 1) - (150.02*70) = 11199 - 10501.4 = 697.6
+			// Cumulative (running sum of FIFO PnL): 0, 0, 2197.6
 			expectedPnL:    []float64{0, 0, 2197.6},
-			expectedCumPnL: []float64{0, 0, 697.6},
+			expectedCumPnL: []float64{0, 0, 2197.6},
 		},
 		{
 			name: "Two separate round-trips (position closes then reopens)",
@@ -167,10 +164,9 @@ func (suite *BacktestStateTestSuite) TestFIFOPnL_LongPosition() {
 			//   PnL = (110*100 - 1) - (100*100 + 1) = 998
 			// FIFO: sell2 matches buy2 (100@$105) - buy1 is consumed
 			//   PnL = (115*100 - 1) - (105*100 + 1) = 998
-			// Cumulative: after buy2 avg entry = (100*100+105*100+2)/200 = 20502/200 = 102.51
-			//   sell2 PnL = (115*100 - 1) - (102.51*100) = 11499 - 10251 = 1248
+			// Cumulative (running sum): 0, 998, 998, 998+998 = 1996
 			expectedPnL:    []float64{0, 998, 0, 998},
-			expectedCumPnL: []float64{0, 998, 0, 1248},
+			expectedCumPnL: []float64{0, 998, 998, 1996},
 		},
 	}
 
@@ -257,11 +253,9 @@ func (suite *BacktestStateTestSuite) TestFIFOPnL_ShortPosition() {
 			//   PnL = (200*100 - 1) - (120*100 + 1) = 19999 - 12001 = 7998
 			// FIFO: close2 matches open2 (100@$100)
 			//   PnL = (100*100 - 1) - (120*100 + 1) = 9999 - 12001 = -2002
-			// Cumulative: avg entry = (200*100+100*100-2)/200 = 29998/200 = 149.99
-			//   close1 PnL = 149.99*100 - (120*100+1) = 14999 - 12001 = 2998
-			//   close2 PnL = 149.99*100 - (120*100+1) = 14999 - 12001 = 2998
+			// Cumulative (running sum): 0, 0, 7998, 7998 + (-2002) = 5996
 			expectedPnL:    []float64{0, 0, 7998, -2002},
-			expectedCumPnL: []float64{0, 0, 2998, 2998},
+			expectedCumPnL: []float64{0, 0, 7998, 5996},
 		},
 	}
 
@@ -287,8 +281,8 @@ func (suite *BacktestStateTestSuite) TestFIFOPnL_ShortPosition() {
 	}
 }
 
-// TestFIFOPnL_TotalConsistency verifies that sum of FIFO PnL equals sum of cumulative PnL
-// for fully closed positions.
+// TestFIFOPnL_TotalConsistency verifies that the last trade's cumulative PnL equals
+// the sum of all individual FIFO PnLs — i.e. cumulative PnL is a running sum.
 func (suite *BacktestStateTestSuite) TestFIFOPnL_TotalConsistency() {
 	suite.Run("Long position total PnL consistency", func() {
 		err := suite.state.Cleanup()
@@ -329,14 +323,12 @@ func (suite *BacktestStateTestSuite) TestFIFOPnL_TotalConsistency() {
 		trades, err := suite.state.GetAllTrades()
 		suite.Require().NoError(err)
 
-		var totalFIFO, totalCumulative float64
+		var totalFIFO float64
 		for _, trade := range trades {
 			totalFIFO += trade.PnL
-			totalCumulative += trade.CumulativePnL
 		}
 
-		// Both should equal the same total for a fully closed position
-		suite.Assert().Equal(totalCumulative, totalFIFO, "Total FIFO PnL should equal total cumulative PnL for fully closed positions")
+		suite.Assert().Equal(totalFIFO, trades[len(trades)-1].CumulativePnL, "Last trade's cumulative PnL should equal sum of individual FIFO PnLs")
 	})
 
 	suite.Run("Short position total PnL consistency", func() {
@@ -378,12 +370,56 @@ func (suite *BacktestStateTestSuite) TestFIFOPnL_TotalConsistency() {
 		trades, err := suite.state.GetAllTrades()
 		suite.Require().NoError(err)
 
-		var totalFIFO, totalCumulative float64
+		var totalFIFO float64
 		for _, trade := range trades {
 			totalFIFO += trade.PnL
-			totalCumulative += trade.CumulativePnL
 		}
 
-		suite.Assert().Equal(totalCumulative, totalFIFO, "Total FIFO PnL should equal total cumulative PnL for fully closed positions")
+		suite.Assert().Equal(totalFIFO, trades[len(trades)-1].CumulativePnL, "Last trade's cumulative PnL should equal sum of individual FIFO PnLs")
+	})
+}
+
+// TestCumulativePnL_RunningSum verifies that CumulativePnL is a simple running sum
+// of per-trade PnL across multiple round-trips: buys inherit the prior cumulative
+// value, sells add their FIFO PnL.
+func (suite *BacktestStateTestSuite) TestCumulativePnL_RunningSum() {
+	suite.Run("Three round-trips: +8, +8, -2 -> 8, 16, 14", func() {
+		err := suite.state.Cleanup()
+		suite.Require().NoError(err)
+
+		mkOrder := func(side types.PurchaseType, price float64, ts time.Time, msg string) types.Order {
+			return types.Order{
+				Symbol: "AAPL", Side: side, Quantity: 1, Price: price, Fee: 0,
+				Timestamp: ts, IsCompleted: true, PositionType: types.PositionTypeLong,
+				StrategyName: "test", Reason: types.Reason{Reason: "test", Message: msg},
+			}
+		}
+
+		base := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		orders := []types.Order{
+			mkOrder(types.PurchaseTypeBuy, 100, base, "buy1"),
+			mkOrder(types.PurchaseTypeSell, 108, base.Add(time.Hour), "sell1"), // +8
+			mkOrder(types.PurchaseTypeBuy, 100, base.Add(2*time.Hour), "buy2"),
+			mkOrder(types.PurchaseTypeSell, 108, base.Add(3*time.Hour), "sell2"), // +8
+			mkOrder(types.PurchaseTypeBuy, 100, base.Add(4*time.Hour), "buy3"),
+			mkOrder(types.PurchaseTypeSell, 98, base.Add(5*time.Hour), "sell3"), // -2
+		}
+
+		for _, order := range orders {
+			_, err := suite.state.Update([]types.Order{order})
+			suite.Require().NoError(err)
+		}
+
+		trades, err := suite.state.GetAllTrades()
+		suite.Require().NoError(err)
+		suite.Require().Equal(6, len(trades))
+
+		expectedPnL := []float64{0, 8, 0, 8, 0, -2}
+		expectedCum := []float64{0, 8, 8, 16, 16, 14}
+
+		for i, trade := range trades {
+			suite.Assert().Equal(expectedPnL[i], trade.PnL, "PnL mismatch at trade %d", i)
+			suite.Assert().Equal(expectedCum[i], trade.CumulativePnL, "CumulativePnL mismatch at trade %d", i)
+		}
 	})
 }

@@ -32,6 +32,7 @@ initial_capital: 10000
 		stats, err := testhelper.ReadStats(&s.E2ETestSuite, tmpFolder)
 		s.Require().NoError(err)
 		s.Require().Equal(stats[0].TradeResult.NumberOfTrades, 1)
+		s.Require().Equal(stats[0].TradeResult.NumberOfTradingPairs, 0)
 		s.Require().Equal(stats[0].Symbol, "AAPL")
 
 		// Verify strategy metadata is present in stats

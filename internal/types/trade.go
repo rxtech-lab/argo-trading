@@ -17,11 +17,10 @@ type Trade struct {
 	// For sell orders, it matches against the earliest unmatched buy orders to calculate
 	// the individual PnL for this specific trade. For buy orders, PnL is 0.
 	PnL float64 `csv:"pnl"`
-	// CumulativePnL is the profit and loss for this trade using average entry price.
-	// For example, you have 300 shares of AAPL at $100.01 average entry price
-	// And you sell 100 shares at $110.0
-	// Then the CumulativePnL is (110.0-100.01)*100 = $999.
-	// Note, the fee is included in the average entry price and CumulativePnL would be 0 if the order is buy.
+	// CumulativePnL is the running sum of per-trade PnL for this symbol up to and
+	// including this trade. For example, if three sells produce PnL +8, +8, -2,
+	// the CumulativePnL values are 8, 16, 14. Buys contribute 0 to the sum and
+	// inherit the prior cumulative value unchanged.
 	CumulativePnL float64 `csv:"cumulative_pnl"`
 }
 

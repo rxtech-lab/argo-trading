@@ -31,13 +31,16 @@ type TradePnl struct {
 }
 
 type TradeResult struct {
-	// Count of all trades.
+	// Count of all trades (both entry and exit fills).
 	NumberOfTrades int `yaml:"number_of_trades"`
-	// Count of winning trades that has positive pnl.
+	// Count of trading pairs (round trips). Each exit trade closes a pair
+	// against one or more prior entry trades. Open positions are not counted.
+	NumberOfTradingPairs int `yaml:"number_of_trading_pairs"`
+	// Count of winning trading pairs (exit trades with positive pnl).
 	NumberOfWinningTrades int `yaml:"number_of_winning_trades"`
-	// Count of losing trades that has negative pnl.
+	// Count of losing trading pairs (exit trades with negative pnl).
 	NumberOfLosingTrades int `yaml:"number_of_losing_trades"`
-	// Win rate.
+	// Win rate (winning trading pairs / total trading pairs).
 	WinRate float64 `yaml:"win_rate"`
 	// Maximum drawdown.
 	MaxDrawdown float64 `yaml:"max_drawdown"`
