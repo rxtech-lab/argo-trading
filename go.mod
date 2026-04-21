@@ -51,7 +51,6 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/mobile v0.0.0-20260410095206-2cfb76559b7b // indirect
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 )
 
@@ -59,7 +58,7 @@ require (
 	github.com/apache/arrow-go/v18 v18.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bitly/go-simplejson v0.5.0 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect; indirectgo
 	github.com/go-playground/form/v4 v4.2.1 // indirect
