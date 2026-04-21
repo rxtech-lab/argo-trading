@@ -194,3 +194,70 @@ func (suite *StatisticsTestSuite) TestTradeResultStruct() {
 	suite.Equal(0.65, result.WinRate)
 	suite.Equal(0.2, result.MaxDrawdown)
 }
+
+// TestWriteTradeStatsExtendedFields verifies that the new monthly breakdown
+// fields and the median/percentile additions to TradeHoldingTime and TradePnl
+// round-trip through YAML serialization correctly.
+func (suite *StatisticsTestSuite) TestWriteTradeStatsExtendedFields() {
+	stats := []TradeStats{
+		{
+			Symbol: "BTC/USD",
+			TradeHoldingTime: TradeHoldingTime{
+				Min:    60,
+				Max:    7200,
+				Avg:    1800,
+				Median: 1500,
+				Percentiles: Percentiles{
+					P25: 600,
+					P50: 1500,
+					P75: 3000,
+					P90: 5400,
+					P95: 6500,
+					P99: 7100,
+				},
+			},
+			TradePnl: TradePnl{
+				RealizedPnL: 100,
+				MedianPnL:   25.5,
+				Percentiles: Percentiles{
+					P25: -10,
+					P50: 25.5,
+					P75: 60,
+					P90: 80,
+					P95: 90,
+					P99: 99,
+				},
+			},
+			MonthlyTrades: []MonthlyTradeStats{
+				{Month: "2024-01", NumberOfTrades: 4, NumberOfTradingPairs: 2, NumberOfWinningTrades: 1, NumberOfLosingTrades: 1},
+				{Month: "2024-02", NumberOfTrades: 2, NumberOfTradingPairs: 1, NumberOfWinningTrades: 1},
+			},
+			MonthlyBalance: []MonthlyBalanceChange{
+				{Month: "2024-01", StartingBalance: 1000, EndingBalance: 1000, Change: 0, RealizedPnL: 0},
+				{Month: "2024-02", StartingBalance: 1000, EndingBalance: 1200, Change: 200, RealizedPnL: 200},
+			},
+			MonthlyHoldingTime: []MonthlyHoldingTime{
+				{Month: "2024-01", Min: 3600, Max: 7200, Avg: 5400, Median: 5400},
+				{Month: "2024-02", Min: 3600, Max: 3600, Avg: 3600, Median: 3600},
+			},
+		},
+	}
+
+	filePath := filepath.Join(suite.tempDir, "extended_stats.yaml")
+	suite.Require().NoError(WriteTradeStats(filePath, stats))
+
+	data, err := os.ReadFile(filePath)
+	suite.Require().NoError(err)
+
+	var readStats []TradeStats
+
+	err = yaml.Unmarshal(data, &readStats)
+	suite.Require().NoError(err)
+	suite.Require().Len(readStats, 1)
+
+	suite.Equal(stats[0].TradeHoldingTime, readStats[0].TradeHoldingTime)
+	suite.Equal(stats[0].TradePnl, readStats[0].TradePnl)
+	suite.Equal(stats[0].MonthlyTrades, readStats[0].MonthlyTrades)
+	suite.Equal(stats[0].MonthlyBalance, readStats[0].MonthlyBalance)
+	suite.Equal(stats[0].MonthlyHoldingTime, readStats[0].MonthlyHoldingTime)
+}

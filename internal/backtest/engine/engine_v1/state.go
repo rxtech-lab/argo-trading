@@ -1512,11 +1512,19 @@ func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Ti
 		SELECT
 			COALESCE(MIN(duration), 0) as min_duration,
 			COALESCE(MAX(duration), 0) as max_duration,
-			COALESCE(AVG(duration), 0) as avg_duration
+			COALESCE(AVG(duration), 0) as avg_duration,
+			COALESCE(quantile_cont(duration, 0.5), 0) as median_duration,
+			COALESCE(quantile_cont(duration, 0.25), 0) as p25,
+			COALESCE(quantile_cont(duration, 0.75), 0) as p75,
+			COALESCE(quantile_cont(duration, 0.9), 0) as p90,
+			COALESCE(quantile_cont(duration, 0.95), 0) as p95,
+			COALESCE(quantile_cont(duration, 0.99), 0) as p99
 		FROM all_durations
 	`
 
-	var minDuration, maxDuration, avgDuration float64
+	var minDuration, maxDuration, avgDuration, medianDuration float64
+
+	var p25, p75, p90, p95, p99 float64
 
 	// Format endTime as ISO 8601 string for DuckDB compatibility
 	endTimeStr := endTime.Format("2006-01-02 15:04:05")
@@ -1525,15 +1533,30 @@ func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Ti
 		&minDuration,
 		&maxDuration,
 		&avgDuration,
+		&medianDuration,
+		&p25,
+		&p75,
+		&p90,
+		&p95,
+		&p99,
 	)
 	if err != nil {
 		return types.TradeHoldingTime{}, fmt.Errorf("failed to calculate holding time: %w", err)
 	}
 
 	holdingTime := types.TradeHoldingTime{
-		Min: int(math.Round(minDuration)),
-		Max: int(math.Round(maxDuration)),
-		Avg: int(math.Round(avgDuration)),
+		Min:    int(math.Round(minDuration)),
+		Max:    int(math.Round(maxDuration)),
+		Avg:    int(math.Round(avgDuration)),
+		Median: int(math.Round(medianDuration)),
+		Percentiles: types.Percentiles{
+			P25: p25,
+			P50: medianDuration,
+			P75: p75,
+			P90: p90,
+			P95: p95,
+			P99: p99,
+		},
 	}
 
 	return holdingTime, nil
@@ -1656,6 +1679,200 @@ func (b *BacktestState) calculateTradeHoldingTimeLIFO(symbol string, endTime tim
 		Max: int(math.Round(maxDur)),
 		Avg: int(math.Round(avg)),
 	}, nil
+}
+
+// calculateTradePnlStats computes median and percentile statistics over the
+// per-trade realized PnL of all closing trades for a symbol. Closing trades are
+// identified as fills with non-zero pnl (entry trades record pnl as zero).
+func (b *BacktestState) calculateTradePnlStats(symbol string) (median float64, percentiles types.Percentiles, err error) {
+	query := `
+		SELECT
+			COALESCE(quantile_cont(pnl, 0.5), 0) as median_pnl,
+			COALESCE(quantile_cont(pnl, 0.25), 0) as p25,
+			COALESCE(quantile_cont(pnl, 0.75), 0) as p75,
+			COALESCE(quantile_cont(pnl, 0.9), 0) as p90,
+			COALESCE(quantile_cont(pnl, 0.95), 0) as p95,
+			COALESCE(quantile_cont(pnl, 0.99), 0) as p99
+		FROM trades
+		WHERE symbol = ? AND pnl != 0
+	`
+
+	var p25, p75, p90, p95, p99 float64
+
+	if err = b.db.QueryRow(query, symbol).Scan(&median, &p25, &p75, &p90, &p95, &p99); err != nil {
+		return 0, types.Percentiles{}, fmt.Errorf("failed to calculate trade pnl percentiles: %w", err)
+	}
+
+	percentiles = types.Percentiles{
+		P25: p25,
+		P50: median,
+		P75: p75,
+		P90: p90,
+		P95: p95,
+		P99: p99,
+	}
+
+	return median, percentiles, nil
+}
+
+// calculateMonthlyTradeStats returns per-month trade activity for a symbol.
+// Months are formatted as YYYY-MM and ordered chronologically. NumberOfTrades
+// counts every fill executed in the month (entries and exits). NumberOfTradingPairs
+// counts closing trades (sell trades for long positions) and is also the
+// denominator for win/lose counts which use the per-trade pnl sign.
+func (b *BacktestState) calculateMonthlyTradeStats(symbol string) ([]types.MonthlyTradeStats, error) {
+	query := `
+		SELECT
+			strftime(date_trunc('month', executed_at), '%Y-%m') as month,
+			COUNT(*) as total_trades,
+			SUM(CASE WHEN order_type = ? THEN 1 ELSE 0 END) as trading_pairs,
+			SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
+			SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades
+		FROM trades
+		WHERE symbol = ?
+		GROUP BY month
+		ORDER BY month
+	`
+
+	rows, err := b.db.Query(query, types.PurchaseTypeSell, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query monthly trade stats: %w", err)
+	}
+	defer rows.Close()
+
+	var result []types.MonthlyTradeStats
+
+	for rows.Next() {
+		var stat types.MonthlyTradeStats
+		if err := rows.Scan(&stat.Month, &stat.NumberOfTrades, &stat.NumberOfTradingPairs, &stat.NumberOfWinningTrades, &stat.NumberOfLosingTrades); err != nil {
+			return nil, fmt.Errorf("failed to scan monthly trade stat: %w", err)
+		}
+
+		result = append(result, stat)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating monthly trade stats: %w", err)
+	}
+
+	return result, nil
+}
+
+// calculateMonthlyBalance returns per-month equity balance evolution for a
+// symbol. Equity for a trade is computed as initial_balance + cumulative_pnl
+// at the time of the trade. StartingBalance for the first month with trades is
+// the initial balance; subsequent months use the previous month's ending
+// balance as starting balance.
+func (b *BacktestState) calculateMonthlyBalance(symbol string) ([]types.MonthlyBalanceChange, error) {
+	query := `
+		SELECT
+			strftime(date_trunc('month', executed_at), '%Y-%m') as month,
+			arg_max(cumulative_pnl, executed_at) as ending_pnl,
+			COALESCE(SUM(pnl), 0) as realized_pnl
+		FROM trades
+		WHERE symbol = ?
+		GROUP BY month
+		ORDER BY month
+	`
+
+	rows, err := b.db.Query(query, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query monthly balance: %w", err)
+	}
+	defer rows.Close()
+
+	var (
+		result      []types.MonthlyBalanceChange
+		prevEnding  = b.initialBalance
+		hasPrevious bool
+	)
+
+	for rows.Next() {
+		var (
+			month       string
+			endingPnl   float64
+			realizedPnl float64
+		)
+
+		if err := rows.Scan(&month, &endingPnl, &realizedPnl); err != nil {
+			return nil, fmt.Errorf("failed to scan monthly balance: %w", err)
+		}
+
+		ending := b.initialBalance + endingPnl
+
+		starting := b.initialBalance
+		if hasPrevious {
+			starting = prevEnding
+		}
+
+		result = append(result, types.MonthlyBalanceChange{
+			Month:           month,
+			StartingBalance: starting,
+			EndingBalance:   ending,
+			Change:          ending - starting,
+			RealizedPnL:     realizedPnl,
+		})
+
+		prevEnding = ending
+		hasPrevious = true
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating monthly balance: %w", err)
+	}
+
+	return result, nil
+}
+
+// calculateMonthlyHoldingTime returns per-month holding-time statistics for
+// closing trades exited within each month. Uses the per-trade hold_time stored
+// on closing trades (entry trades have hold_time = 0 and are excluded).
+func (b *BacktestState) calculateMonthlyHoldingTime(symbol string) ([]types.MonthlyHoldingTime, error) {
+	query := `
+		SELECT
+			strftime(date_trunc('month', executed_at), '%Y-%m') as month,
+			COALESCE(MIN(hold_time), 0) as min_hold,
+			COALESCE(MAX(hold_time), 0) as max_hold,
+			COALESCE(AVG(hold_time), 0) as avg_hold,
+			COALESCE(quantile_cont(hold_time, 0.5), 0) as median_hold
+		FROM trades
+		WHERE symbol = ? AND hold_time > 0
+		GROUP BY month
+		ORDER BY month
+	`
+
+	rows, err := b.db.Query(query, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query monthly holding time: %w", err)
+	}
+	defer rows.Close()
+
+	var result []types.MonthlyHoldingTime
+
+	for rows.Next() {
+		var (
+			month                                 string
+			minHold, maxHold, avgHold, medianHold float64
+		)
+
+		if err := rows.Scan(&month, &minHold, &maxHold, &avgHold, &medianHold); err != nil {
+			return nil, fmt.Errorf("failed to scan monthly holding time: %w", err)
+		}
+
+		result = append(result, types.MonthlyHoldingTime{
+			Month:  month,
+			Min:    int(math.Round(minHold)),
+			Max:    int(math.Round(maxHold)),
+			Avg:    int(math.Round(avgHold)),
+			Median: int(math.Round(medianHold)),
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating monthly holding time: %w", err)
+	}
+
+	return result, nil
 }
 
 // calculateTotalFees calculates the total fees for a symbol.
@@ -1831,9 +2048,32 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	tradePnl.MaximumLoss = maxLoss
 	tradePnl.MaximumProfit = maxProfit
 
+	medianPnl, pnlPercentiles, err := b.calculateTradePnlStats(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	tradePnl.MedianPnL = medianPnl
+	tradePnl.Percentiles = pnlPercentiles
+
 	buyAndHoldPnl, err := b.calculateBuyAndHoldPnL(symbol, ctx.DataSource)
 	if err != nil {
 		return types.TradeStats{}, fmt.Errorf("failed to calculate buy-and-hold PnL: %w", err)
+	}
+
+	monthlyTrades, err := b.calculateMonthlyTradeStats(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	monthlyBalance, err := b.calculateMonthlyBalance(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	monthlyHoldingTime, err := b.calculateMonthlyHoldingTime(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
 	}
 
 	// Calculate final balance as equity: initial balance + total PnL.
@@ -1860,5 +2100,8 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 		InitialBalance:       b.initialBalance,
 		FinalBalance:         finalBalance,
 		PortfolioCalculation: string(b.portfolioStrategy),
+		MonthlyTrades:        monthlyTrades,
+		MonthlyBalance:       monthlyBalance,
+		MonthlyHoldingTime:   monthlyHoldingTime,
 	}, nil
 }
