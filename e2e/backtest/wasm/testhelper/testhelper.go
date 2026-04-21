@@ -194,7 +194,7 @@ func ReadTrades(s *E2ETestSuite, tmpFolder string) (trades []types.Trade, err er
 		Select(
 			"order_id", "symbol", "order_type", "quantity", "price", "timestamp", "is_completed",
 			"reason", "message", "strategy_name", "commission",
-			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl",
+			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "hold_time",
 		).
 		From("trades_view").
 		ToSql()
@@ -224,7 +224,7 @@ func ReadTrades(s *E2ETestSuite, tmpFolder string) (trades []types.Trade, err er
 			&order.Price, &order.Timestamp, &order.IsCompleted,
 			&reason, &reasonMessage, &order.StrategyName, &order.Fee,
 			&trade.ExecutedAt, &trade.ExecutedQty, &trade.ExecutedPrice,
-			&trade.Fee, &trade.PnL, &trade.CumulativePnL,
+			&trade.Fee, &trade.PnL, &trade.CumulativePnL, &trade.HoldTime,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan trade row: %w", err)
