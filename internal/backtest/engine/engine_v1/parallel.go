@@ -72,7 +72,7 @@ func (b *BacktestEngineV1) runStrategyParallel(
 
 	// Wrap user-supplied callbacks with mutexes so worker goroutines can call
 	// them safely and so OnProcessData reports a global cumulative progress.
-	wrappedCallbacks, _ := wrapCallbacksForParallel(callbacks)
+	wrappedCallbacks := wrapCallbacksForParallel(callbacks)
 
 	// Worker pool with a buffered job channel.
 	jobCh := make(chan parallelJob, len(jobs))
@@ -261,10 +261,6 @@ type progressTracker struct {
 	totalKnown bool
 }
 
-func newProgressTracker() *progressTracker {
-	return &progressTracker{}
-}
-
 // addRunTotal is invoked from OnRunStart to grow the global "total" so that
 // OnProcessData callers see a `total` that represents the sum of bars across
 // all iterations the parallel run will process.
@@ -295,27 +291,13 @@ func (p *progressTracker) tick(fallbackTotal int) (int, int) {
 	return p.cumulative, total
 }
 
-// Cumulative returns the latest cumulative progress count.
-func (p *progressTracker) Cumulative() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.cumulative
-}
-
-// GrandTotal returns the latest known total progress target.
-func (p *progressTracker) GrandTotal() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.grandTotal
-}
-
 // wrapCallbacksForParallel rewrites callbacks for safe concurrent invocation.
 // All user callbacks are serialized through a single mutex so callback
 // implementations don't have to be thread-safe themselves. OnProcessData is
 // re-mapped to forward a global cumulative counter / total instead of the
 // per-iteration counter that worker-local code emits.
-func wrapCallbacksForParallel(user engine.LifecycleCallbacks) (engine.LifecycleCallbacks, *progressTracker) {
-	progress := newProgressTracker()
+func wrapCallbacksForParallel(user engine.LifecycleCallbacks) engine.LifecycleCallbacks {
+	progress := &progressTracker{}
 
 	var callbackMu sync.Mutex
 
@@ -353,25 +335,22 @@ func wrapCallbacksForParallel(user engine.LifecycleCallbacks) (engine.LifecycleC
 
 	if user.OnProcessData != nil {
 		procData := func(_ int, total int) error {
-			cum, gt := progress.tick(total)
-
+			// Hold the callback mutex around BOTH the tick and the user
+			// callback invocation. This guarantees the user callback sees
+			// monotonically non-decreasing `current` values even when many
+			// workers race on this callback simultaneously - otherwise
+			// goroutine A could `tick` to 5, get preempted, and goroutine B
+			// could `tick` to 6 and reach the user callback first, making
+			// the user observe (6, then 5).
 			callbackMu.Lock()
 			defer callbackMu.Unlock()
+
+			cum, gt := progress.tick(total)
 			return (*user.OnProcessData)(cum, gt)
-		}
-		procCb := engine.OnProcessDataCallback(procData)
-		wrapped.OnProcessData = &procCb
-	} else {
-		// Even without a user OnProcessData callback, install a no-op tick
-		// so progress.Cumulative() / GrandTotal() still report meaningful
-		// values to internal tests that introspect the progress tracker.
-		procData := func(_ int, total int) error {
-			progress.tick(total)
-			return nil
 		}
 		procCb := engine.OnProcessDataCallback(procData)
 		wrapped.OnProcessData = &procCb
 	}
 
-	return wrapped, progress
+	return wrapped
 }
