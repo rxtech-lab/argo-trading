@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -22,10 +23,11 @@ import (
 )
 
 type BacktestState struct {
-	db             *sql.DB
-	logger         *logger.Logger
-	sq             squirrel.StatementBuilderType
-	initialBalance float64
+	db                *sql.DB
+	logger            *logger.Logger
+	sq                squirrel.StatementBuilderType
+	initialBalance    float64
+	portfolioStrategy PortfolioCalculationStrategy
 }
 
 // CalculatePNL calculates the profit/loss for a trade
@@ -47,16 +49,28 @@ func NewBacktestState(logger *logger.Logger) (*BacktestState, error) {
 	}
 
 	return &BacktestState{
-		logger:         logger,
-		db:             db,
-		sq:             squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
-		initialBalance: 0,
+		logger:            logger,
+		db:                db,
+		sq:                squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
+		initialBalance:    0,
+		portfolioStrategy: PortfolioCalculationFIFO,
 	}, nil
 }
 
 // SetInitialBalance sets the initial cash balance for the backtest run.
 func (b *BacktestState) SetInitialBalance(balance float64) {
 	b.initialBalance = balance
+}
+
+// SetPortfolioCalculationStrategy selects how per-trade PnL is computed for
+// closing trades. Unknown values fall back to average-cost.
+func (b *BacktestState) SetPortfolioCalculationStrategy(strategy PortfolioCalculationStrategy) {
+	b.portfolioStrategy = ResolvePortfolioCalculation(strategy)
+}
+
+// PortfolioCalculationStrategy returns the active portfolio calculation strategy.
+func (b *BacktestState) PortfolioCalculationStrategy() PortfolioCalculationStrategy {
+	return b.portfolioStrategy
 }
 
 // Initialize creates the necessary tables for tracking trades and positions.
@@ -184,7 +198,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		// Calculate FIFO PnL for closing trades; buys have zero individual PnL.
-		fifoPnl, err := b.computeClosingFIFOPnL(order, currentPosition)
+		fifoPnl, err := b.computeClosingPnL(order, currentPosition)
 		if err != nil {
 			tx.Rollback()
 
@@ -616,27 +630,37 @@ func createZeroStats(symbol string, params statsParams, initialBalance float64) 
 		},
 		TotalFees: 0,
 		TradeHoldingTime: types.TradeHoldingTime{
-			Min: 0,
-			Max: 0,
-			Avg: 0,
+			Min:         0,
+			Max:         0,
+			Avg:         0,
+			Median:      0,
+			Percentiles: types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0},
 		},
 		TradePnl: types.TradePnl{
-			RealizedPnL:   0,
-			UnrealizedPnL: 0,
-			TotalPnL:      0,
-			MaximumLoss:   0,
-			MaximumProfit: 0,
+			RealizedPnL:     0,
+			UnrealizedPnL:   0,
+			TotalPnL:        0,
+			MaximumLoss:     0,
+			MaximumProfit:   0,
+			MedianPnL:       0,
+			Percentiles:     types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0},
+			TotalInvestment: 0,
+			PnLPercentage:   0,
 		},
-		BuyAndHoldPnl:  0,
-		TradesFilePath: params.tradesFilePath,
-		OrdersFilePath: params.ordersFilePath,
-		MarksFilePath:  params.marksFilePath,
-		LogsFilePath:   params.logsFilePath,
-		Strategy:       params.strategyInfo,
-		StrategyPath:   params.strategyPath,
-		DataPath:       params.dataPath,
-		InitialBalance: initialBalance,
-		FinalBalance:   initialBalance,
+		BuyAndHoldPnl:        0,
+		TradesFilePath:       params.tradesFilePath,
+		OrdersFilePath:       params.ordersFilePath,
+		MarksFilePath:        params.marksFilePath,
+		LogsFilePath:         params.logsFilePath,
+		Strategy:             params.strategyInfo,
+		StrategyPath:         params.strategyPath,
+		DataPath:             params.dataPath,
+		InitialBalance:       initialBalance,
+		FinalBalance:         initialBalance,
+		PortfolioCalculation: "",
+		MonthlyTrades:        nil,
+		MonthlyBalance:       nil,
+		MonthlyHoldingTime:   nil,
 	}
 }
 
@@ -663,11 +687,15 @@ func calculateUnrealizedPnL(position types.Position, lastPrice float64) types.Tr
 	}
 
 	return types.TradePnl{
-		RealizedPnL:   realizedPnl,
-		UnrealizedPnL: unrealizedPnL,
-		TotalPnL:      realizedPnl + unrealizedPnL,
-		MaximumLoss:   0,
-		MaximumProfit: 0,
+		RealizedPnL:     realizedPnl,
+		UnrealizedPnL:   unrealizedPnL,
+		TotalPnL:        realizedPnl + unrealizedPnL,
+		MaximumLoss:     0,
+		MaximumProfit:   0,
+		MedianPnL:       0,
+		Percentiles:     types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0},
+		TotalInvestment: 0,
+		PnLPercentage:   0,
 	}
 }
 
@@ -913,28 +941,40 @@ func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	return orders, nil
 }
 
-// computeClosingFIFOPnL calculates the FIFO PnL for a closing trade based on position state.
-func (b *BacktestState) computeClosingFIFOPnL(order types.Order, position types.Position) (float64, error) {
+// computeClosingPnL calculates the closing PnL for a trade based on position
+// state, using the configured portfolio calculation strategy (FIFO or
+// average-cost). It returns 0 for opening trades.
+func (b *BacktestState) computeClosingPnL(order types.Order, position types.Position) (float64, error) {
 	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
 	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
 
-	if isLongClose || isShortClose {
-		return b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+	if !isLongClose && !isShortClose {
+		return 0, nil
 	}
 
-	return 0, nil
+	if b.portfolioStrategy == PortfolioCalculationAverageCost {
+		return b.calculateAverageCostPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+	}
+
+	return b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
 }
 
-// computeClosingHoldTime returns the FIFO-weighted-average holding time (in seconds)
-// for a closing trade. Closing trades are SELL orders that match prior BUY entries
-// (mirroring the convention used by computeClosingFIFOPnL/calculateFIFOPnL).
-// Opening trades return 0.
+// computeClosingHoldTime returns the quantity-weighted-average holding time (in
+// seconds) for a closing trade. Closing trades are SELL orders that match prior
+// BUY entries (mirroring the convention used by computeClosingPnL). Under FIFO
+// the match consumes the oldest unmatched entries first; under average-cost the
+// match consumes the most recently acquired entries first (LIFO). Opening
+// trades return 0.
 func (b *BacktestState) computeClosingHoldTime(order types.Order, position types.Position) (int, error) {
 	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
 	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
 
 	if !isLongClose && !isShortClose {
 		return 0, nil
+	}
+
+	if b.portfolioStrategy == PortfolioCalculationAverageCost {
+		return b.calculateLIFOHoldTime(order.Symbol, order.PositionType, order.Quantity, order.Timestamp)
 	}
 
 	return b.calculateFIFOHoldTime(order.Symbol, order.PositionType, order.Quantity, order.Timestamp)
@@ -1014,6 +1054,103 @@ func (b *BacktestState) calculateFIFOHoldTime(symbol string, positionType types.
 		skipQty = 0
 
 		matchedQty := math.Min(availableQty, remaining)
+		duration := closeTime.Sub(entry.executedAt).Seconds()
+		if duration < 0 {
+			duration = 0
+		}
+
+		weightedSeconds += duration * matchedQty
+		matchedQtyTotal += matchedQty
+		remaining -= matchedQty
+	}
+
+	if matchedQtyTotal == 0 {
+		return 0, nil
+	}
+
+	return int(math.Round(weightedSeconds / matchedQtyTotal)), nil
+}
+
+// calculateLIFOHoldTime computes the quantity-weighted-average holding time
+// (seconds) between a closing trade at closeTime and the lots that would be
+// consumed under last-in-first-out matching. Because prior partial exits may
+// have consumed lots from the top of the stack — leaving older lots partially
+// available "below" newer ones — we replay the full lot history to reconstruct
+// the stack as it stands immediately before the current close.
+func (b *BacktestState) calculateLIFOHoldTime(symbol string, positionType types.PositionType, closeQty float64, closeTime time.Time) (int, error) {
+	tradesQuery := b.sq.
+		Select("order_type", "executed_qty", "executed_at").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query trades for LIFO hold time: %w", err)
+	}
+	defer rows.Close()
+
+	type lot struct {
+		qty        float64
+		executedAt time.Time
+	}
+
+	var stack []lot
+
+	for rows.Next() {
+		var (
+			orderType  string
+			qty        float64
+			executedAt time.Time
+		)
+
+		if err := rows.Scan(&orderType, &qty, &executedAt); err != nil {
+			return 0, fmt.Errorf("failed to scan trade for LIFO hold time: %w", err)
+		}
+
+		if types.PurchaseType(orderType) == types.PurchaseTypeBuy {
+			stack = append(stack, lot{qty: qty, executedAt: executedAt})
+
+			continue
+		}
+
+		// SELL: pop from top of stack.
+		remaining := qty
+		for remaining > 0 && len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			if top.qty <= remaining {
+				remaining -= top.qty
+				stack = stack[:len(stack)-1]
+
+				continue
+			}
+
+			top.qty -= remaining
+			remaining = 0
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating trades for LIFO hold time: %w", err)
+	}
+
+	if len(stack) == 0 {
+		return 0, nil
+	}
+
+	// Simulate the current close against the reconstructed stack without mutating it.
+	remaining := closeQty
+	weightedSeconds := 0.0
+	matchedQtyTotal := 0.0
+
+	for i := len(stack) - 1; i >= 0 && remaining > 0; i-- {
+		entry := stack[i]
+		matchedQty := math.Min(entry.qty, remaining)
+
 		duration := closeTime.Sub(entry.executedAt).Seconds()
 		if duration < 0 {
 			duration = 0
@@ -1182,6 +1319,123 @@ func (b *BacktestState) calculateFIFOPnL(symbol string, positionType types.Posit
 	return pnl, nil
 }
 
+// calculateAverageCostPnL calculates the individual PnL for a closing trade
+// using the running weighted-average cost basis of the currently-open position.
+// Unlike FIFO, average-cost does not split the closing trade across specific
+// entry lots; instead, the per-unit cost basis is the average of all unclosed
+// entries, with buys updating the average and sells leaving it unchanged until
+// the position is fully flat (at which point the basis resets).
+func (b *BacktestState) calculateAverageCostPnL(symbol string, positionType types.PositionType, sellQty float64, sellPrice float64, sellFee float64) (float64, error) {
+	// Load all prior trades (buys and sells) for this symbol+positionType in
+	// chronological order so we can replay the running average-cost state.
+	tradesQuery := b.sq.
+		Select("order_type", "executed_qty", "executed_price", "commission").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query trades for average cost: %w", err)
+	}
+	defer rows.Close()
+
+	// Running state: total open quantity and total cost basis for open quantity.
+	openQty := decimal.Zero
+	costBasis := decimal.Zero
+
+	for rows.Next() {
+		var (
+			orderType string
+			qty       float64
+			price     float64
+			fee       float64
+		)
+
+		if err := rows.Scan(&orderType, &qty, &price, &fee); err != nil {
+			return 0, fmt.Errorf("failed to scan trade for average cost: %w", err)
+		}
+
+		qtyDec := decimal.NewFromFloat(qty)
+		priceDec := decimal.NewFromFloat(price)
+		feeDec := decimal.NewFromFloat(fee)
+
+		if types.PurchaseType(orderType) == types.PurchaseTypeBuy {
+			// Entry trade — add to open quantity and cost basis. Fees are
+			// capitalised into the basis following the same sign convention as
+			// calculateFIFOPnL (added for long, subtracted for short).
+			var entryValue decimal.Decimal
+			if positionType == types.PositionTypeLong {
+				entryValue = priceDec.Mul(qtyDec).Add(feeDec)
+			} else {
+				entryValue = priceDec.Mul(qtyDec).Sub(feeDec)
+			}
+
+			openQty = openQty.Add(qtyDec)
+			costBasis = costBasis.Add(entryValue)
+
+			continue
+		}
+
+		// Exit trade — reduce open quantity and cost basis at the current
+		// average cost per unit. This keeps the average unchanged across
+		// partial exits.
+		if openQty.IsZero() {
+			// Defensive: should not happen if orders pass validation; skip.
+			continue
+		}
+
+		avg := costBasis.Div(openQty)
+		matchedDec := decimal.NewFromFloat(math.Min(qty, openQty.InexactFloat64()))
+
+		openQty = openQty.Sub(matchedDec)
+		costBasis = costBasis.Sub(avg.Mul(matchedDec))
+
+		if openQty.Sign() <= 0 {
+			openQty = decimal.Zero
+			costBasis = decimal.Zero
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating trades for average cost: %w", err)
+	}
+
+	if openQty.Sign() <= 0 {
+		// Nothing open to close — defensive fallback consistent with
+		// computeClosingPnL (which is only called for true closes).
+		return 0, nil
+	}
+
+	avg := costBasis.Div(openQty)
+	sellQtyDec := decimal.NewFromFloat(sellQty)
+	// Can't close more than is currently open.
+	if sellQtyDec.GreaterThan(openQty) {
+		sellQtyDec = openQty
+	}
+
+	sellValue := decimal.NewFromFloat(sellPrice).Mul(sellQtyDec)
+	sellFeeDec := decimal.NewFromFloat(sellFee)
+	avgCost := avg.Mul(sellQtyDec)
+
+	var result decimal.Decimal
+	if positionType == types.PositionTypeLong {
+		// Long PnL = exit_value - sell_fee - avg_cost
+		result = sellValue.Sub(sellFeeDec).Sub(avgCost)
+	} else {
+		// Short PnL = avg_entry_value - exit_value - sell_fee
+		result = avgCost.Sub(sellValue).Sub(sellFeeDec)
+	}
+
+	pnl, _ := result.Float64()
+
+	return pnl, nil
+}
+
 // calculateTradeResult calculates the trade result statistics for a symbol.
 // NumberOfTrades counts all fills (entries and exits). NumberOfTradingPairs counts
 // round trips — each exit trade closes a pair against one or more prior entry trades.
@@ -1228,7 +1482,14 @@ func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, 
 
 // calculateTradeHoldingTime calculates the holding time statistics for a symbol.
 // endTime is used to calculate holding time for open positions (positions not yet sold).
-func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Time) (types.TradeHoldingTime, error) {
+// Under FIFO, matches are row-number-aligned (first buy <-> first sell) via SQL.
+// Under average-cost (LIFO for hold time), matches are produced by replaying a
+// per-position-type lot stack in Go, emitting one duration per matched slice.
+func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Time, strategy PortfolioCalculationStrategy) (types.TradeHoldingTime, error) {
+	if strategy == PortfolioCalculationAverageCost {
+		return b.calculateTradeHoldingTimeLIFO(symbol, endTime)
+	}
+
 	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex query
 	// Uses FIFO matching: first buy matches first sell, second buy matches second sell, etc.
 	// Open positions (buys without matching sells) use endTime as the "sell time"
@@ -1265,11 +1526,19 @@ func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Ti
 		SELECT
 			COALESCE(MIN(duration), 0) as min_duration,
 			COALESCE(MAX(duration), 0) as max_duration,
-			COALESCE(AVG(duration), 0) as avg_duration
+			COALESCE(AVG(duration), 0) as avg_duration,
+			COALESCE(quantile_cont(duration, 0.5), 0) as median_duration,
+			COALESCE(quantile_cont(duration, 0.25), 0) as p25,
+			COALESCE(quantile_cont(duration, 0.75), 0) as p75,
+			COALESCE(quantile_cont(duration, 0.9), 0) as p90,
+			COALESCE(quantile_cont(duration, 0.95), 0) as p95,
+			COALESCE(quantile_cont(duration, 0.99), 0) as p99
 		FROM all_durations
 	`
 
-	var minDuration, maxDuration, avgDuration float64
+	var minDuration, maxDuration, avgDuration, medianDuration float64
+
+	var p25, p75, p90, p95, p99 float64
 
 	// Format endTime as ISO 8601 string for DuckDB compatibility
 	endTimeStr := endTime.Format("2006-01-02 15:04:05")
@@ -1278,18 +1547,405 @@ func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Ti
 		&minDuration,
 		&maxDuration,
 		&avgDuration,
+		&medianDuration,
+		&p25,
+		&p75,
+		&p90,
+		&p95,
+		&p99,
 	)
 	if err != nil {
 		return types.TradeHoldingTime{}, fmt.Errorf("failed to calculate holding time: %w", err)
 	}
 
 	holdingTime := types.TradeHoldingTime{
-		Min: int(math.Round(minDuration)),
-		Max: int(math.Round(maxDuration)),
-		Avg: int(math.Round(avgDuration)),
+		Min:    int(math.Round(minDuration)),
+		Max:    int(math.Round(maxDuration)),
+		Avg:    int(math.Round(avgDuration)),
+		Median: int(math.Round(medianDuration)),
+		Percentiles: types.Percentiles{
+			P25: p25,
+			P50: medianDuration,
+			P75: p75,
+			P90: p90,
+			P95: p95,
+			P99: p99,
+		},
 	}
 
 	return holdingTime, nil
+}
+
+// calculateTradeHoldingTimeLIFO computes min/max/avg holding time by replaying
+// the full trade history in Go and matching exits against the most recently
+// acquired lots (LIFO). Long and short positions are tracked independently.
+// Each matched slice emits one duration record; unmatched open lots at the end
+// emit (endTime - lot.executedAt) to mirror the FIFO-SQL behaviour for open
+// positions.
+func (b *BacktestState) calculateTradeHoldingTimeLIFO(symbol string, endTime time.Time) (types.TradeHoldingTime, error) {
+	tradesQuery := b.sq.
+		Select("order_type", "position_type", "executed_qty", "executed_at").
+		From("trades").
+		Where(squirrel.Eq{"symbol": symbol}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return types.TradeHoldingTime{}, fmt.Errorf("failed to query trades for LIFO holding time: %w", err)
+	}
+	defer rows.Close()
+
+	type lot struct {
+		qty        float64
+		executedAt time.Time
+	}
+
+	stacks := map[types.PositionType][]lot{}
+
+	var durations []float64
+
+	for rows.Next() {
+		var (
+			orderType    string
+			positionType string
+			qty          float64
+			executedAt   time.Time
+		)
+
+		if err := rows.Scan(&orderType, &positionType, &qty, &executedAt); err != nil {
+			return types.TradeHoldingTime{}, fmt.Errorf("failed to scan trade for LIFO holding time: %w", err)
+		}
+
+		pt := types.PositionType(positionType)
+
+		if types.PurchaseType(orderType) == types.PurchaseTypeBuy {
+			stacks[pt] = append(stacks[pt], lot{qty: qty, executedAt: executedAt})
+
+			continue
+		}
+
+		// SELL: pop LIFO, emitting one duration per consumed slice.
+		remaining := qty
+		stack := stacks[pt]
+
+		for remaining > 0 && len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			matched := math.Min(top.qty, remaining)
+			duration := executedAt.Sub(top.executedAt).Seconds()
+			if duration < 0 {
+				duration = 0
+			}
+
+			durations = append(durations, duration)
+
+			top.qty -= matched
+			remaining -= matched
+
+			if top.qty <= 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+
+		stacks[pt] = stack
+	}
+
+	if err := rows.Err(); err != nil {
+		return types.TradeHoldingTime{}, fmt.Errorf("error iterating trades for LIFO holding time: %w", err)
+	}
+
+	// Remaining lots are still-open positions; price hold time against endTime.
+	for _, stack := range stacks {
+		for _, l := range stack {
+			duration := endTime.Sub(l.executedAt).Seconds()
+			if duration < 0 {
+				duration = 0
+			}
+
+			durations = append(durations, duration)
+		}
+	}
+
+	if len(durations) == 0 {
+		return types.TradeHoldingTime{Min: 0, Max: 0, Avg: 0, Median: 0, Percentiles: types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0}}, nil
+	}
+
+	minDur := durations[0]
+	maxDur := durations[0]
+	sum := 0.0
+
+	for _, d := range durations {
+		if d < minDur {
+			minDur = d
+		}
+
+		if d > maxDur {
+			maxDur = d
+		}
+
+		sum += d
+	}
+
+	avg := sum / float64(len(durations))
+
+	sorted := make([]float64, len(durations))
+	copy(sorted, durations)
+	sort.Float64s(sorted)
+
+	median := quantileCont(sorted, 0.5)
+
+	return types.TradeHoldingTime{
+		Min:    int(math.Round(minDur)),
+		Max:    int(math.Round(maxDur)),
+		Avg:    int(math.Round(avg)),
+		Median: int(math.Round(median)),
+		Percentiles: types.Percentiles{
+			P25: quantileCont(sorted, 0.25),
+			P50: median,
+			P75: quantileCont(sorted, 0.75),
+			P90: quantileCont(sorted, 0.90),
+			P95: quantileCont(sorted, 0.95),
+			P99: quantileCont(sorted, 0.99),
+		},
+	}, nil
+}
+
+// quantileCont mirrors DuckDB's quantile_cont: linear interpolation between
+// the two nearest ranks on a slice that is already sorted ascending.
+func quantileCont(sorted []float64, q float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+
+	if n == 1 {
+		return sorted[0]
+	}
+
+	pos := q * float64(n-1)
+	lo := int(pos)
+	hi := lo + 1
+
+	if hi >= n {
+		return sorted[n-1]
+	}
+
+	return sorted[lo] + (sorted[hi]-sorted[lo])*(pos-float64(lo))
+}
+
+// calculateTradePnlStats computes median and percentile statistics over the
+// per-trade realized PnL of all closing trades for a symbol. Closing trades are
+// identified as fills with non-zero pnl (entry trades record pnl as zero).
+func (b *BacktestState) calculateTradePnlStats(symbol string) (median float64, percentiles types.Percentiles, err error) {
+	query := `
+		SELECT
+			COALESCE(quantile_cont(pnl, 0.5), 0) as median_pnl,
+			COALESCE(quantile_cont(pnl, 0.25), 0) as p25,
+			COALESCE(quantile_cont(pnl, 0.75), 0) as p75,
+			COALESCE(quantile_cont(pnl, 0.9), 0) as p90,
+			COALESCE(quantile_cont(pnl, 0.95), 0) as p95,
+			COALESCE(quantile_cont(pnl, 0.99), 0) as p99
+		FROM trades
+		WHERE symbol = ? AND pnl != 0
+	`
+
+	var p25, p75, p90, p95, p99 float64
+
+	if err = b.db.QueryRow(query, symbol).Scan(&median, &p25, &p75, &p90, &p95, &p99); err != nil {
+		return 0, types.Percentiles{}, fmt.Errorf("failed to calculate trade pnl percentiles: %w", err)
+	}
+
+	percentiles = types.Percentiles{
+		P25: p25,
+		P50: median,
+		P75: p75,
+		P90: p90,
+		P95: p95,
+		P99: p99,
+	}
+
+	return median, percentiles, nil
+}
+
+// calculateTotalInvestment returns the gross capital deployed across all entry
+// trades for a symbol. Both long and short positions are recorded with
+// order_type = BUY for their entries (per engine_v1 semantics), so we sum the
+// notional (executed_qty * executed_price) of every BUY fill. This is used as
+// the denominator for PnL percentage and represents the actual capital put to
+// work — distinct from the run-wide initial cash balance.
+func (b *BacktestState) calculateTotalInvestment(symbol string) (float64, error) {
+	query := `
+		SELECT COALESCE(SUM(executed_qty * executed_price), 0)
+		FROM trades
+		WHERE symbol = ? AND order_type = ?
+	`
+
+	var totalInvestment float64
+	if err := b.db.QueryRow(query, symbol, types.PurchaseTypeBuy).Scan(&totalInvestment); err != nil {
+		return 0, fmt.Errorf("failed to calculate total investment: %w", err)
+	}
+
+	return totalInvestment, nil
+}
+
+// calculateMonthlyTradeStats returns per-month trade activity for a symbol.
+// Months are formatted as YYYY-MM and ordered chronologically. NumberOfTrades
+// counts every fill executed in the month (entries and exits). NumberOfTradingPairs
+// counts closing trades (sell trades for long positions) and is also the
+// denominator for win/lose counts which use the per-trade pnl sign.
+func (b *BacktestState) calculateMonthlyTradeStats(symbol string) ([]types.MonthlyTradeStats, error) {
+	query := `
+		SELECT
+			strftime(date_trunc('month', executed_at), '%Y-%m') as month,
+			COUNT(*) as total_trades,
+			SUM(CASE WHEN order_type = ? THEN 1 ELSE 0 END) as trading_pairs,
+			SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
+			SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades
+		FROM trades
+		WHERE symbol = ?
+		GROUP BY month
+		ORDER BY month
+	`
+
+	rows, err := b.db.Query(query, types.PurchaseTypeSell, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query monthly trade stats: %w", err)
+	}
+	defer rows.Close()
+
+	var result []types.MonthlyTradeStats
+
+	for rows.Next() {
+		var stat types.MonthlyTradeStats
+		if err := rows.Scan(&stat.Month, &stat.NumberOfTrades, &stat.NumberOfTradingPairs, &stat.NumberOfWinningTrades, &stat.NumberOfLosingTrades); err != nil {
+			return nil, fmt.Errorf("failed to scan monthly trade stat: %w", err)
+		}
+
+		result = append(result, stat)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating monthly trade stats: %w", err)
+	}
+
+	return result, nil
+}
+
+// calculateMonthlyBalance returns per-month equity balance evolution for a
+// symbol. Equity for a trade is computed as initial_balance + cumulative_pnl
+// at the time of the trade. StartingBalance for the first month with trades is
+// the initial balance; subsequent months use the previous month's ending
+// balance as starting balance.
+func (b *BacktestState) calculateMonthlyBalance(symbol string) ([]types.MonthlyBalanceChange, error) {
+	query := `
+		SELECT
+			strftime(date_trunc('month', executed_at), '%Y-%m') as month,
+			arg_max(cumulative_pnl, executed_at) as ending_pnl,
+			COALESCE(SUM(pnl), 0) as realized_pnl
+		FROM trades
+		WHERE symbol = ?
+		GROUP BY month
+		ORDER BY month
+	`
+
+	rows, err := b.db.Query(query, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query monthly balance: %w", err)
+	}
+	defer rows.Close()
+
+	var (
+		result      []types.MonthlyBalanceChange
+		prevEnding  = b.initialBalance
+		hasPrevious bool
+	)
+
+	for rows.Next() {
+		var (
+			month       string
+			endingPnl   float64
+			realizedPnl float64
+		)
+
+		if err := rows.Scan(&month, &endingPnl, &realizedPnl); err != nil {
+			return nil, fmt.Errorf("failed to scan monthly balance: %w", err)
+		}
+
+		ending := b.initialBalance + endingPnl
+
+		starting := b.initialBalance
+		if hasPrevious {
+			starting = prevEnding
+		}
+
+		result = append(result, types.MonthlyBalanceChange{
+			Month:           month,
+			StartingBalance: starting,
+			EndingBalance:   ending,
+			Change:          ending - starting,
+			RealizedPnL:     realizedPnl,
+		})
+
+		prevEnding = ending
+		hasPrevious = true
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating monthly balance: %w", err)
+	}
+
+	return result, nil
+}
+
+// calculateMonthlyHoldingTime returns per-month holding-time statistics for
+// closing trades exited within each month. Uses the per-trade hold_time stored
+// on closing trades (entry trades have hold_time = 0 and are excluded).
+func (b *BacktestState) calculateMonthlyHoldingTime(symbol string) ([]types.MonthlyHoldingTime, error) {
+	query := `
+		SELECT
+			strftime(date_trunc('month', executed_at), '%Y-%m') as month,
+			COALESCE(MIN(hold_time), 0) as min_hold,
+			COALESCE(MAX(hold_time), 0) as max_hold,
+			COALESCE(AVG(hold_time), 0) as avg_hold,
+			COALESCE(quantile_cont(hold_time, 0.5), 0) as median_hold
+		FROM trades
+		WHERE symbol = ? AND hold_time > 0
+		GROUP BY month
+		ORDER BY month
+	`
+
+	rows, err := b.db.Query(query, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query monthly holding time: %w", err)
+	}
+	defer rows.Close()
+
+	var result []types.MonthlyHoldingTime
+
+	for rows.Next() {
+		var (
+			month                                 string
+			minHold, maxHold, avgHold, medianHold float64
+		)
+
+		if err := rows.Scan(&month, &minHold, &maxHold, &avgHold, &medianHold); err != nil {
+			return nil, fmt.Errorf("failed to scan monthly holding time: %w", err)
+		}
+
+		result = append(result, types.MonthlyHoldingTime{
+			Month:  month,
+			Min:    int(math.Round(minHold)),
+			Max:    int(math.Round(maxHold)),
+			Avg:    int(math.Round(avgHold)),
+			Median: int(math.Round(medianHold)),
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating monthly holding time: %w", err)
+	}
+
+	return result, nil
 }
 
 // calculateTotalFees calculates the total fees for a symbol.
@@ -1429,7 +2085,10 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	}
 
 	if !hasTrades {
-		return createZeroStats(symbol, params, b.initialBalance), nil
+		zero := createZeroStats(symbol, params, b.initialBalance)
+		zero.PortfolioCalculation = string(b.portfolioStrategy)
+
+		return zero, nil
 	}
 
 	tradeResult, err := b.calculateTradeResult(symbol)
@@ -1437,7 +2096,7 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 		return types.TradeStats{}, err
 	}
 
-	holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time)
+	holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time, b.portfolioStrategy)
 	if err != nil {
 		return types.TradeStats{}, err
 	}
@@ -1462,9 +2121,42 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	tradePnl.MaximumLoss = maxLoss
 	tradePnl.MaximumProfit = maxProfit
 
+	medianPnl, pnlPercentiles, err := b.calculateTradePnlStats(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	tradePnl.MedianPnL = medianPnl
+	tradePnl.Percentiles = pnlPercentiles
+
+	totalInvestment, err := b.calculateTotalInvestment(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	tradePnl.TotalInvestment = totalInvestment
+	if totalInvestment > 0 {
+		tradePnl.PnLPercentage = tradePnl.TotalPnL / totalInvestment
+	}
+
 	buyAndHoldPnl, err := b.calculateBuyAndHoldPnL(symbol, ctx.DataSource)
 	if err != nil {
 		return types.TradeStats{}, fmt.Errorf("failed to calculate buy-and-hold PnL: %w", err)
+	}
+
+	monthlyTrades, err := b.calculateMonthlyTradeStats(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	monthlyBalance, err := b.calculateMonthlyBalance(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	monthlyHoldingTime, err := b.calculateMonthlyHoldingTime(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
 	}
 
 	// Calculate final balance as equity: initial balance + total PnL.
@@ -1473,22 +2165,26 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	finalBalance := b.initialBalance + tradePnl.TotalPnL
 
 	return types.TradeStats{
-		ID:               params.runID,
-		Timestamp:        time.Now(),
-		Symbol:           symbol,
-		TradeResult:      tradeResult,
-		TotalFees:        totalFees,
-		TradeHoldingTime: holdingTime,
-		TradePnl:         tradePnl,
-		BuyAndHoldPnl:    buyAndHoldPnl,
-		TradesFilePath:   params.tradesFilePath,
-		OrdersFilePath:   params.ordersFilePath,
-		MarksFilePath:    params.marksFilePath,
-		LogsFilePath:     params.logsFilePath,
-		Strategy:         params.strategyInfo,
-		StrategyPath:     params.strategyPath,
-		DataPath:         params.dataPath,
-		InitialBalance:   b.initialBalance,
-		FinalBalance:     finalBalance,
+		ID:                   params.runID,
+		Timestamp:            time.Now(),
+		Symbol:               symbol,
+		TradeResult:          tradeResult,
+		TotalFees:            totalFees,
+		TradeHoldingTime:     holdingTime,
+		TradePnl:             tradePnl,
+		BuyAndHoldPnl:        buyAndHoldPnl,
+		TradesFilePath:       params.tradesFilePath,
+		OrdersFilePath:       params.ordersFilePath,
+		MarksFilePath:        params.marksFilePath,
+		LogsFilePath:         params.logsFilePath,
+		Strategy:             params.strategyInfo,
+		StrategyPath:         params.strategyPath,
+		DataPath:             params.dataPath,
+		InitialBalance:       b.initialBalance,
+		FinalBalance:         finalBalance,
+		PortfolioCalculation: string(b.portfolioStrategy),
+		MonthlyTrades:        monthlyTrades,
+		MonthlyBalance:       monthlyBalance,
+		MonthlyHoldingTime:   monthlyHoldingTime,
 	}, nil
 }

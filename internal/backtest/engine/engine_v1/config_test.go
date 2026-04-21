@@ -28,6 +28,7 @@ func (suite *ConfigTestSuite) TestEmptyConfig() {
 	suite.True(config.EndTime.IsNone())
 	suite.Equal(1, config.DecimalPrecision)
 	suite.Equal(1000, config.MarketDataCacheSize)
+	suite.Equal(PortfolioCalculationAverageCost, config.PortfolioCalculation)
 }
 
 func (suite *ConfigTestSuite) TestTestConfig() {
@@ -179,6 +180,51 @@ initial_capital: not_a_number
 	err := yaml.Unmarshal([]byte(yamlData), &config)
 
 	suite.Error(err)
+}
+
+func (suite *ConfigTestSuite) TestUnmarshalYAMLPortfolioCalculation() {
+	cases := []struct {
+		name     string
+		yamlData string
+		expected PortfolioCalculationStrategy
+	}{
+		{
+			name: "fifo",
+			yamlData: `
+initial_capital: 10000
+broker: zero_commission
+portfolio_calculation: fifo
+`,
+			expected: PortfolioCalculationFIFO,
+		},
+		{
+			name: "average_cost",
+			yamlData: `
+initial_capital: 10000
+broker: zero_commission
+portfolio_calculation: average_cost
+`,
+			expected: PortfolioCalculationAverageCost,
+		},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			var config BacktestEngineV1Config
+			err := yaml.Unmarshal([]byte(tc.yamlData), &config)
+			suite.Require().NoError(err)
+			suite.Equal(tc.expected, config.PortfolioCalculation)
+		})
+	}
+}
+
+func (suite *ConfigTestSuite) TestResolvePortfolioCalculation() {
+	suite.Equal(PortfolioCalculationFIFO, ResolvePortfolioCalculation(PortfolioCalculationFIFO))
+	suite.Equal(PortfolioCalculationAverageCost, ResolvePortfolioCalculation(PortfolioCalculationAverageCost))
+	suite.Equal(PortfolioCalculationAverageCost, ResolvePortfolioCalculation(""),
+		"Empty strategy should default to average_cost")
+	suite.Equal(PortfolioCalculationAverageCost, ResolvePortfolioCalculation("bogus"),
+		"Unknown strategy should default to average_cost")
 }
 
 func (suite *ConfigTestSuite) TestConfigStructFields() {

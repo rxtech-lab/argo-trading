@@ -44,3 +44,35 @@ func TestGetBacktestEngineVersion(t *testing.T) {
 	version := swiftargo.GetBacktestEngineVersion()
 	assert.NotEmpty(t, version)
 }
+
+func TestGetBacktestEngineConfigSchema_EnumFields(t *testing.T) {
+	schema := swiftargo.GetBacktestEngineConfigSchema()
+	require.NotEmpty(t, schema)
+
+	// Parse the schema JSON
+	var schemaMap map[string]interface{}
+	err := json.Unmarshal([]byte(schema), &schemaMap)
+	require.NoError(t, err)
+
+	// Get properties
+	properties, ok := schemaMap["properties"].(map[string]interface{})
+	require.True(t, ok, "schema should have properties")
+
+	// Check broker field has enum
+	broker, ok := properties["broker"].(map[string]interface{})
+	require.True(t, ok, "schema should have broker property")
+	brokerEnum, ok := broker["enum"].([]interface{})
+	require.True(t, ok, "broker should have enum")
+	assert.Len(t, brokerEnum, 2)
+	assert.Contains(t, []string{brokerEnum[0].(string), brokerEnum[1].(string)}, "interactive_broker")
+	assert.Contains(t, []string{brokerEnum[0].(string), brokerEnum[1].(string)}, "zero_commission")
+
+	// Check portfolio_calculation field has enum
+	portfolioCalc, ok := properties["portfolio_calculation"].(map[string]interface{})
+	require.True(t, ok, "schema should have portfolio_calculation property")
+	portfolioEnum, ok := portfolioCalc["enum"].([]interface{})
+	require.True(t, ok, "portfolio_calculation should have enum")
+	assert.Len(t, portfolioEnum, 2)
+	assert.Contains(t, []string{portfolioEnum[0].(string), portfolioEnum[1].(string)}, "fifo")
+	assert.Contains(t, []string{portfolioEnum[0].(string), portfolioEnum[1].(string)}, "average_cost")
+}
