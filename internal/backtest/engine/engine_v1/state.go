@@ -22,10 +22,11 @@ import (
 )
 
 type BacktestState struct {
-	db             *sql.DB
-	logger         *logger.Logger
-	sq             squirrel.StatementBuilderType
-	initialBalance float64
+	db                *sql.DB
+	logger            *logger.Logger
+	sq                squirrel.StatementBuilderType
+	initialBalance    float64
+	portfolioStrategy PortfolioCalculationStrategy
 }
 
 // CalculatePNL calculates the profit/loss for a trade
@@ -47,16 +48,28 @@ func NewBacktestState(logger *logger.Logger) (*BacktestState, error) {
 	}
 
 	return &BacktestState{
-		logger:         logger,
-		db:             db,
-		sq:             squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
-		initialBalance: 0,
+		logger:            logger,
+		db:                db,
+		sq:                squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
+		initialBalance:    0,
+		portfolioStrategy: PortfolioCalculationFIFO,
 	}, nil
 }
 
 // SetInitialBalance sets the initial cash balance for the backtest run.
 func (b *BacktestState) SetInitialBalance(balance float64) {
 	b.initialBalance = balance
+}
+
+// SetPortfolioCalculationStrategy selects how per-trade PnL is computed for
+// closing trades. Unknown values fall back to average-cost.
+func (b *BacktestState) SetPortfolioCalculationStrategy(strategy PortfolioCalculationStrategy) {
+	b.portfolioStrategy = ResolvePortfolioCalculation(strategy)
+}
+
+// PortfolioCalculationStrategy returns the active portfolio calculation strategy.
+func (b *BacktestState) PortfolioCalculationStrategy() PortfolioCalculationStrategy {
+	return b.portfolioStrategy
 }
 
 // Initialize creates the necessary tables for tracking trades and positions.
@@ -627,16 +640,17 @@ func createZeroStats(symbol string, params statsParams, initialBalance float64) 
 			MaximumLoss:   0,
 			MaximumProfit: 0,
 		},
-		BuyAndHoldPnl:  0,
-		TradesFilePath: params.tradesFilePath,
-		OrdersFilePath: params.ordersFilePath,
-		MarksFilePath:  params.marksFilePath,
-		LogsFilePath:   params.logsFilePath,
-		Strategy:       params.strategyInfo,
-		StrategyPath:   params.strategyPath,
-		DataPath:       params.dataPath,
-		InitialBalance: initialBalance,
-		FinalBalance:   initialBalance,
+		BuyAndHoldPnl:        0,
+		TradesFilePath:       params.tradesFilePath,
+		OrdersFilePath:       params.ordersFilePath,
+		MarksFilePath:        params.marksFilePath,
+		LogsFilePath:         params.logsFilePath,
+		Strategy:             params.strategyInfo,
+		StrategyPath:         params.strategyPath,
+		DataPath:             params.dataPath,
+		InitialBalance:       initialBalance,
+		FinalBalance:         initialBalance,
+		PortfolioCalculation: "",
 	}
 }
 
@@ -913,16 +927,22 @@ func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	return orders, nil
 }
 
-// computeClosingFIFOPnL calculates the FIFO PnL for a closing trade based on position state.
+// computeClosingFIFOPnL calculates the closing PnL for a trade based on position
+// state, using the configured portfolio calculation strategy (FIFO or
+// average-cost). It returns 0 for opening trades.
 func (b *BacktestState) computeClosingFIFOPnL(order types.Order, position types.Position) (float64, error) {
 	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
 	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
 
-	if isLongClose || isShortClose {
-		return b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+	if !isLongClose && !isShortClose {
+		return 0, nil
 	}
 
-	return 0, nil
+	if b.portfolioStrategy == PortfolioCalculationAverageCost {
+		return b.calculateAverageCostPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+	}
+
+	return b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
 }
 
 // computeClosingHoldTime returns the FIFO-weighted-average holding time (in seconds)
@@ -1182,8 +1202,123 @@ func (b *BacktestState) calculateFIFOPnL(symbol string, positionType types.Posit
 	return pnl, nil
 }
 
-// calculateTradeResult calculates the trade result statistics for a symbol.
-// NumberOfTrades counts all fills (entries and exits). NumberOfTradingPairs counts
+// calculateAverageCostPnL calculates the individual PnL for a closing trade
+// using the running weighted-average cost basis of the currently-open position.
+// Unlike FIFO, average-cost does not split the closing trade across specific
+// entry lots; instead, the per-unit cost basis is the average of all unclosed
+// entries, with buys updating the average and sells leaving it unchanged until
+// the position is fully flat (at which point the basis resets).
+func (b *BacktestState) calculateAverageCostPnL(symbol string, positionType types.PositionType, sellQty float64, sellPrice float64, sellFee float64) (float64, error) {
+	// Load all prior trades (buys and sells) for this symbol+positionType in
+	// chronological order so we can replay the running average-cost state.
+	tradesQuery := b.sq.
+		Select("order_type", "executed_qty", "executed_price", "commission").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query trades for average cost: %w", err)
+	}
+	defer rows.Close()
+
+	// Running state: total open quantity and total cost basis for open quantity.
+	openQty := decimal.Zero
+	costBasis := decimal.Zero
+
+	for rows.Next() {
+		var (
+			orderType string
+			qty       float64
+			price     float64
+			fee       float64
+		)
+
+		if err := rows.Scan(&orderType, &qty, &price, &fee); err != nil {
+			return 0, fmt.Errorf("failed to scan trade for average cost: %w", err)
+		}
+
+		qtyDec := decimal.NewFromFloat(qty)
+		priceDec := decimal.NewFromFloat(price)
+		feeDec := decimal.NewFromFloat(fee)
+
+		if types.PurchaseType(orderType) == types.PurchaseTypeBuy {
+			// Entry trade — add to open quantity and cost basis. Fees are
+			// capitalised into the basis following the same sign convention as
+			// calculateFIFOPnL (added for long, subtracted for short).
+			var entryValue decimal.Decimal
+			if positionType == types.PositionTypeLong {
+				entryValue = priceDec.Mul(qtyDec).Add(feeDec)
+			} else {
+				entryValue = priceDec.Mul(qtyDec).Sub(feeDec)
+			}
+
+			openQty = openQty.Add(qtyDec)
+			costBasis = costBasis.Add(entryValue)
+
+			continue
+		}
+
+		// Exit trade — reduce open quantity and cost basis at the current
+		// average cost per unit. This keeps the average unchanged across
+		// partial exits.
+		if openQty.IsZero() {
+			// Defensive: should not happen if orders pass validation; skip.
+			continue
+		}
+
+		avg := costBasis.Div(openQty)
+		matchedDec := decimal.NewFromFloat(math.Min(qty, openQty.InexactFloat64()))
+
+		openQty = openQty.Sub(matchedDec)
+		costBasis = costBasis.Sub(avg.Mul(matchedDec))
+
+		if openQty.Sign() <= 0 {
+			openQty = decimal.Zero
+			costBasis = decimal.Zero
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating trades for average cost: %w", err)
+	}
+
+	if openQty.Sign() <= 0 {
+		// Nothing open to close — defensive fallback consistent with
+		// computeClosingFIFOPnL (which is only called for true closes).
+		return 0, nil
+	}
+
+	avg := costBasis.Div(openQty)
+	sellQtyDec := decimal.NewFromFloat(sellQty)
+	// Can't close more than is currently open.
+	if sellQtyDec.GreaterThan(openQty) {
+		sellQtyDec = openQty
+	}
+
+	sellValue := decimal.NewFromFloat(sellPrice).Mul(sellQtyDec)
+	sellFeeDec := decimal.NewFromFloat(sellFee)
+	avgCost := avg.Mul(sellQtyDec)
+
+	var result decimal.Decimal
+	if positionType == types.PositionTypeLong {
+		// Long PnL = exit_value - sell_fee - avg_cost
+		result = sellValue.Sub(sellFeeDec).Sub(avgCost)
+	} else {
+		// Short PnL = avg_entry_value - exit_value - sell_fee
+		result = avgCost.Sub(sellValue).Sub(sellFeeDec)
+	}
+
+	pnl, _ := result.Float64()
+
+	return pnl, nil
+}
+
 // round trips — each exit trade closes a pair against one or more prior entry trades.
 // Win/lose counts and win rate are computed against trading pairs.
 func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
@@ -1429,7 +1564,9 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	}
 
 	if !hasTrades {
-		return createZeroStats(symbol, params, b.initialBalance), nil
+		zero := createZeroStats(symbol, params, b.initialBalance)
+		zero.PortfolioCalculation = string(b.portfolioStrategy)
+		return zero, nil
 	}
 
 	tradeResult, err := b.calculateTradeResult(symbol)
@@ -1473,22 +1610,23 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	finalBalance := b.initialBalance + tradePnl.TotalPnL
 
 	return types.TradeStats{
-		ID:               params.runID,
-		Timestamp:        time.Now(),
-		Symbol:           symbol,
-		TradeResult:      tradeResult,
-		TotalFees:        totalFees,
-		TradeHoldingTime: holdingTime,
-		TradePnl:         tradePnl,
-		BuyAndHoldPnl:    buyAndHoldPnl,
-		TradesFilePath:   params.tradesFilePath,
-		OrdersFilePath:   params.ordersFilePath,
-		MarksFilePath:    params.marksFilePath,
-		LogsFilePath:     params.logsFilePath,
-		Strategy:         params.strategyInfo,
-		StrategyPath:     params.strategyPath,
-		DataPath:         params.dataPath,
-		InitialBalance:   b.initialBalance,
-		FinalBalance:     finalBalance,
+		ID:                   params.runID,
+		Timestamp:            time.Now(),
+		Symbol:               symbol,
+		TradeResult:          tradeResult,
+		TotalFees:            totalFees,
+		TradeHoldingTime:     holdingTime,
+		TradePnl:             tradePnl,
+		BuyAndHoldPnl:        buyAndHoldPnl,
+		TradesFilePath:       params.tradesFilePath,
+		OrdersFilePath:       params.ordersFilePath,
+		MarksFilePath:        params.marksFilePath,
+		LogsFilePath:         params.logsFilePath,
+		Strategy:             params.strategyInfo,
+		StrategyPath:         params.strategyPath,
+		DataPath:             params.dataPath,
+		InitialBalance:       b.initialBalance,
+		FinalBalance:         finalBalance,
+		PortfolioCalculation: string(b.portfolioStrategy),
 	}, nil
 }
