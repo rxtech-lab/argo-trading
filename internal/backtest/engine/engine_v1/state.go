@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -629,16 +630,22 @@ func createZeroStats(symbol string, params statsParams, initialBalance float64) 
 		},
 		TotalFees: 0,
 		TradeHoldingTime: types.TradeHoldingTime{
-			Min: 0,
-			Max: 0,
-			Avg: 0,
+			Min:         0,
+			Max:         0,
+			Avg:         0,
+			Median:      0,
+			Percentiles: types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0},
 		},
 		TradePnl: types.TradePnl{
-			RealizedPnL:   0,
-			UnrealizedPnL: 0,
-			TotalPnL:      0,
-			MaximumLoss:   0,
-			MaximumProfit: 0,
+			RealizedPnL:     0,
+			UnrealizedPnL:   0,
+			TotalPnL:        0,
+			MaximumLoss:     0,
+			MaximumProfit:   0,
+			MedianPnL:       0,
+			Percentiles:     types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0},
+			TotalInvestment: 0,
+			PnLPercentage:   0,
 		},
 		BuyAndHoldPnl:        0,
 		TradesFilePath:       params.tradesFilePath,
@@ -651,6 +658,9 @@ func createZeroStats(symbol string, params statsParams, initialBalance float64) 
 		InitialBalance:       initialBalance,
 		FinalBalance:         initialBalance,
 		PortfolioCalculation: "",
+		MonthlyTrades:        nil,
+		MonthlyBalance:       nil,
+		MonthlyHoldingTime:   nil,
 	}
 }
 
@@ -677,11 +687,15 @@ func calculateUnrealizedPnL(position types.Position, lastPrice float64) types.Tr
 	}
 
 	return types.TradePnl{
-		RealizedPnL:   realizedPnl,
-		UnrealizedPnL: unrealizedPnL,
-		TotalPnL:      realizedPnl + unrealizedPnL,
-		MaximumLoss:   0,
-		MaximumProfit: 0,
+		RealizedPnL:     realizedPnl,
+		UnrealizedPnL:   unrealizedPnL,
+		TotalPnL:        realizedPnl + unrealizedPnL,
+		MaximumLoss:     0,
+		MaximumProfit:   0,
+		MedianPnL:       0,
+		Percentiles:     types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0},
+		TotalInvestment: 0,
+		PnLPercentage:   0,
 	}
 }
 
@@ -1653,7 +1667,7 @@ func (b *BacktestState) calculateTradeHoldingTimeLIFO(symbol string, endTime tim
 	}
 
 	if len(durations) == 0 {
-		return types.TradeHoldingTime{Min: 0, Max: 0, Avg: 0}, nil
+		return types.TradeHoldingTime{Min: 0, Max: 0, Avg: 0, Median: 0, Percentiles: types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0}}, nil
 	}
 
 	minDur := durations[0]
@@ -1674,11 +1688,49 @@ func (b *BacktestState) calculateTradeHoldingTimeLIFO(symbol string, endTime tim
 
 	avg := sum / float64(len(durations))
 
+	sorted := make([]float64, len(durations))
+	copy(sorted, durations)
+	sort.Float64s(sorted)
+
+	median := quantileCont(sorted, 0.5)
+
 	return types.TradeHoldingTime{
-		Min: int(math.Round(minDur)),
-		Max: int(math.Round(maxDur)),
-		Avg: int(math.Round(avg)),
+		Min:    int(math.Round(minDur)),
+		Max:    int(math.Round(maxDur)),
+		Avg:    int(math.Round(avg)),
+		Median: int(math.Round(median)),
+		Percentiles: types.Percentiles{
+			P25: quantileCont(sorted, 0.25),
+			P50: median,
+			P75: quantileCont(sorted, 0.75),
+			P90: quantileCont(sorted, 0.90),
+			P95: quantileCont(sorted, 0.95),
+			P99: quantileCont(sorted, 0.99),
+		},
 	}, nil
+}
+
+// quantileCont mirrors DuckDB's quantile_cont: linear interpolation between
+// the two nearest ranks on a slice that is already sorted ascending.
+func quantileCont(sorted []float64, q float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+
+	if n == 1 {
+		return sorted[0]
+	}
+
+	pos := q * float64(n-1)
+	lo := int(pos)
+	hi := lo + 1
+
+	if hi >= n {
+		return sorted[n-1]
+	}
+
+	return sorted[lo] + (sorted[hi]-sorted[lo])*(pos-float64(lo))
 }
 
 // calculateTradePnlStats computes median and percentile statistics over the
