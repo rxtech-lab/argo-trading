@@ -297,7 +297,12 @@ func (p *progressTracker) tick(fallbackTotal int) (int, int) {
 // re-mapped to forward a global cumulative counter / total instead of the
 // per-iteration counter that worker-local code emits.
 func wrapCallbacksForParallel(user engine.LifecycleCallbacks) engine.LifecycleCallbacks {
-	progress := &progressTracker{}
+	progress := &progressTracker{
+		mu:         sync.Mutex{},
+		cumulative: 0,
+		grandTotal: 0,
+		totalKnown: false,
+	}
 
 	var callbackMu sync.Mutex
 
@@ -306,6 +311,9 @@ func wrapCallbacksForParallel(user engine.LifecycleCallbacks) engine.LifecycleCa
 		OnBacktestEnd:   user.OnBacktestEnd,
 		OnStrategyStart: user.OnStrategyStart,
 		OnStrategyEnd:   user.OnStrategyEnd,
+		OnRunStart:      nil,
+		OnRunEnd:        nil,
+		OnProcessData:   nil,
 	}
 
 	// Always wrap OnRunStart so we can accumulate the grand total, even when
@@ -316,8 +324,10 @@ func wrapCallbacksForParallel(user engine.LifecycleCallbacks) engine.LifecycleCa
 		if user.OnRunStart != nil {
 			callbackMu.Lock()
 			defer callbackMu.Unlock()
+
 			return (*user.OnRunStart)(runID, configIdx, configName, dataFileIdx, dataFilePath, totalDataPoints)
 		}
+
 		return nil
 	}
 	runStartCb := engine.OnRunStartCallback(runStart)
@@ -346,6 +356,7 @@ func wrapCallbacksForParallel(user engine.LifecycleCallbacks) engine.LifecycleCa
 			defer callbackMu.Unlock()
 
 			cum, gt := progress.tick(total)
+
 			return (*user.OnProcessData)(cum, gt)
 		}
 		procCb := engine.OnProcessDataCallback(procData)

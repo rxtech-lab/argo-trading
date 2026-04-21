@@ -40,6 +40,7 @@ func GetBacktestEngineConfigSchema() string {
 		EndTime:             optional.None[time.Time](),
 		DecimalPrecision:    0,
 		MarketDataCacheSize: 0,
+		MaxConcurrency:      0,
 	})
 	if err != nil {
 		return ""
