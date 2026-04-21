@@ -3,13 +3,10 @@ package swiftargo
 import (
 	"context"
 	"sync"
-	"time"
 
-	"github.com/moznion/go-optional"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	engine_v1 "github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1"
 	"github.com/rxtech-lab/argo-trading/internal/version"
-	"github.com/rxtech-lab/argo-trading/pkg/strategy"
 )
 
 type ArgoHelper interface {
@@ -33,14 +30,8 @@ type Argo struct {
 
 // GetBacktestEngineConfigSchema returns the backtest engine config schema.
 func GetBacktestEngineConfigSchema() string {
-	schema, err := strategy.ToJSONSchema(engine_v1.BacktestEngineV1Config{
-		InitialCapital:      0,
-		Broker:              "",
-		StartTime:           optional.None[time.Time](),
-		EndTime:             optional.None[time.Time](),
-		DecimalPrecision:    0,
-		MarketDataCacheSize: 0,
-	})
+	config := engine_v1.EmptyConfig()
+	schema, err := config.GenerateSchemaJSON()
 	if err != nil {
 		return ""
 	}

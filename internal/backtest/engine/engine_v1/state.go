@@ -1568,6 +1568,7 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	if !hasTrades {
 		zero := createZeroStats(symbol, params, b.initialBalance)
 		zero.PortfolioCalculation = string(b.portfolioStrategy)
+
 		return zero, nil
 	}
 
