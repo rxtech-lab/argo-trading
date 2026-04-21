@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -11,18 +12,20 @@ import (
 
 // StatsAccumulator holds running statistics for trades.
 type StatsAccumulator struct {
-	TotalTrades   int
-	TradingPairs  int
-	WinningTrades int
-	LosingTrades  int
-	RealizedPnL   float64
-	UnrealizedPnL float64
-	TotalFees     float64
-	MaxProfit     float64
-	MaxLoss       float64
-	MaxDrawdown   float64
-	PeakPnL       float64
-	HoldingTimes  []int // in seconds
+	TotalTrades     int
+	TradingPairs    int
+	WinningTrades   int
+	LosingTrades    int
+	RealizedPnL     float64
+	UnrealizedPnL   float64
+	TotalFees       float64
+	MaxProfit       float64
+	MaxLoss         float64
+	MaxDrawdown     float64
+	PeakPnL         float64
+	TotalInvestment float64
+	HoldingTimes    []int     // in seconds
+	ClosedPnLs      []float64 // per closing-trade PnL
 }
 
 // StatsTracker tracks live trading statistics in real-time.
@@ -85,19 +88,47 @@ func NewStatsTracker(log *logger.Logger) *StatsTracker {
 // newStatsAccumulator creates a new initialized StatsAccumulator.
 func newStatsAccumulator() *StatsAccumulator {
 	return &StatsAccumulator{
-		TotalTrades:   0,
-		TradingPairs:  0,
-		WinningTrades: 0,
-		LosingTrades:  0,
-		RealizedPnL:   0,
-		UnrealizedPnL: 0,
-		TotalFees:     0,
-		MaxProfit:     0,
-		MaxLoss:       0,
-		MaxDrawdown:   0,
-		PeakPnL:       0,
-		HoldingTimes:  make([]int, 0),
+		TotalTrades:     0,
+		TradingPairs:    0,
+		WinningTrades:   0,
+		LosingTrades:    0,
+		RealizedPnL:     0,
+		UnrealizedPnL:   0,
+		TotalFees:       0,
+		MaxProfit:       0,
+		MaxLoss:         0,
+		MaxDrawdown:     0,
+		PeakPnL:         0,
+		TotalInvestment: 0,
+		HoldingTimes:    make([]int, 0),
+		ClosedPnLs:      make([]float64, 0),
 	}
+}
+
+// percentileFromSorted returns the linearly-interpolated percentile (q in [0,1])
+// from a slice that is already sorted in ascending order. Matches the semantics
+// of DuckDB's quantile_cont used by the backtest stats pipeline.
+func percentileFromSorted(sorted []float64, q float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+
+	if n == 1 {
+		return sorted[0]
+	}
+
+	pos := q * float64(n-1)
+	lo := int(pos)
+	hi := lo + 1
+
+	if hi >= n {
+		return sorted[n-1]
+	}
+
+	frac := pos - float64(lo)
+
+	return sorted[lo] + (sorted[hi]-sorted[lo])*frac
 }
 
 // Initialize sets up the stats tracker with session information.
@@ -203,6 +234,16 @@ func (s *StatsTracker) updateAccumulator(acc *StatsAccumulator, trade types.Trad
 			acc.HoldingTimes = append(acc.HoldingTimes, holdingTime)
 		}
 	}
+
+	// Track per-closing-trade PnL (for median/percentile stats). Buys have PnL=0 by convention.
+	if trade.Order.Side == types.PurchaseTypeSell {
+		acc.ClosedPnLs = append(acc.ClosedPnLs, trade.PnL)
+	}
+
+	// Track capital invested by entry (buy) trades for PnL-percentage stats.
+	if trade.Order.Side == types.PurchaseTypeBuy {
+		acc.TotalInvestment += trade.ExecutedQty * trade.ExecutedPrice
+	}
 }
 
 // SetUnrealizedPnL updates the unrealized PnL for current positions.
@@ -264,9 +305,11 @@ func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) t
 
 	// Calculate holding time stats
 	holdingTime := types.TradeHoldingTime{
-		Min: 0,
-		Max: 0,
-		Avg: 0,
+		Min:         0,
+		Max:         0,
+		Avg:         0,
+		Median:      0,
+		Percentiles: types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0},
 	}
 
 	if len(acc.HoldingTimes) > 0 {
@@ -288,6 +331,49 @@ func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) t
 		holdingTime.Min = minTime
 		holdingTime.Max = maxTime
 		holdingTime.Avg = totalTime / len(acc.HoldingTimes)
+
+		sortedHold := make([]float64, len(acc.HoldingTimes))
+		for i, t := range acc.HoldingTimes {
+			sortedHold[i] = float64(t)
+		}
+
+		sort.Float64s(sortedHold)
+
+		medianHold := percentileFromSorted(sortedHold, 0.5)
+		holdingTime.Median = int(medianHold + 0.5)
+		holdingTime.Percentiles = types.Percentiles{
+			P25: percentileFromSorted(sortedHold, 0.25),
+			P50: medianHold,
+			P75: percentileFromSorted(sortedHold, 0.75),
+			P90: percentileFromSorted(sortedHold, 0.90),
+			P95: percentileFromSorted(sortedHold, 0.95),
+			P99: percentileFromSorted(sortedHold, 0.99),
+		}
+	}
+
+	// Calculate PnL median and percentiles from per-closing-trade PnLs.
+	medianPnL := 0.0
+	pnlPercentiles := types.Percentiles{P25: 0, P50: 0, P75: 0, P90: 0, P95: 0, P99: 0}
+
+	if len(acc.ClosedPnLs) > 0 {
+		sortedPnL := make([]float64, len(acc.ClosedPnLs))
+		copy(sortedPnL, acc.ClosedPnLs)
+		sort.Float64s(sortedPnL)
+
+		medianPnL = percentileFromSorted(sortedPnL, 0.5)
+		pnlPercentiles = types.Percentiles{
+			P25: percentileFromSorted(sortedPnL, 0.25),
+			P50: medianPnL,
+			P75: percentileFromSorted(sortedPnL, 0.75),
+			P90: percentileFromSorted(sortedPnL, 0.90),
+			P95: percentileFromSorted(sortedPnL, 0.95),
+			P99: percentileFromSorted(sortedPnL, 0.99),
+		}
+	}
+
+	pnlPercentage := 0.0
+	if acc.TotalInvestment > 0 {
+		pnlPercentage = (acc.RealizedPnL + acc.UnrealizedPnL) / acc.TotalInvestment * 100
 	}
 
 	return types.LiveTradeStats{
@@ -306,11 +392,15 @@ func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) t
 			MaxDrawdown:           acc.MaxDrawdown,
 		},
 		TradePnl: types.TradePnl{
-			RealizedPnL:   acc.RealizedPnL,
-			UnrealizedPnL: acc.UnrealizedPnL,
-			TotalPnL:      acc.RealizedPnL + acc.UnrealizedPnL,
-			MaximumLoss:   acc.MaxLoss,
-			MaximumProfit: acc.MaxProfit,
+			RealizedPnL:     acc.RealizedPnL,
+			UnrealizedPnL:   acc.UnrealizedPnL,
+			TotalPnL:        acc.RealizedPnL + acc.UnrealizedPnL,
+			MaximumLoss:     acc.MaxLoss,
+			MaximumProfit:   acc.MaxProfit,
+			MedianPnL:       medianPnL,
+			Percentiles:     pnlPercentiles,
+			TotalInvestment: acc.TotalInvestment,
+			PnLPercentage:   pnlPercentage,
 		},
 		TradeHoldingTime:   holdingTime,
 		TotalFees:          acc.TotalFees,

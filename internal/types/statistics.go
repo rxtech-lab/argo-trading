@@ -8,6 +8,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Percentiles captures the 25th, 50th (median), 75th, 90th, 95th and 99th
+// percentiles of a numeric distribution. Values are stored as float64 so the
+// same struct can be reused for durations (in seconds) and for monetary PnL.
+type Percentiles struct {
+	P25 float64 `yaml:"p25"`
+	P50 float64 `yaml:"p50"`
+	P75 float64 `yaml:"p75"`
+	P90 float64 `yaml:"p90"`
+	P95 float64 `yaml:"p95"`
+	P99 float64 `yaml:"p99"`
+}
+
 type TradeHoldingTime struct {
 	// Minimum holding time of a trade in seconds
 	Min int `yaml:"min"`
@@ -15,6 +27,10 @@ type TradeHoldingTime struct {
 	Max int `yaml:"max"`
 	// Average holding time of a trade in seconds
 	Avg int `yaml:"avg"`
+	// Median holding time of a trade in seconds
+	Median int `yaml:"median"`
+	// Percentiles of holding time (in seconds).
+	Percentiles Percentiles `yaml:"percentiles"`
 }
 
 type TradePnl struct {
@@ -28,6 +44,64 @@ type TradePnl struct {
 	MaximumLoss float64 `yaml:"maximum_loss"`
 	// Maximum profit. Find all realized pnl's maximum value.
 	MaximumProfit float64 `yaml:"maximum_profit"`
+	// Median PnL across all closing trades.
+	MedianPnL float64 `yaml:"median_pnl"`
+	// Percentiles of per-trade realized PnL across all closing trades.
+	Percentiles Percentiles `yaml:"percentiles"`
+	// TotalInvestment is the gross capital deployed across all entry trades
+	// (sum of executed_qty * executed_price for BUY fills, which represent
+	// the entries for both long and short positions in this engine).
+	TotalInvestment float64 `yaml:"total_investment"`
+	// PnLPercentage is TotalPnL divided by TotalInvestment, expressed as a
+	// fraction (e.g. 0.12 = +12%). It is intentionally NOT computed against
+	// the initial cash balance — only the capital actually put to work counts.
+	// Zero when TotalInvestment is zero.
+	PnLPercentage float64 `yaml:"pnl_percentage"`
+}
+
+// MonthlyTradeStats summarises trade activity for a single calendar month.
+type MonthlyTradeStats struct {
+	// Month in YYYY-MM format (e.g. "2024-01").
+	Month string `yaml:"month"`
+	// Total number of trade fills (entries and exits) executed during the month.
+	NumberOfTrades int `yaml:"number_of_trades"`
+	// Number of closing trades (round trips) completed during the month.
+	NumberOfTradingPairs int `yaml:"number_of_trading_pairs"`
+	// Number of closing trades with a positive realized PnL.
+	NumberOfWinningTrades int `yaml:"number_of_winning_trades"`
+	// Number of closing trades with a negative realized PnL.
+	NumberOfLosingTrades int `yaml:"number_of_losing_trades"`
+}
+
+// MonthlyBalanceChange captures equity balance evolution within a single month.
+// StartingBalance is the equity (initial balance + cumulative PnL) entering the
+// month and EndingBalance is the equity at the last trade of the month.
+type MonthlyBalanceChange struct {
+	// Month in YYYY-MM format (e.g. "2024-01").
+	Month string `yaml:"month"`
+	// Equity at the start of the month (before any trades that month).
+	StartingBalance float64 `yaml:"starting_balance"`
+	// Equity at the end of the month (after the last trade of the month).
+	EndingBalance float64 `yaml:"ending_balance"`
+	// EndingBalance - StartingBalance.
+	Change float64 `yaml:"change"`
+	// Sum of per-trade realized PnL booked during the month.
+	RealizedPnL float64 `yaml:"realized_pnl"`
+}
+
+// MonthlyHoldingTime captures holding time statistics for closing trades whose
+// exit happened within a given calendar month.
+type MonthlyHoldingTime struct {
+	// Month in YYYY-MM format (e.g. "2024-01").
+	Month string `yaml:"month"`
+	// Minimum holding time in seconds for closing trades exited that month.
+	Min int `yaml:"min"`
+	// Maximum holding time in seconds for closing trades exited that month.
+	Max int `yaml:"max"`
+	// Average holding time in seconds for closing trades exited that month.
+	Avg int `yaml:"avg"`
+	// Median holding time in seconds for closing trades exited that month.
+	Median int `yaml:"median"`
 }
 
 type TradeResult struct {
@@ -97,6 +171,12 @@ type TradeStats struct {
 	// PnL values in this stats record, so consumers can interpret them
 	// consistently.
 	PortfolioCalculation string `yaml:"portfolio_calculation" json:"portfolio_calculation"`
+	// MonthlyTrades is a per-month breakdown of trade counts (totals, pairs, wins, losses).
+	MonthlyTrades []MonthlyTradeStats `yaml:"monthly_trades"`
+	// MonthlyBalance is a per-month breakdown of equity balance changes.
+	MonthlyBalance []MonthlyBalanceChange `yaml:"monthly_balance"`
+	// MonthlyHoldingTime is a per-month breakdown of closing-trade holding times.
+	MonthlyHoldingTime []MonthlyHoldingTime `yaml:"monthly_holding_time"`
 }
 
 func WriteTradeStats(path string, stats []TradeStats) error {
