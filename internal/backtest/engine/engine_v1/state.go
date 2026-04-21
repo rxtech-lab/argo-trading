@@ -945,16 +945,22 @@ func (b *BacktestState) computeClosingPnL(order types.Order, position types.Posi
 	return b.calculateFIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
 }
 
-// computeClosingHoldTime returns the FIFO-weighted-average holding time (in seconds)
-// for a closing trade. Closing trades are SELL orders that match prior BUY entries
-// (mirroring the convention used by computeClosingPnL/calculateFIFOPnL).
-// Opening trades return 0.
+// computeClosingHoldTime returns the quantity-weighted-average holding time (in
+// seconds) for a closing trade. Closing trades are SELL orders that match prior
+// BUY entries (mirroring the convention used by computeClosingPnL). Under FIFO
+// the match consumes the oldest unmatched entries first; under average-cost the
+// match consumes the most recently acquired entries first (LIFO). Opening
+// trades return 0.
 func (b *BacktestState) computeClosingHoldTime(order types.Order, position types.Position) (int, error) {
 	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
 	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
 
 	if !isLongClose && !isShortClose {
 		return 0, nil
+	}
+
+	if b.portfolioStrategy == PortfolioCalculationAverageCost {
+		return b.calculateLIFOHoldTime(order.Symbol, order.PositionType, order.Quantity, order.Timestamp)
 	}
 
 	return b.calculateFIFOHoldTime(order.Symbol, order.PositionType, order.Quantity, order.Timestamp)
@@ -1035,6 +1041,99 @@ func (b *BacktestState) calculateFIFOHoldTime(symbol string, positionType types.
 
 		matchedQty := math.Min(availableQty, remaining)
 		duration := closeTime.Sub(entry.executedAt).Seconds()
+		if duration < 0 {
+			duration = 0
+		}
+
+		weightedSeconds += duration * matchedQty
+		matchedQtyTotal += matchedQty
+		remaining -= matchedQty
+	}
+
+	if matchedQtyTotal == 0 {
+		return 0, nil
+	}
+
+	return int(math.Round(weightedSeconds / matchedQtyTotal)), nil
+}
+
+// calculateLIFOHoldTime computes the quantity-weighted-average holding time
+// (seconds) between a closing trade at closeTime and the lots that would be
+// consumed under last-in-first-out matching. Because prior partial exits may
+// have consumed lots from the top of the stack — leaving older lots partially
+// available "below" newer ones — we replay the full lot history to reconstruct
+// the stack as it stands immediately before the current close.
+func (b *BacktestState) calculateLIFOHoldTime(symbol string, positionType types.PositionType, closeQty float64, closeTime time.Time) (int, error) {
+	tradesQuery := b.sq.
+		Select("order_type", "executed_qty", "executed_at").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query trades for LIFO hold time: %w", err)
+	}
+	defer rows.Close()
+
+	type lot struct {
+		qty        float64
+		executedAt time.Time
+	}
+
+	var stack []lot
+
+	for rows.Next() {
+		var (
+			orderType  string
+			qty        float64
+			executedAt time.Time
+		)
+
+		if err := rows.Scan(&orderType, &qty, &executedAt); err != nil {
+			return 0, fmt.Errorf("failed to scan trade for LIFO hold time: %w", err)
+		}
+
+		if types.PurchaseType(orderType) == types.PurchaseTypeBuy {
+			stack = append(stack, lot{qty: qty, executedAt: executedAt})
+
+			continue
+		}
+
+		// SELL: pop from top of stack.
+		remaining := qty
+		for remaining > 0 && len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			if top.qty <= remaining {
+				remaining -= top.qty
+				stack = stack[:len(stack)-1]
+
+				continue
+			}
+
+			top.qty -= remaining
+			remaining = 0
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating trades for LIFO hold time: %w", err)
+	}
+
+	// Simulate the current close against the reconstructed stack without mutating it.
+	remaining := closeQty
+	weightedSeconds := 0.0
+	matchedQtyTotal := 0.0
+
+	for i := len(stack) - 1; i >= 0 && remaining > 0; i-- {
+		available := stack[i].qty
+		matchedQty := math.Min(available, remaining)
+
+		duration := closeTime.Sub(stack[i].executedAt).Seconds()
 		if duration < 0 {
 			duration = 0
 		}
@@ -1365,7 +1464,14 @@ func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, 
 
 // calculateTradeHoldingTime calculates the holding time statistics for a symbol.
 // endTime is used to calculate holding time for open positions (positions not yet sold).
-func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Time) (types.TradeHoldingTime, error) {
+// Under FIFO, matches are row-number-aligned (first buy <-> first sell) via SQL.
+// Under average-cost (LIFO for hold time), matches are produced by replaying a
+// per-position-type lot stack in Go, emitting one duration per matched slice.
+func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Time, strategy PortfolioCalculationStrategy) (types.TradeHoldingTime, error) {
+	if strategy == PortfolioCalculationAverageCost {
+		return b.calculateTradeHoldingTimeLIFO(symbol, endTime)
+	}
+
 	// Using raw SQL for CTE query - Squirrel doesn't natively support this complex query
 	// Uses FIFO matching: first buy matches first sell, second buy matches second sell, etc.
 	// Open positions (buys without matching sells) use endTime as the "sell time"
@@ -1427,6 +1533,125 @@ func (b *BacktestState) calculateTradeHoldingTime(symbol string, endTime time.Ti
 	}
 
 	return holdingTime, nil
+}
+
+// calculateTradeHoldingTimeLIFO computes min/max/avg holding time by replaying
+// the full trade history in Go and matching exits against the most recently
+// acquired lots (LIFO). Long and short positions are tracked independently.
+// Each matched slice emits one duration record; unmatched open lots at the end
+// emit (endTime - lot.executedAt) to mirror the FIFO-SQL behaviour for open
+// positions.
+func (b *BacktestState) calculateTradeHoldingTimeLIFO(symbol string, endTime time.Time) (types.TradeHoldingTime, error) {
+	tradesQuery := b.sq.
+		Select("order_type", "position_type", "executed_qty", "executed_at").
+		From("trades").
+		Where(squirrel.Eq{"symbol": symbol}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return types.TradeHoldingTime{}, fmt.Errorf("failed to query trades for LIFO holding time: %w", err)
+	}
+	defer rows.Close()
+
+	type lot struct {
+		qty        float64
+		executedAt time.Time
+	}
+
+	stacks := map[types.PositionType][]lot{}
+
+	var durations []float64
+
+	for rows.Next() {
+		var (
+			orderType    string
+			positionType string
+			qty          float64
+			executedAt   time.Time
+		)
+
+		if err := rows.Scan(&orderType, &positionType, &qty, &executedAt); err != nil {
+			return types.TradeHoldingTime{}, fmt.Errorf("failed to scan trade for LIFO holding time: %w", err)
+		}
+
+		pt := types.PositionType(positionType)
+
+		if types.PurchaseType(orderType) == types.PurchaseTypeBuy {
+			stacks[pt] = append(stacks[pt], lot{qty: qty, executedAt: executedAt})
+
+			continue
+		}
+
+		// SELL: pop LIFO, emitting one duration per consumed slice.
+		remaining := qty
+		stack := stacks[pt]
+
+		for remaining > 0 && len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			matched := math.Min(top.qty, remaining)
+			duration := executedAt.Sub(top.executedAt).Seconds()
+			if duration < 0 {
+				duration = 0
+			}
+
+			durations = append(durations, duration)
+
+			top.qty -= matched
+			remaining -= matched
+
+			if top.qty <= 0 {
+				stack = stack[:len(stack)-1]
+			}
+		}
+
+		stacks[pt] = stack
+	}
+
+	if err := rows.Err(); err != nil {
+		return types.TradeHoldingTime{}, fmt.Errorf("error iterating trades for LIFO holding time: %w", err)
+	}
+
+	// Remaining lots are still-open positions; price hold time against endTime.
+	for _, stack := range stacks {
+		for _, l := range stack {
+			duration := endTime.Sub(l.executedAt).Seconds()
+			if duration < 0 {
+				duration = 0
+			}
+
+			durations = append(durations, duration)
+		}
+	}
+
+	if len(durations) == 0 {
+		return types.TradeHoldingTime{Min: 0, Max: 0, Avg: 0}, nil
+	}
+
+	minDur := durations[0]
+	maxDur := durations[0]
+	sum := 0.0
+
+	for _, d := range durations {
+		if d < minDur {
+			minDur = d
+		}
+
+		if d > maxDur {
+			maxDur = d
+		}
+
+		sum += d
+	}
+
+	avg := sum / float64(len(durations))
+
+	return types.TradeHoldingTime{
+		Min: int(math.Round(minDur)),
+		Max: int(math.Round(maxDur)),
+		Avg: int(math.Round(avg)),
+	}, nil
 }
 
 // calculateTotalFees calculates the total fees for a symbol.
@@ -1577,7 +1802,7 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 		return types.TradeStats{}, err
 	}
 
-	holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time)
+	holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time, b.portfolioStrategy)
 	if err != nil {
 		return types.TradeStats{}, err
 	}
