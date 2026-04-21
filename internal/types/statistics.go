@@ -91,6 +91,12 @@ type TradeStats struct {
 	InitialBalance float64 `yaml:"initial_balance" json:"initial_balance"`
 	// FinalBalance is the portfolio equity at the end of this backtest run (initial_balance + total_pnl).
 	FinalBalance float64 `yaml:"final_balance" json:"final_balance"`
+	// PortfolioCalculation identifies the portfolio PnL calculation strategy
+	// used by the backtest run (e.g., "fifo" or "average_cost"). It records
+	// which accounting method was used to compute the per-trade and cumulative
+	// PnL values in this stats record, so consumers can interpret them
+	// consistently.
+	PortfolioCalculation string `yaml:"portfolio_calculation" json:"portfolio_calculation"`
 }
 
 func WriteTradeStats(path string, stats []TradeStats) error {
