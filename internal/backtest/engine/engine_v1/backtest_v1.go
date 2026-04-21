@@ -30,6 +30,7 @@ type BacktestEngineV1 struct {
 	config              BacktestEngineV1Config
 	strategies          []runtime.StrategyRuntime
 	strategyPaths       []string
+	strategyBytes       [][]byte
 	strategyConfigPaths []string
 	strategyConfigs     []string
 	dataPaths           []string
@@ -55,6 +56,7 @@ func NewBacktestEngineV1() (engine.Engine, error) {
 		config:              EmptyConfig(),
 		strategies:          nil,
 		strategyPaths:       nil,
+		strategyBytes:       nil,
 		strategyConfigPaths: nil,
 		strategyConfigs:     nil,
 		dataPaths:           nil,
@@ -126,6 +128,7 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 func (b *BacktestEngineV1) LoadStrategy(strategy runtime.StrategyRuntime) error {
 	b.strategies = append(b.strategies, strategy)
 	b.strategyPaths = append(b.strategyPaths, "")
+	b.strategyBytes = append(b.strategyBytes, nil)
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -153,6 +156,7 @@ func (b *BacktestEngineV1) LoadStrategyFromFile(strategyPath string) error {
 
 	b.strategies = append(b.strategies, strategy)
 	b.strategyPaths = append(b.strategyPaths, strategyPath)
+	b.strategyBytes = append(b.strategyBytes, nil)
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -177,6 +181,11 @@ func (b *BacktestEngineV1) LoadStrategyFromBytes(strategyBytes []byte, strategyT
 
 	b.strategies = append(b.strategies, strategy)
 	b.strategyPaths = append(b.strategyPaths, "")
+	// Store a defensive copy of the bytes so that parallel workers can clone the
+	// strategy runtime later without sharing slice memory with the caller.
+	bytesCopy := make([]byte, len(strategyBytes))
+	copy(bytesCopy, strategyBytes)
+	b.strategyBytes = append(b.strategyBytes, bytesCopy)
 	b.log.Debug("Strategy loaded",
 		zap.Int("total_strategies", len(b.strategies)),
 	)
@@ -282,17 +291,31 @@ func (b *BacktestEngineV1) SetDataSource(datasource datasource.DataSource) error
 	return nil
 }
 
-// ParallelRunState holds the state for a single parallel run.
-type ParallelRunState struct {
-	state      *BacktestState
-	balance    float64
-	datasource datasource.DataSource
+// iterResources groups all per-iteration resources used while running a single
+// (config, dataPath) combination. When the engine runs sequentially it points at
+// the engine-level fields. When the engine runs in parallel mode each worker
+// owns its own iterResources so that workers don't share mutable state.
+type iterResources struct {
+	state             *BacktestState
+	tradingSystem     tradingprovider.TradingSystemProvider
+	marker            marker.Marker
+	logStorage        *BacktestLog
+	cache             cache.Cache
+	datasource        datasource.DataSource
+	strategy          runtime.StrategyRuntime
+	indicatorRegistry indicator.IndicatorRegistry
+}
+
+// configItem is a strategy configuration alongside its identifying name.
+type configItem struct {
+	name    string
+	content string
 }
 
 // runIterationParams holds parameters for a single run iteration.
 type runIterationParams struct {
 	ctx              context.Context
-	strategy         runtime.StrategyRuntime
+	res              *iterResources
 	strategyPath     string
 	runID            string
 	configIdx        int
@@ -317,11 +340,6 @@ func (b *BacktestEngineV1) Run(ctx context.Context, callbacks engine.LifecycleCa
 	b.resultsFolder = sessionFolder
 
 	// Build config list from either file paths or direct content
-	type configItem struct {
-		name    string
-		content string
-	}
-
 	var configs []configItem
 
 	if len(b.strategyConfigs) > 0 {
@@ -382,31 +400,69 @@ func (b *BacktestEngineV1) Run(ctx context.Context, callbacks engine.LifecycleCa
 			}
 		}
 
-		for configIdx, cfg := range configs {
-			for dataIdx, dataPath := range b.dataPaths {
-				resultFolderPath := getResultFolder(cfg.name, dataPath, b, strategy)
-				runID := uuid.New().String()
+		// Decide between sequential and parallel execution.
+		// Parallel mode kicks in when MaxConcurrency > 1 AND there is more than
+		// one (config, data) iteration to distribute. With only a single
+		// iteration there is no benefit to parallelism, so the sequential path
+		// is preferred to preserve existing behavior and avoid the cost of
+		// cloning per-worker resources.
+		totalIterations := len(configs) * len(b.dataPaths)
+		concurrency := b.config.MaxConcurrency
+		if concurrency < 1 {
+			concurrency = 1
+		}
 
-				params := runIterationParams{
-					ctx:              ctx,
-					strategy:         strategy,
-					strategyPath:     strategyPath,
-					runID:            runID,
-					configIdx:        configIdx,
-					configName:       cfg.name,
-					configContent:    cfg.content,
-					dataIdx:          dataIdx,
-					dataPath:         dataPath,
-					callbacks:        callbacks,
-					resultFolderPath: resultFolderPath,
-				}
+		if concurrency > 1 && totalIterations > 1 {
+			if err := b.runStrategyParallel(ctx, strategyIdx, strategy, strategyPath, configs, callbacks, concurrency); err != nil {
+				runErr = err
 
-				if err := b.runSingleIteration(params); err != nil {
-					runErr = err
+				return runErr
+			}
+		} else {
+			// Sequential path - reuse the engine-level resources for compatibility
+			// with existing tests and dependency injection patterns.
+			res := &iterResources{
+				state:             b.state,
+				tradingSystem:     b.tradingSystem,
+				marker:            b.marker,
+				logStorage:        b.logStorage,
+				cache:             b.cache,
+				datasource:        b.datasource,
+				strategy:          strategy,
+				indicatorRegistry: b.indicatorRegistry,
+			}
 
-					return runErr
+			for configIdx, cfg := range configs {
+				for dataIdx, dataPath := range b.dataPaths {
+					resultFolderPath := getResultFolder(cfg.name, dataPath, b, strategy)
+					runID := uuid.New().String()
+
+					params := runIterationParams{
+						ctx:              ctx,
+						res:              res,
+						strategyPath:     strategyPath,
+						runID:            runID,
+						configIdx:        configIdx,
+						configName:       cfg.name,
+						configContent:    cfg.content,
+						dataIdx:          dataIdx,
+						dataPath:         dataPath,
+						callbacks:        callbacks,
+						resultFolderPath: resultFolderPath,
+					}
+
+					if err := b.runSingleIteration(params); err != nil {
+						runErr = err
+
+						return runErr
+					}
 				}
 			}
+
+			// Reflect any newly-created marker/log storage back onto the engine
+			// so that callers depending on b.marker / b.logStorage observe them.
+			b.marker = res.marker
+			b.logStorage = res.logStorage
 		}
 
 		// Invoke OnStrategyEnd callback
@@ -429,32 +485,37 @@ func (b *BacktestEngineV1) GetConfigSchema() (string, error) {
 	return schema, nil
 }
 
-// runSingleIteration processes a single config+data combination for a strategy.
+// runSingleIteration processes a single config+data combination using the
+// per-iteration resources supplied via params.res.
 func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
-	// Initialize the state
-	if b.state == nil {
+	res := params.res
+	if res == nil {
+		return errors.New(errors.ErrCodeBacktestStateNil, "iteration resources are nil")
+	}
+
+	if res.state == nil {
 		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
 	var err error
 
 	// Only create a new marker if one isn't already set (allows dependency injection in tests)
-	if b.marker == nil {
-		b.marker, err = NewBacktestMarker(b.log)
+	if res.marker == nil {
+		res.marker, err = NewBacktestMarker(b.log)
 		if err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create backtest marker", err)
 		}
 	}
 
 	// Only create a new log storage if one isn't already set (allows dependency injection in tests)
-	if b.logStorage == nil {
-		b.logStorage, err = NewBacktestLog(b.log)
+	if res.logStorage == nil {
+		res.logStorage, err = NewBacktestLog(b.log)
 		if err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to create backtest log storage", err)
 		}
 	}
 
-	if err := b.state.Initialize(); err != nil {
+	if err := res.state.Initialize(); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to initialize state", err)
 	}
 
@@ -462,27 +523,27 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	// when multiple indicators query similar historical data within the same bar.
 	// The sliding window cache stores market data as it's processed, allowing
 	// strategies to access recent data without hitting DuckDB.
-	slidingWindowDS := datasource.NewSlidingWindowDataSource(b.datasource, b.config.MarketDataCacheSize)
+	slidingWindowDS := datasource.NewSlidingWindowDataSource(res.datasource, b.config.MarketDataCacheSize)
 
 	strategyContext := runtime.RuntimeContext{
 		DataSource:        slidingWindowDS,
-		IndicatorRegistry: b.indicatorRegistry,
-		Marker:            b.marker,
-		TradingSystem:     b.tradingSystem,
-		Cache:             b.cache,
+		IndicatorRegistry: res.indicatorRegistry,
+		Marker:            res.marker,
+		TradingSystem:     res.tradingSystem,
+		Cache:             res.cache,
 		Logger:            b.log,
-		LogStorage:        b.logStorage,
+		LogStorage:        res.logStorage,
 		CurrentMarketData: nil,
 	}
 
 	// need to initialize the strategy api first since there is no wasm plugin available before this line
-	err = params.strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
+	err = res.strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to initialize strategy api", err)
 	}
 
 	// Check version compatibility between engine and strategy
-	strategyRuntimeVersion, err := params.strategy.GetRuntimeEngineVersion()
+	strategyRuntimeVersion, err := res.strategy.GetRuntimeEngineVersion()
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to get strategy runtime version", err)
 	}
@@ -492,25 +553,25 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 			version.Version, strategyRuntimeVersion)
 	}
 
-	err = params.strategy.Initialize(params.configContent)
+	err = res.strategy.Initialize(params.configContent)
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to initialize strategy", err)
 	}
 
 	b.log.Debug("Running strategy",
-		zap.String("strategy", params.strategy.Name()),
+		zap.String("strategy", res.strategy.Name()),
 		zap.String("config", params.configName),
 		zap.String("data", params.dataPath),
 		zap.String("result", params.resultFolderPath),
 	)
 
 	// Initialize the data source with the given data path
-	if err := b.datasource.Initialize(params.dataPath); err != nil {
+	if err := res.datasource.Initialize(params.dataPath); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestDataPathError, "failed to initialize data source", err)
 	}
 
 	// create a progress bar
-	count, err := b.datasource.Count(b.config.StartTime, b.config.EndTime)
+	count, err := res.datasource.Count(b.config.StartTime, b.config.EndTime)
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeQueryFailed, "failed to get data count", err)
 	}
@@ -531,11 +592,11 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 	os.MkdirAll(params.resultFolderPath, 0755)
 
 	// Get stats
-	if b.state == nil {
+	if res.state == nil {
 		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
-	if err := b.writeResults(strategyContext, params.strategy, params.runID, params.resultFolderPath, params.strategyPath, params.dataPath); err != nil {
+	if err := b.writeResults(strategyContext, res, params.runID, params.resultFolderPath, params.strategyPath, params.dataPath); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write results", err)
 	}
 
@@ -544,8 +605,8 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		(*params.callbacks.OnRunEnd)(params.configIdx, params.configName, params.dataIdx, params.dataPath, params.resultFolderPath)
 	}
 
-	// Cleanup state
-	if err := b.cleanUpRun(); err != nil {
+	// Cleanup state so the same resources can be reused for a subsequent iteration.
+	if err := b.cleanUpRun(res); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup run", err)
 	}
 
@@ -554,6 +615,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 
 // processDataPoints processes all data points for a single run iteration.
 func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext *runtime.RuntimeContext, slidingWindowDS *datasource.SlidingWindowDataSource, count int) error {
+	res := params.res
 	currentCount := 0
 
 	// Track insufficient data error state for marker boundaries
@@ -562,11 +624,11 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		lastInsufficientData    types.MarketData
 	)
 
-	for data, err := range b.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
+	for data, err := range res.datasource.ReadAll(b.config.StartTime, b.config.EndTime) {
 		// Check for context cancellation
 		select {
 		case <-params.ctx.Done():
-			if cleanupErr := b.cleanUpRun(); cleanupErr != nil {
+			if cleanupErr := b.cleanUpRun(res); cleanupErr != nil {
 				b.log.Error("Failed to cleanup run after cancellation",
 					zap.Error(cleanupErr),
 				)
@@ -584,7 +646,7 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		slidingWindowDS.AddToCache(data)
 
 		// run the strategy
-		if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
+		if backtestTrading, ok := res.tradingSystem.(*BacktestTrading); ok {
 			backtestTrading.UpdateCurrentMarketData(data)
 		}
 
@@ -592,12 +654,12 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		strategyContext.CurrentMarketData = &data
 
 		// Process data and track insufficient data errors for markers
-		processErr := params.strategy.ProcessData(data)
+		processErr := res.strategy.ProcessData(data)
 
 		if errors.IsInsufficientDataError(processErr) {
 			if !inInsufficientDataError {
 				// Transition: OK → Insufficient - mark beginning
-				b.markInsufficientDataStart(data)
+				b.markInsufficientDataStart(res.marker, data)
 
 				inInsufficientDataError = true
 			}
@@ -606,14 +668,14 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 		} else {
 			if inInsufficientDataError {
 				// Transition: Insufficient → OK - mark end at last insufficient data point
-				b.markInsufficientDataEnd(lastInsufficientData)
+				b.markInsufficientDataEnd(res.marker, lastInsufficientData)
 
 				inInsufficientDataError = false
 			}
 
 			// Add error marker for non-insufficient errors (continue processing)
 			if processErr != nil {
-				b.markStrategyError(data, processErr)
+				b.markStrategyError(res.marker, data, processErr)
 			}
 		}
 
@@ -630,15 +692,15 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 
 	// If we ended in an insufficient data error state, mark the end
 	if inInsufficientDataError {
-		b.markInsufficientDataEnd(lastInsufficientData)
+		b.markInsufficientDataEnd(res.marker, lastInsufficientData)
 	}
 
 	return nil
 }
 
 // markInsufficientDataStart adds a warning marker at the start of an insufficient data error sequence.
-func (b *BacktestEngineV1) markInsufficientDataStart(data types.MarketData) {
-	if b.marker == nil {
+func (b *BacktestEngineV1) markInsufficientDataStart(mk marker.Marker, data types.MarketData) {
+	if mk == nil {
 		return
 	}
 
@@ -661,7 +723,7 @@ func (b *BacktestEngineV1) markInsufficientDataStart(data types.MarketData) {
 		}),
 	}
 
-	if err := b.marker.Mark(data, mark); err != nil {
+	if err := mk.Mark(data, mark); err != nil {
 		b.log.Error("Failed to mark insufficient data start",
 			zap.Error(err),
 		)
@@ -669,8 +731,8 @@ func (b *BacktestEngineV1) markInsufficientDataStart(data types.MarketData) {
 }
 
 // markInsufficientDataEnd adds a warning marker at the end of an insufficient data error sequence.
-func (b *BacktestEngineV1) markInsufficientDataEnd(data types.MarketData) {
-	if b.marker == nil {
+func (b *BacktestEngineV1) markInsufficientDataEnd(mk marker.Marker, data types.MarketData) {
+	if mk == nil {
 		return
 	}
 
@@ -693,7 +755,7 @@ func (b *BacktestEngineV1) markInsufficientDataEnd(data types.MarketData) {
 		}),
 	}
 
-	if err := b.marker.Mark(data, mark); err != nil {
+	if err := mk.Mark(data, mark); err != nil {
 		b.log.Error("Failed to mark insufficient data end",
 			zap.Error(err),
 		)
@@ -701,8 +763,8 @@ func (b *BacktestEngineV1) markInsufficientDataEnd(data types.MarketData) {
 }
 
 // markStrategyError adds an error marker for strategy errors (non-insufficient data errors).
-func (b *BacktestEngineV1) markStrategyError(data types.MarketData, strategyErr error) {
-	if b.marker == nil {
+func (b *BacktestEngineV1) markStrategyError(mk marker.Marker, data types.MarketData, strategyErr error) {
+	if mk == nil {
 		return
 	}
 
@@ -725,15 +787,15 @@ func (b *BacktestEngineV1) markStrategyError(data types.MarketData, strategyErr 
 		}),
 	}
 
-	if err := b.marker.Mark(data, mark); err != nil {
+	if err := mk.Mark(data, mark); err != nil {
 		b.log.Error("Failed to mark strategy error",
 			zap.Error(err),
 		)
 	}
 }
 
-func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID string, resultFolderPath string, strategyPath string, dataPath string) error {
-	if b.state == nil {
+func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, res *iterResources, runID string, resultFolderPath string, strategyPath string, dataPath string) error {
+	if res.state == nil {
 		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
@@ -744,7 +806,7 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	marksFilePath := filepath.Join(resultFolderPath, "marks.parquet")
 	logsFilePath := filepath.Join(resultFolderPath, "logs.parquet")
 
-	stats, err := b.state.GetStats(strategyContext, strategyRuntime, runID, tradesFilePath, ordersFilePath, marksFilePath, logsFilePath, strategyPath, dataPath)
+	stats, err := res.state.GetStats(strategyContext, res.strategy, runID, tradesFilePath, ordersFilePath, marksFilePath, logsFilePath, strategyPath, dataPath)
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to get stats", err)
 	}
@@ -755,24 +817,20 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	}
 
 	// Write state to disk
-	if b.state == nil {
-		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
-	}
-
-	if err := b.state.Write(stateDBPath); err != nil {
+	if err := res.state.Write(stateDBPath); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write state", err)
 	}
 
 	// write the marker to disk
-	if marker, ok := b.marker.(*BacktestMarker); ok {
-		if err := marker.Write(resultFolderPath); err != nil {
+	if mk, ok := res.marker.(*BacktestMarker); ok {
+		if err := mk.Write(resultFolderPath); err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write marker", err)
 		}
 	}
 
 	// write the logs to disk
-	if b.logStorage != nil {
-		if err := b.logStorage.Write(resultFolderPath); err != nil {
+	if res.logStorage != nil {
+		if err := res.logStorage.Write(resultFolderPath); err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write logs", err)
 		}
 	}
@@ -780,33 +838,35 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	return nil
 }
 
-func (b *BacktestEngineV1) cleanUpRun() error {
-	if b.state == nil {
+func (b *BacktestEngineV1) cleanUpRun(res *iterResources) error {
+	if res == nil || res.state == nil {
 		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
-	if err := b.state.Cleanup(); err != nil {
+	if err := res.state.Cleanup(); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup state", err)
 	}
 
 	// Cleanup the cache
-	b.cache.Reset()
+	if res.cache != nil {
+		res.cache.Reset()
+	}
 
 	// clean up the trading system
-	if backtestTrading, ok := b.tradingSystem.(*BacktestTrading); ok {
+	if backtestTrading, ok := res.tradingSystem.(*BacktestTrading); ok {
 		backtestTrading.Reset(b.config.InitialCapital)
 	}
 
 	// Cleanup the marker
-	if marker, ok := b.marker.(*BacktestMarker); ok {
-		if err := marker.Cleanup(); err != nil {
+	if mk, ok := res.marker.(*BacktestMarker); ok {
+		if err := mk.Cleanup(); err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup marker", err)
 		}
 	}
 
 	// Cleanup the log storage
-	if b.logStorage != nil {
-		if err := b.logStorage.Cleanup(); err != nil {
+	if res.logStorage != nil {
+		if err := res.logStorage.Cleanup(); err != nil {
 			return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to cleanup log storage", err)
 		}
 	}

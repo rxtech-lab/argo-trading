@@ -8,6 +8,7 @@ build:
 	GOOS=wasip1 GOARCH=wasm go build -o ./place_decimal_order/place_decimal_order_plugin.wasm -buildmode=c-shared ./place_decimal_order/place_decimal_order.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./complex_strategy/complex_strategy_plugin.wasm -buildmode=c-shared ./complex_strategy/complex_strategy.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./log_error/log_error_plugin.wasm -buildmode=c-shared ./log_error/log_error_strategy.go
+	GOOS=wasip1 GOARCH=wasm go build -o ./place_multiple_orders/place_multiple_orders_plugin.wasm -buildmode=c-shared ./place_multiple_orders/place_multiple_orders.go
 # Clean WASM files
 clean:
 	rm -f *.wasm

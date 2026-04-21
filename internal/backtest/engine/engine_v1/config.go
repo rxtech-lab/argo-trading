@@ -19,6 +19,7 @@ type BacktestEngineV1Config struct {
 	EndTime             optional.Option[time.Time] `yaml:"end_time" json:"end_time" jsonschema:"title=End Time,description=Optional end time for the backtest period"`
 	DecimalPrecision    int                        `yaml:"decimal_precision" json:"decimal_precision" jsonschema:"title=Decimal Precision,description=The number of decimal places allowed for quantity (0 means integers only, higher values allow more decimal places),minimum=0,default=1"`
 	MarketDataCacheSize int                        `yaml:"market_data_cache_size" json:"market_data_cache_size" jsonschema:"title=Market Data Cache Size,description=The number of market data points to cache per symbol using sliding window algorithm. When data requests exceed cache size the system falls back to DuckDB. Set to 0 to disable caching.,minimum=0,default=1000"`
+	MaxConcurrency      int                        `yaml:"max_concurrency" json:"max_concurrency" jsonschema:"title=Max Concurrency,description=Maximum number of worker goroutines that run independent (config x data file) iterations in parallel for a single strategy. Each worker holds its own isolated state trading marker log storage cache and datasource so iterations don't interfere. Defaults to 1 (sequential).,minimum=1,default=1"`
 }
 
 // UnmarshalYAML implements custom unmarshaling for BacktestEngineV1Config.
@@ -30,6 +31,7 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 		EndTime             *time.Time            `yaml:"end_time"`
 		DecimalPrecision    int                   `yaml:"decimal_precision"`
 		MarketDataCacheSize int                   `yaml:"market_data_cache_size"`
+		MaxConcurrency      int                   `yaml:"max_concurrency"`
 	}
 
 	var config Config
@@ -41,6 +43,7 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 	c.Broker = config.Broker
 	c.DecimalPrecision = config.DecimalPrecision
 	c.MarketDataCacheSize = config.MarketDataCacheSize
+	c.MaxConcurrency = config.MaxConcurrency
 
 	if config.StartTime != nil {
 		c.StartTime = optional.Some(*config.StartTime)
@@ -115,6 +118,7 @@ func TestConfig(startTime time.Time, endTime time.Time, broker commission_fee.Br
 		EndTime:             optional.Some(endTime),
 		DecimalPrecision:    1,
 		MarketDataCacheSize: 1000,
+		MaxConcurrency:      1,
 	}
 }
 
@@ -127,5 +131,6 @@ func EmptyConfig() BacktestEngineV1Config {
 		EndTime:             optional.None[time.Time](),
 		DecimalPrecision:    1,
 		MarketDataCacheSize: 1000,
+		MaxConcurrency:      1,
 	}
 }
