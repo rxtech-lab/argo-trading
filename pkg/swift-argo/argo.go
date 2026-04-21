@@ -97,7 +97,31 @@ func (a *Argo) Run(backtestConfig string, strategyPath string, resultsFolderPath
 	onStrategyEnd := engine.OnStrategyEndCallback(a.helper.OnStrategyEnd)
 	onRunStart := engine.OnRunStartCallback(a.helper.OnRunStart)
 	onRunEnd := engine.OnRunEndCallback(a.helper.OnRunEnd)
-	onProcessData := engine.OnProcessDataCallback(a.helper.OnProcessData)
+
+	// Throttle OnProcessData before crossing the gomobile bridge: per-bar
+	// Go↔Swift callbacks dominate wall-clock time (each round-trip is ~ms
+	// when the Swift handler touches the main actor). Fire ~0.5% resolution
+	// (≤200 callbacks per run) plus the final bar so the UI still completes.
+	// The engine invokes OnProcessData sequentially per data point, so the
+	// counters below don't need synchronization.
+	var (
+		progressStep int
+		lastReported int
+		lastRunTotal int
+	)
+	onProcessData := engine.OnProcessDataCallback(func(current, total int) error {
+		if total != lastRunTotal {
+			lastRunTotal = total
+			lastReported = 0
+			progressStep = max(total/200, 1)
+		}
+		if current != total && current-lastReported < progressStep {
+			return nil
+		}
+		lastReported = current
+
+		return a.helper.OnProcessData(current, total)
+	})
 
 	// Initialize the engine with the given configuration file.
 	if err := a.engine.Initialize(backtestConfig); err != nil {
