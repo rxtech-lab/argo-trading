@@ -1715,6 +1715,27 @@ func (b *BacktestState) calculateTradePnlStats(symbol string) (median float64, p
 	return median, percentiles, nil
 }
 
+// calculateTotalInvestment returns the gross capital deployed across all entry
+// trades for a symbol. Both long and short positions are recorded with
+// order_type = BUY for their entries (per engine_v1 semantics), so we sum the
+// notional (executed_qty * executed_price) of every BUY fill. This is used as
+// the denominator for PnL percentage and represents the actual capital put to
+// work — distinct from the run-wide initial cash balance.
+func (b *BacktestState) calculateTotalInvestment(symbol string) (float64, error) {
+	query := `
+		SELECT COALESCE(SUM(executed_qty * executed_price), 0)
+		FROM trades
+		WHERE symbol = ? AND order_type = ?
+	`
+
+	var totalInvestment float64
+	if err := b.db.QueryRow(query, symbol, types.PurchaseTypeBuy).Scan(&totalInvestment); err != nil {
+		return 0, fmt.Errorf("failed to calculate total investment: %w", err)
+	}
+
+	return totalInvestment, nil
+}
+
 // calculateMonthlyTradeStats returns per-month trade activity for a symbol.
 // Months are formatted as YYYY-MM and ordered chronologically. NumberOfTrades
 // counts every fill executed in the month (entries and exits). NumberOfTradingPairs
@@ -2055,6 +2076,16 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 
 	tradePnl.MedianPnL = medianPnl
 	tradePnl.Percentiles = pnlPercentiles
+
+	totalInvestment, err := b.calculateTotalInvestment(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	tradePnl.TotalInvestment = totalInvestment
+	if totalInvestment > 0 {
+		tradePnl.PnLPercentage = tradePnl.TotalPnL / totalInvestment
+	}
 
 	buyAndHoldPnl, err := b.calculateBuyAndHoldPnL(symbol, ctx.DataSource)
 	if err != nil {

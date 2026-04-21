@@ -48,6 +48,15 @@ type TradePnl struct {
 	MedianPnL float64 `yaml:"median_pnl"`
 	// Percentiles of per-trade realized PnL across all closing trades.
 	Percentiles Percentiles `yaml:"percentiles"`
+	// TotalInvestment is the gross capital deployed across all entry trades
+	// (sum of executed_qty * executed_price for BUY fills, which represent
+	// the entries for both long and short positions in this engine).
+	TotalInvestment float64 `yaml:"total_investment"`
+	// PnLPercentage is TotalPnL divided by TotalInvestment, expressed as a
+	// fraction (e.g. 0.12 = +12%). It is intentionally NOT computed against
+	// the initial cash balance — only the capital actually put to work counts.
+	// Zero when TotalInvestment is zero.
+	PnLPercentage float64 `yaml:"pnl_percentage"`
 }
 
 // MonthlyTradeStats summarises trade activity for a single calendar month.

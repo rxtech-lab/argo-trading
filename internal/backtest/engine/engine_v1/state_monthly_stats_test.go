@@ -182,7 +182,88 @@ func (suite *MonthlyStatsTestSuite) TestMonthlyAndPercentileStats() {
 	suite.InDelta(1500.0, stat.TradePnl.Percentiles.P75, 0.001)
 }
 
-// TestMonthlyStatsNoTrades verifies that a symbol with no trades produces empty
+// TestPnLPercentage verifies that PnLPercentage is computed as TotalPnL /
+// TotalInvestment (the gross capital deployed across BUY entries) and not
+// against the initial cash balance. Three buys of 100 shares at $100 each
+// (one of which closes profitably, one at a loss, one open) deploy a gross
+// investment of $30,000, against which TotalPnL is measured.
+func (suite *MonthlyStatsTestSuite) TestPnLPercentage() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockSource := mocks.NewMockDataSource(ctrl)
+	mockSource.EXPECT().ReadLastData("AAPL").Return(types.MarketData{
+		Symbol: "AAPL",
+		Close:  100.0, // last price equals entry price -> open position has 0 unrealized PnL
+		Time:   time.Date(2024, 2, 15, 12, 0, 0, 0, time.UTC),
+	}, nil).AnyTimes()
+	mockSource.EXPECT().GetAllSymbols().Return([]string{"AAPL"}, nil).AnyTimes()
+
+	// Use an initial balance much larger than the investment to make sure the
+	// percentage is NOT being computed against the balance.
+	suite.state.SetInitialBalance(1_000_000)
+
+	orders := []types.Order{
+		// Round trip 1: buy 100 @ 100, sell 100 @ 110 -> +1000
+		makeLongOrder("AAPL", types.PurchaseTypeBuy, 100, 100, time.Date(2024, 1, 5, 10, 0, 0, 0, time.UTC)),
+		makeLongOrder("AAPL", types.PurchaseTypeSell, 100, 110, time.Date(2024, 1, 5, 11, 0, 0, 0, time.UTC)),
+		// Round trip 2: buy 100 @ 100, sell 100 @ 95 -> -500
+		makeLongOrder("AAPL", types.PurchaseTypeBuy, 100, 100, time.Date(2024, 1, 6, 10, 0, 0, 0, time.UTC)),
+		makeLongOrder("AAPL", types.PurchaseTypeSell, 100, 95, time.Date(2024, 1, 6, 11, 0, 0, 0, time.UTC)),
+		// Open: buy 100 @ 100 -> unrealized 0 (close = 100)
+		makeLongOrder("AAPL", types.PurchaseTypeBuy, 100, 100, time.Date(2024, 1, 7, 10, 0, 0, 0, time.UTC)),
+	}
+	for _, o := range orders {
+		_, err := suite.state.Update([]types.Order{o})
+		suite.Require().NoError(err)
+	}
+
+	mockStrategy := &testMockStrategyRuntime{}
+	stats, err := suite.state.GetStats(runtime.RuntimeContext{DataSource: mockSource},
+		mockStrategy, "test-run-id", "", "", "", "", "", "")
+	suite.Require().NoError(err)
+	suite.Require().Len(stats, 1)
+
+	stat := stats[0]
+
+	// Total gross investment = 3 buys * 100 shares * $100 = $30,000.
+	suite.Equal(30_000.0, stat.TradePnl.TotalInvestment)
+
+	// Realized PnL across the two closed round trips = +1000 - 500 = +500.
+	// Unrealized = 0 (last price equals entry). Total PnL = +500.
+	suite.Equal(500.0, stat.TradePnl.TotalPnL)
+
+	// PnL % is over investment (500 / 30000), NOT over initial balance.
+	suite.InDelta(500.0/30_000.0, stat.TradePnl.PnLPercentage, 1e-9)
+	// Sanity: must NOT be the value you'd get if dividing by initial balance.
+	suite.NotEqual(500.0/1_000_000.0, stat.TradePnl.PnLPercentage,
+		"pnl_percentage must be over total investment, not initial balance")
+}
+
+// TestPnLPercentageNoInvestment verifies the divide-by-zero guard: when there
+// are no entry trades the percentage stays at zero rather than NaN/Inf.
+func (suite *MonthlyStatsTestSuite) TestPnLPercentageNoInvestment() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockSource := mocks.NewMockDataSource(ctrl)
+	mockSource.EXPECT().GetAllSymbols().Return([]string{"SPY"}, nil).AnyTimes()
+	mockSource.EXPECT().ReadLastData("SPY").Return(types.MarketData{
+		Symbol: "SPY",
+		Close:  450.0,
+		Time:   time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
+	}, nil).AnyTimes()
+
+	mockStrategy := &testMockStrategyRuntime{}
+	stats, err := suite.state.GetStats(runtime.RuntimeContext{DataSource: mockSource},
+		mockStrategy, "test-run-id", "", "", "", "", "", "")
+	suite.Require().NoError(err)
+	suite.Require().Len(stats, 1)
+
+	suite.Equal(0.0, stats[0].TradePnl.TotalInvestment)
+	suite.Equal(0.0, stats[0].TradePnl.PnLPercentage)
+}
+
 // monthly slices and zero-valued median/percentile fields.
 func (suite *MonthlyStatsTestSuite) TestMonthlyStatsNoTrades() {
 	ctrl := gomock.NewController(suite.T())
