@@ -197,7 +197,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		}
 
 		// Calculate FIFO PnL for closing trades; buys have zero individual PnL.
-		fifoPnl, err := b.computeClosingFIFOPnL(order, currentPosition)
+		fifoPnl, err := b.computeClosingPnL(order, currentPosition)
 		if err != nil {
 			tx.Rollback()
 
@@ -927,10 +927,10 @@ func (b *BacktestState) GetAllOrders() ([]types.Order, error) {
 	return orders, nil
 }
 
-// computeClosingFIFOPnL calculates the closing PnL for a trade based on position
+// computeClosingPnL calculates the closing PnL for a trade based on position
 // state, using the configured portfolio calculation strategy (FIFO or
 // average-cost). It returns 0 for opening trades.
-func (b *BacktestState) computeClosingFIFOPnL(order types.Order, position types.Position) (float64, error) {
+func (b *BacktestState) computeClosingPnL(order types.Order, position types.Position) (float64, error) {
 	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
 	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
 
@@ -947,7 +947,7 @@ func (b *BacktestState) computeClosingFIFOPnL(order types.Order, position types.
 
 // computeClosingHoldTime returns the FIFO-weighted-average holding time (in seconds)
 // for a closing trade. Closing trades are SELL orders that match prior BUY entries
-// (mirroring the convention used by computeClosingFIFOPnL/calculateFIFOPnL).
+// (mirroring the convention used by computeClosingPnL/calculateFIFOPnL).
 // Opening trades return 0.
 func (b *BacktestState) computeClosingHoldTime(order types.Order, position types.Position) (int, error) {
 	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
@@ -1290,7 +1290,7 @@ func (b *BacktestState) calculateAverageCostPnL(symbol string, positionType type
 
 	if openQty.Sign() <= 0 {
 		// Nothing open to close — defensive fallback consistent with
-		// computeClosingFIFOPnL (which is only called for true closes).
+		// computeClosingPnL (which is only called for true closes).
 		return 0, nil
 	}
 
@@ -1319,6 +1319,8 @@ func (b *BacktestState) calculateAverageCostPnL(symbol string, positionType type
 	return pnl, nil
 }
 
+// calculateTradeResult calculates the trade result statistics for a symbol.
+// NumberOfTrades counts all fills (entries and exits). NumberOfTradingPairs counts
 // round trips — each exit trade closes a pair against one or more prior entry trades.
 // Win/lose counts and win rate are computed against trading pairs.
 func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, error) {
