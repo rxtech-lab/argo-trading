@@ -1124,16 +1124,20 @@ func (b *BacktestState) calculateLIFOHoldTime(symbol string, positionType types.
 		return 0, fmt.Errorf("error iterating trades for LIFO hold time: %w", err)
 	}
 
+	if len(stack) == 0 {
+		return 0, nil
+	}
+
 	// Simulate the current close against the reconstructed stack without mutating it.
 	remaining := closeQty
 	weightedSeconds := 0.0
 	matchedQtyTotal := 0.0
 
 	for i := len(stack) - 1; i >= 0 && remaining > 0; i-- {
-		available := stack[i].qty
-		matchedQty := math.Min(available, remaining)
+		entry := stack[i]
+		matchedQty := math.Min(entry.qty, remaining)
 
-		duration := closeTime.Sub(stack[i].executedAt).Seconds()
+		duration := closeTime.Sub(entry.executedAt).Seconds()
 		if duration < 0 {
 			duration = 0
 		}
