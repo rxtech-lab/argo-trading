@@ -28,6 +28,12 @@ type Trade struct {
 	// Balance is the cash balance after this trade.
 	// Calculated as: initialCapital - Σ(buy_cost + buy_fee) + Σ(sell_proceeds - sell_fee).
 	Balance float64 `csv:"balance"`
+	// HoldTime is the holding time in seconds for a closing trade, calculated using
+	// FIFO matching against the prior unmatched entry trades. For long positions it
+	// is computed on the sell trade; for short positions, on the covering buy trade.
+	// It is the quantity-weighted average duration (in seconds) between the closing
+	// trade and each matched entry trade. For entry (opening) trades, HoldTime is 0.
+	HoldTime int `csv:"hold_time"`
 }
 
 // Position represents current holdings of an asset.

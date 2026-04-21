@@ -114,7 +114,8 @@ func (b *BacktestState) Initialize() error {
 			cumulative_pnl DOUBLE,
 			position_type TEXT,
 			open_position_qty DOUBLE,
-			balance DOUBLE
+			balance DOUBLE,
+			hold_time BIGINT
 		)
 	`)
 	if err != nil {
@@ -213,6 +214,14 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 
 		balance := computeCashBalance(prevBalance, order)
 
+		// Calculate FIFO-weighted hold time (in seconds) for closing trades; 0 for opening trades.
+		holdTime, err := b.computeClosingHoldTime(order, currentPosition)
+		if err != nil {
+			tx.Rollback()
+
+			return nil, fmt.Errorf("failed to calculate hold time: %w", err)
+		}
+
 		// Create trade record
 		trade := types.Trade{
 			Order: types.Order{
@@ -237,6 +246,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			CumulativePnL:   cumulativePnl,
 			OpenPositionQty: openPositionQty,
 			Balance:         balance,
+			HoldTime:        holdTime,
 		}
 
 		// Insert trade using Squirrel
@@ -246,14 +256,14 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 				"is_completed", "reason", "message", "strategy_name",
 				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
-				"open_position_qty", "balance",
+				"open_position_qty", "balance", "hold_time",
 			).
 			Values(
 				orderID, trade.Order.Symbol, trade.Order.Side, trade.Order.Quantity, trade.Order.Price,
 				trade.Order.Timestamp, trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
 				order.StrategyName, trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
 				trade.Fee, trade.PnL, trade.CumulativePnL, trade.Order.PositionType,
-				trade.OpenPositionQty, trade.Balance,
+				trade.OpenPositionQty, trade.Balance, trade.HoldTime,
 			).
 			RunWith(tx)
 
@@ -451,6 +461,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 			"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 			"is_completed", "reason", "message", "strategy_name",
 			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
+			"hold_time",
 		).
 		From("trades").
 		OrderBy("executed_at ASC").
@@ -485,6 +496,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 			&trade.PnL,
 			&trade.CumulativePnL,
 			&trade.Order.PositionType,
+			&trade.HoldTime,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan trade: %w", err)
@@ -911,6 +923,112 @@ func (b *BacktestState) computeClosingFIFOPnL(order types.Order, position types.
 	}
 
 	return 0, nil
+}
+
+// computeClosingHoldTime returns the FIFO-weighted-average holding time (in seconds)
+// for a closing trade. Closing trades are SELL orders that match prior BUY entries
+// (mirroring the convention used by computeClosingFIFOPnL/calculateFIFOPnL).
+// Opening trades return 0.
+func (b *BacktestState) computeClosingHoldTime(order types.Order, position types.Position) (int, error) {
+	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
+	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
+
+	if !isLongClose && !isShortClose {
+		return 0, nil
+	}
+
+	return b.calculateFIFOHoldTime(order.Symbol, order.PositionType, order.Quantity, order.Timestamp)
+}
+
+// calculateFIFOHoldTime computes the quantity-weighted-average holding time (seconds)
+// between the closing trade at closeTime and prior unmatched BUY entry trades, using FIFO.
+func (b *BacktestState) calculateFIFOHoldTime(symbol string, positionType types.PositionType, closeQty float64, closeTime time.Time) (int, error) {
+	// Get prior entry (BUY) trades in FIFO order.
+	entryQuery := b.sq.
+		Select("executed_qty", "executed_at").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"order_type":    types.PurchaseTypeBuy,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC").
+		RunWith(b.db)
+
+	entryRows, err := entryQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query entry trades for hold time: %w", err)
+	}
+	defer entryRows.Close()
+
+	type entryTrade struct {
+		qty        float64
+		executedAt time.Time
+	}
+
+	var entries []entryTrade
+	for entryRows.Next() {
+		var e entryTrade
+		if err := entryRows.Scan(&e.qty, &e.executedAt); err != nil {
+			return 0, fmt.Errorf("failed to scan entry trade: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := entryRows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating entry trades: %w", err)
+	}
+
+	// Quantity previously closed (sold) for this symbol+positionType.
+	prevSoldQuery := b.sq.
+		Select("COALESCE(SUM(executed_qty), 0)").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"order_type":    types.PurchaseTypeSell,
+			"position_type": positionType,
+		}).
+		RunWith(b.db)
+
+	var prevSoldQty float64
+	if err := prevSoldQuery.QueryRow().Scan(&prevSoldQty); err != nil {
+		return 0, fmt.Errorf("failed to query previously closed qty: %w", err)
+	}
+
+	remaining := closeQty
+	skipQty := prevSoldQty
+	weightedSeconds := 0.0
+	matchedQtyTotal := 0.0
+
+	for _, entry := range entries {
+		if remaining <= 0 {
+			break
+		}
+
+		if skipQty >= entry.qty {
+			skipQty -= entry.qty
+
+			continue
+		}
+
+		availableQty := entry.qty - skipQty
+		skipQty = 0
+
+		matchedQty := math.Min(availableQty, remaining)
+		duration := closeTime.Sub(entry.executedAt).Seconds()
+		if duration < 0 {
+			duration = 0
+		}
+
+		weightedSeconds += duration * matchedQty
+		matchedQtyTotal += matchedQty
+		remaining -= matchedQty
+	}
+
+	if matchedQtyTotal == 0 {
+		return 0, nil
+	}
+
+	return int(math.Round(weightedSeconds / matchedQtyTotal)), nil
 }
 
 // computeOpenPositionQty calculates the open position quantity after a trade.
