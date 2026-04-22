@@ -484,11 +484,14 @@ func (b *BacktestTrading) SetOnStatusChange(_ tradingprovider.OnStatusChange) {
 	// No-op for backtest trading
 }
 
-// getBuyingPower returns the maximum quantity that can be bought for the current market data.
+// getBuyingPower returns the cash available for new purchases, in account currency.
+// Margin/leverage is not modeled in the backtest engine, so this equals the cash balance.
 func (b *BacktestTrading) getBuyingPower() float64 {
-	maxQty := utils.CalculateMaxQuantity(b.balance, (b.marketData.High+b.marketData.Low)/2, b.commission)
+	if b.balance <= 0 {
+		return 0
+	}
 
-	return utils.RoundToDecimalPrecision(maxQty, b.decimalPrecision)
+	return b.balance
 }
 
 // getSellingPower returns the maximum quantity that can be sold for the current market data.

@@ -380,8 +380,12 @@ func (s *PlaceFailOrderStrategy) testMaxBuyOrder(ctx context.Context, api strate
 		return fmt.Errorf("failed to get account info: %w", err)
 	}
 
-	// In backtest, BuyingPower is already the max quantity we can afford (not dollar amount)
-	maxQty := math.Floor(accountInfo.BuyingPower)
+	// BuyingPower is cash available for new purchases; convert to a share count at the
+	// current ask before sizing the order.
+	if data.High <= 0 {
+		return nil
+	}
+	maxQty := math.Floor(accountInfo.BuyingPower / data.High)
 
 	if maxQty < 1 {
 		// Not enough buying power - skip placing order (this is acceptable for this test)
