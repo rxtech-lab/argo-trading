@@ -77,6 +77,42 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 	return nil
 }
 
+// MarshalYAML implements custom marshaling for BacktestEngineV1Config so that
+// optional time fields are serialised as plain timestamps (or omitted) instead
+// of as the underlying optional.Option list representation. This keeps the
+// embedded config readable in artifacts such as stats.yaml.
+func (c BacktestEngineV1Config) MarshalYAML() (interface{}, error) {
+	type Config struct {
+		InitialCapital       float64                      `yaml:"initial_capital"`
+		Broker               commission_fee.Broker        `yaml:"broker"`
+		StartTime            *time.Time                   `yaml:"start_time,omitempty"`
+		EndTime              *time.Time                   `yaml:"end_time,omitempty"`
+		DecimalPrecision     int                          `yaml:"decimal_precision"`
+		MarketDataCacheSize  int                          `yaml:"market_data_cache_size"`
+		PortfolioCalculation PortfolioCalculationStrategy `yaml:"portfolio_calculation"`
+	}
+
+	out := Config{
+		InitialCapital:       c.InitialCapital,
+		Broker:               c.Broker,
+		DecimalPrecision:     c.DecimalPrecision,
+		MarketDataCacheSize:  c.MarketDataCacheSize,
+		PortfolioCalculation: c.PortfolioCalculation,
+	}
+
+	if v, err := c.StartTime.Take(); err == nil {
+		t := v
+		out.StartTime = &t
+	}
+
+	if v, err := c.EndTime.Take(); err == nil {
+		t := v
+		out.EndTime = &t
+	}
+
+	return out, nil
+}
+
 // GenerateSchema generates a JSON schema for the BacktestEngineV1Config.
 func (c *BacktestEngineV1Config) GenerateSchema() (*jsonschema.Schema, error) {
 	//nolint:exhaustruct // third-party struct with many optional fields

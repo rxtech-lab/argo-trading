@@ -177,6 +177,13 @@ type TradeStats struct {
 	MonthlyBalance []MonthlyBalanceChange `yaml:"monthly_balance"`
 	// MonthlyHoldingTime is a per-month breakdown of closing-trade holding times.
 	MonthlyHoldingTime []MonthlyHoldingTime `yaml:"monthly_holding_time"`
+	// BacktestConfig is the backtest engine configuration used for this run.
+	// Stored as a YAML node so the original structure is preserved verbatim
+	// in stats.yaml without coupling this package to the engine package.
+	BacktestConfig *yaml.Node `yaml:"backtest_config,omitempty" json:"backtest_config,omitempty"`
+	// StrategyConfig is the strategy-specific configuration used for this run,
+	// captured from the YAML config file/content supplied to the engine.
+	StrategyConfig *yaml.Node `yaml:"strategy_config,omitempty" json:"strategy_config,omitempty"`
 }
 
 func WriteTradeStats(path string, stats []TradeStats) error {
