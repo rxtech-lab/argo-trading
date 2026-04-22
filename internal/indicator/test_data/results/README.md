@@ -14,8 +14,11 @@ matches the values here within `1e-6`.
 | ------------- | ----------------------------------------------------------------------------- |
 | `trades.csv`  | One row per executed buy or sell, in chronological order. Columns: `executed_at, side, quantity, price, pnl, cumulative_pnl, symbol`. |
 | `orders.csv`  | One row per filled order. Columns: `timestamp, symbol, side, quantity, price`. |
-| `equity.csv`  | Per-bar equity curve from `backtesting.py`. Columns: `time, equity, drawdown_pct, drawdown_duration, pnl`. |
 | `summary.json`| Aggregate statistics (counts, realised PnL, final equity).                   |
+
+The bar-by-bar equity curve from `backtesting.py` is intentionally not
+committed: it is one row per bar (~10k rows) and is not consumed by the Go
+parity test, so committing it would just bloat the repository.
 
 ## Regenerating
 

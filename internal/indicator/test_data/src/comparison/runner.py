@@ -15,8 +15,11 @@ Outputs (CSV / JSON, all timestamps in ISO-8601 UTC):
 
 * `trades.csv`   - one row per executed buy or sell.
 * `orders.csv`   - one row per placed order (buys + sells, all filled).
-* `equity.csv`   - bar-by-bar equity curve / mark-to-market PnL.
 * `summary.json` - aggregate stats (final equity, realised PnL, counts...).
+
+The bar-by-bar equity curve from `backtesting.py` is intentionally not
+exported: it is one row per bar (~10k rows) and is not consumed by the Go
+parity test, so committing it would just bloat the repository.
 """
 
 from __future__ import annotations
@@ -40,7 +43,6 @@ RSI_UPPER = 70.0
 class RunResult:
     trades: pd.DataFrame
     orders: pd.DataFrame
-    equity: pd.DataFrame
     summary: dict
 
 
@@ -134,14 +136,6 @@ def run_backtest(parquet_path: str) -> RunResult:
     orders_df = trades_df[["executed_at", "symbol", "side", "quantity", "price"]].copy()
     orders_df = orders_df.rename(columns={"executed_at": "timestamp"})
 
-    equity_df = stats["_equity_curve"].copy()
-    equity_df.index.name = "time"
-    equity_df = equity_df.reset_index()
-    equity_df = equity_df.rename(
-        columns={"Equity": "equity", "DrawdownPct": "drawdown_pct", "DrawdownDuration": "drawdown_duration"}
-    )
-    equity_df["pnl"] = equity_df["equity"] - INITIAL_CASH
-
     realized_pnl = float(trades_df["pnl"].sum()) if not trades_df.empty else 0.0
     summary = {
         "symbol": "TESTSTOCK",
@@ -159,7 +153,7 @@ def run_backtest(parquet_path: str) -> RunResult:
         "last_trade_time": trades_df["executed_at"].iloc[-1].isoformat() if not trades_df.empty else None,
     }
 
-    return RunResult(trades=trades_df, orders=orders_df, equity=equity_df, summary=summary)
+    return RunResult(trades=trades_df, orders=orders_df, summary=summary)
 
 
 def write_results(result: RunResult, results_dir: str) -> None:
@@ -177,10 +171,6 @@ def write_results(result: RunResult, results_dir: str) -> None:
     if not orders.empty:
         orders["timestamp"] = orders["timestamp"].apply(lambda t: pd.Timestamp(t).isoformat())
     orders.to_csv(os.path.join(results_dir, "orders.csv"), index=False)
-
-    equity = result.equity.copy()
-    equity["time"] = equity["time"].apply(lambda t: pd.Timestamp(t).isoformat())
-    equity.to_csv(os.path.join(results_dir, "equity.csv"), index=False)
 
     with open(os.path.join(results_dir, "summary.json"), "w", encoding="utf-8") as fh:
         json.dump(result.summary, fh, indent=2, sort_keys=True)
