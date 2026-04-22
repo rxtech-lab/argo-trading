@@ -261,3 +261,61 @@ func (suite *StatisticsTestSuite) TestWriteTradeStatsExtendedFields() {
 	suite.Equal(stats[0].MonthlyBalance, readStats[0].MonthlyBalance)
 	suite.Equal(stats[0].MonthlyHoldingTime, readStats[0].MonthlyHoldingTime)
 }
+
+// TestWriteTradeStats_ConfigSections verifies that the optional
+// BacktestConfig and StrategyConfig YAML nodes are persisted alongside the
+// other stats so consumers can understand which configuration produced the
+// result.
+func (suite *StatisticsTestSuite) TestWriteTradeStats_ConfigSections() {
+	var backtestDoc yaml.Node
+	suite.Require().NoError(yaml.Unmarshal([]byte("initial_capital: 10000\nbroker: ALPACA\n"), &backtestDoc))
+	backtestNode := backtestDoc.Content[0]
+
+	var strategyDoc yaml.Node
+	suite.Require().NoError(yaml.Unmarshal([]byte("threshold: 0.5\nlookback: 14\n"), &strategyDoc))
+	strategyNode := strategyDoc.Content[0]
+
+	stats := []TradeStats{
+		{
+			Symbol:         "BTC/USD",
+			BacktestConfig: backtestNode,
+			StrategyConfig: strategyNode,
+		},
+	}
+
+	filePath := filepath.Join(suite.tempDir, "config_sections_stats.yaml")
+	suite.Require().NoError(WriteTradeStats(filePath, stats))
+
+	data, err := os.ReadFile(filePath)
+	suite.Require().NoError(err)
+
+	contents := string(data)
+	suite.Contains(contents, "backtest_config:")
+	suite.Contains(contents, "initial_capital: 10000")
+	suite.Contains(contents, "strategy_config:")
+	suite.Contains(contents, "threshold: 0.5")
+	suite.Contains(contents, "lookback: 14")
+
+	var readStats []TradeStats
+	suite.Require().NoError(yaml.Unmarshal(data, &readStats))
+	suite.Require().Len(readStats, 1)
+	suite.Require().NotNil(readStats[0].BacktestConfig)
+	suite.Require().NotNil(readStats[0].StrategyConfig)
+}
+
+// TestWriteTradeStats_OmitsEmptyConfigSections ensures the new config
+// sections are omitted when not provided, preserving backwards-compatible
+// output for callers that don't populate them.
+func (suite *StatisticsTestSuite) TestWriteTradeStats_OmitsEmptyConfigSections() {
+	stats := []TradeStats{{Symbol: "BTC/USD"}}
+
+	filePath := filepath.Join(suite.tempDir, "no_config_sections_stats.yaml")
+	suite.Require().NoError(WriteTradeStats(filePath, stats))
+
+	data, err := os.ReadFile(filePath)
+	suite.Require().NoError(err)
+
+	contents := string(data)
+	suite.NotContains(contents, "backtest_config:")
+	suite.NotContains(contents, "strategy_config:")
+}

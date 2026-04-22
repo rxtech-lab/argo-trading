@@ -536,7 +536,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
 
-	if err := b.writeResults(strategyContext, params.strategy, params.runID, params.resultFolderPath, params.strategyPath, params.dataPath); err != nil {
+	if err := b.writeResults(strategyContext, params.strategy, params.runID, params.resultFolderPath, params.strategyPath, params.dataPath, params.configContent); err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to write results", err)
 	}
 
@@ -733,7 +733,7 @@ func (b *BacktestEngineV1) markStrategyError(data types.MarketData, strategyErr 
 	}
 }
 
-func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID string, resultFolderPath string, strategyPath string, dataPath string) error {
+func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, strategyRuntime runtime.StrategyRuntime, runID string, resultFolderPath string, strategyPath string, dataPath string, strategyConfigContent string) error {
 	if b.state == nil {
 		return errors.New(errors.ErrCodeBacktestStateNil, "backtest state is nil")
 	}
@@ -748,6 +748,23 @@ func (b *BacktestEngineV1) writeResults(strategyContext runtime.RuntimeContext, 
 	stats, err := b.state.GetStats(strategyContext, strategyRuntime, runID, tradesFilePath, ordersFilePath, marksFilePath, logsFilePath, strategyPath, dataPath)
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to get stats", err)
+	}
+
+	// Capture engine and strategy configs so consumers of stats.yaml can see
+	// exactly which configuration produced these results.
+	backtestConfigNode, err := configToYAMLNode(b.config)
+	if err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to encode backtest config", err)
+	}
+
+	strategyConfigNode, err := strategyConfigToYAMLNode(strategyConfigContent)
+	if err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to parse strategy config", err)
+	}
+
+	for i := range stats {
+		stats[i].BacktestConfig = backtestConfigNode
+		stats[i].StrategyConfig = strategyConfigNode
 	}
 
 	// Write stats to file

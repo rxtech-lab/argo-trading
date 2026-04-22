@@ -661,6 +661,8 @@ func createZeroStats(symbol string, params statsParams, initialBalance float64) 
 		MonthlyTrades:        nil,
 		MonthlyBalance:       nil,
 		MonthlyHoldingTime:   nil,
+		BacktestConfig:       nil,
+		StrategyConfig:       nil,
 	}
 }
 
@@ -2183,6 +2185,8 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 		InitialBalance:       b.initialBalance,
 		FinalBalance:         finalBalance,
 		PortfolioCalculation: string(b.portfolioStrategy),
+		BacktestConfig:       nil,
+		StrategyConfig:       nil,
 		MonthlyTrades:        monthlyTrades,
 		MonthlyBalance:       monthlyBalance,
 		MonthlyHoldingTime:   monthlyHoldingTime,
