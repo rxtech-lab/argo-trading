@@ -1,0 +1,15 @@
+{
+  "final_equity": 9495.3474,
+  "first_trade_time": "2024-01-01T10:20:00",
+  "initial_cash": 10000.0,
+  "last_trade_time": "2024-01-08T07:07:00",
+  "num_buys": 44,
+  "num_closed_positions": 44,
+  "num_sells": 44,
+  "num_trades": 88,
+  "realized_pnl": -504.6526,
+  "rsi_lower": 30.0,
+  "rsi_period": 14,
+  "rsi_upper": 70.0,
+  "symbol": "TESTSTOCK"
+}

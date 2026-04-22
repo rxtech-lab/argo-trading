@@ -9,6 +9,7 @@ build:
 	GOOS=wasip1 GOARCH=wasm go build -o ./complex_strategy/complex_strategy_plugin.wasm -buildmode=c-shared ./complex_strategy/complex_strategy.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./log_error/log_error_plugin.wasm -buildmode=c-shared ./log_error/log_error_strategy.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./portfolio_comparison/portfolio_comparison_plugin.wasm -buildmode=c-shared ./portfolio_comparison/portfolio_comparison.go
+	GOOS=wasip1 GOARCH=wasm go build -o ./rsi_comparison/rsi_comparison_plugin.wasm -buildmode=c-shared ./rsi_comparison/rsi_comparison.go
 # Clean WASM files
 clean:
 	rm -f *.wasm
