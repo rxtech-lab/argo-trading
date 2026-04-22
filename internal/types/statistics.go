@@ -118,6 +118,13 @@ type TradeResult struct {
 	WinRate float64 `yaml:"win_rate"`
 	// Maximum drawdown.
 	MaxDrawdown float64 `yaml:"max_drawdown"`
+	// SharpeRatio is the annualized Sharpe ratio computed from daily equity
+	// returns: (mean(daily_return) - rf/N) / stdev(daily_return) * sqrt(N),
+	// where rf is the configured annual risk-free rate and N is the
+	// annualization factor (e.g. 252 for trading-day returns). Zero when
+	// fewer than two daily return observations exist or when the return
+	// series has zero variance.
+	SharpeRatio float64 `yaml:"sharpe_ratio"`
 }
 
 // StrategyInfo contains metadata about the strategy that generated stats.

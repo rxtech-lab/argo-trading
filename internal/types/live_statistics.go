@@ -154,6 +154,7 @@ func NewLiveTradeStats(runID string, runName string, symbols []string, strategy 
 			NumberOfLosingTrades:  0,
 			WinRate:               0,
 			MaxDrawdown:           0,
+			SharpeRatio:           0,
 		},
 		TradePnl: TradePnl{
 			RealizedPnL:     0,

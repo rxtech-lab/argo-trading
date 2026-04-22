@@ -105,6 +105,8 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 
 	b.state.SetInitialBalance(b.config.InitialCapital)
 	b.state.SetPortfolioCalculationStrategy(b.config.PortfolioCalculation)
+	b.state.SetRiskFreeRate(b.config.RiskFreeRate)
+	b.state.SetSharpeAnnualizationFactor(b.config.SharpeAnnualizationFactor)
 	b.balance = b.config.InitialCapital
 	// Use the configured broker for the commission fee and decimal precision for quantity precision
 	var commissionFee commission_fee.CommissionFee

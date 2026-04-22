@@ -390,6 +390,7 @@ func (s *StatsTracker) buildLiveTradeStats(acc *StatsAccumulator, date string) t
 			NumberOfLosingTrades:  acc.LosingTrades,
 			WinRate:               winRate,
 			MaxDrawdown:           acc.MaxDrawdown,
+			SharpeRatio:           0,
 		},
 		TradePnl: types.TradePnl{
 			RealizedPnL:     acc.RealizedPnL,
