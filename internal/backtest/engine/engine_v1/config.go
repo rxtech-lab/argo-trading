@@ -95,6 +95,8 @@ func (c BacktestEngineV1Config) MarshalYAML() (interface{}, error) {
 	out := Config{
 		InitialCapital:       c.InitialCapital,
 		Broker:               c.Broker,
+		StartTime:            nil,
+		EndTime:              nil,
 		DecimalPrecision:     c.DecimalPrecision,
 		MarketDataCacheSize:  c.MarketDataCacheSize,
 		PortfolioCalculation: c.PortfolioCalculation,
