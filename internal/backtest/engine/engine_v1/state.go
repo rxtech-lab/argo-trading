@@ -23,11 +23,13 @@ import (
 )
 
 type BacktestState struct {
-	db                *sql.DB
-	logger            *logger.Logger
-	sq                squirrel.StatementBuilderType
-	initialBalance    float64
-	portfolioStrategy PortfolioCalculationStrategy
+	db                        *sql.DB
+	logger                    *logger.Logger
+	sq                        squirrel.StatementBuilderType
+	initialBalance            float64
+	portfolioStrategy         PortfolioCalculationStrategy
+	riskFreeRate              float64
+	sharpeAnnualizationFactor int
 }
 
 // CalculatePNL calculates the profit/loss for a trade
@@ -49,11 +51,13 @@ func NewBacktestState(logger *logger.Logger) (*BacktestState, error) {
 	}
 
 	return &BacktestState{
-		logger:            logger,
-		db:                db,
-		sq:                squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
-		initialBalance:    0,
-		portfolioStrategy: PortfolioCalculationFIFO,
+		logger:                    logger,
+		db:                        db,
+		sq:                        squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question),
+		initialBalance:            0,
+		portfolioStrategy:         PortfolioCalculationFIFO,
+		riskFreeRate:              0,
+		sharpeAnnualizationFactor: DefaultSharpeAnnualizationFactor,
 	}, nil
 }
 
@@ -71,6 +75,19 @@ func (b *BacktestState) SetPortfolioCalculationStrategy(strategy PortfolioCalcul
 // PortfolioCalculationStrategy returns the active portfolio calculation strategy.
 func (b *BacktestState) PortfolioCalculationStrategy() PortfolioCalculationStrategy {
 	return b.portfolioStrategy
+}
+
+// SetRiskFreeRate sets the annualized risk-free rate (as a decimal fraction;
+// e.g. 0.04 = 4%) used when computing the Sharpe ratio. Defaults to 0.
+func (b *BacktestState) SetRiskFreeRate(rate float64) {
+	b.riskFreeRate = rate
+}
+
+// SetSharpeAnnualizationFactor sets the number of return periods per year used
+// to annualize the Sharpe ratio. A value of 0 falls back to the default (252);
+// negative values disable annualization.
+func (b *BacktestState) SetSharpeAnnualizationFactor(n int) {
+	b.sharpeAnnualizationFactor = ResolveSharpeAnnualizationFactor(n)
 }
 
 // Initialize creates the necessary tables for tracking trades and positions.
@@ -627,6 +644,7 @@ func createZeroStats(symbol string, params statsParams, initialBalance float64) 
 			NumberOfLosingTrades:  0,
 			WinRate:               0,
 			MaxDrawdown:           0,
+			SharpeRatio:           0,
 		},
 		TotalFees: 0,
 		TradeHoldingTime: types.TradeHoldingTime{
@@ -1482,6 +1500,104 @@ func (b *BacktestState) calculateTradeResult(symbol string) (types.TradeResult, 
 	return result, nil
 }
 
+// calculateSharpeRatio computes the annualized Sharpe ratio for a symbol using
+// daily equity returns derived from the trades table. For each trading day it
+// takes the last observed equity (initial_balance + cumulative_pnl; matching
+// how monthly balance is computed), forms
+// return_t = equity_t / equity_{t-1} - 1 across consecutive trading days, and
+// returns (mean(return) - rf_period) / stdev(return) * sqrt(N), where
+// rf_period = riskFreeRate / N and N is the annualization factor. Returns 0
+// when there are fewer than two observations or when stdev is zero. When
+// sharpeAnnualizationFactor is 0 the ratio is reported un-annualized
+// (multiplier of 1).
+func (b *BacktestState) calculateSharpeRatio(symbol string) (float64, error) {
+	query := `
+		SELECT arg_max(cumulative_pnl, executed_at) AS ending_pnl
+		FROM trades
+		WHERE symbol = ?
+		GROUP BY date_trunc('day', executed_at)
+		ORDER BY date_trunc('day', executed_at)
+	`
+
+	rows, err := b.db.Query(query, symbol)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query daily equity for sharpe ratio: %w", err)
+	}
+	defer rows.Close()
+
+	var equities []float64
+
+	for rows.Next() {
+		var endingPnl float64
+		if err := rows.Scan(&endingPnl); err != nil {
+			return 0, fmt.Errorf("failed to scan daily equity: %w", err)
+		}
+
+		equities = append(equities, b.initialBalance+endingPnl)
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating daily equity: %w", err)
+	}
+
+	if len(equities) < 2 {
+		return 0, nil
+	}
+
+	returns := make([]float64, 0, len(equities)-1)
+
+	for i := 1; i < len(equities); i++ {
+		prev := equities[i-1]
+		if prev == 0 {
+			// Skip undefined returns when prior equity is zero; this would
+			// otherwise produce NaN/Inf and poison the statistics.
+			continue
+		}
+
+		returns = append(returns, equities[i]/prev-1)
+	}
+
+	if len(returns) < 2 {
+		return 0, nil
+	}
+
+	var sum float64
+	for _, r := range returns {
+		sum += r
+	}
+
+	mean := sum / float64(len(returns))
+
+	var sqSum float64
+	for _, r := range returns {
+		diff := r - mean
+		sqSum += diff * diff
+	}
+
+	// Sample standard deviation (n-1) so variance of a 2-point series is well
+	// defined; matches common Sharpe ratio conventions.
+	variance := sqSum / float64(len(returns)-1)
+	if variance <= 0 {
+		return 0, nil
+	}
+
+	stdev := math.Sqrt(variance)
+
+	annualization := b.sharpeAnnualizationFactor
+
+	var periodRiskFree float64
+	if annualization > 0 {
+		periodRiskFree = b.riskFreeRate / float64(annualization)
+	}
+
+	sharpe := (mean - periodRiskFree) / stdev
+	if annualization > 0 {
+		sharpe *= math.Sqrt(float64(annualization))
+	}
+
+	return sharpe, nil
+}
+
 // calculateTradeHoldingTime calculates the holding time statistics for a symbol.
 // endTime is used to calculate holding time for open positions (positions not yet sold).
 // Under FIFO, matches are row-number-aligned (first buy <-> first sell) via SQL.
@@ -2097,6 +2213,13 @@ func (b *BacktestState) calculateSymbolStats(ctx runtime.RuntimeContext, symbol 
 	if err != nil {
 		return types.TradeStats{}, err
 	}
+
+	sharpeRatio, err := b.calculateSharpeRatio(symbol)
+	if err != nil {
+		return types.TradeStats{}, err
+	}
+
+	tradeResult.SharpeRatio = sharpeRatio
 
 	holdingTime, err := b.calculateTradeHoldingTime(symbol, lastData.Time, b.portfolioStrategy)
 	if err != nil {

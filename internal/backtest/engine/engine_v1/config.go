@@ -41,18 +41,22 @@ type BacktestEngineV1Config struct {
 	DecimalPrecision     int                          `yaml:"decimal_precision" json:"decimal_precision" jsonschema:"title=Decimal Precision,description=The number of decimal places allowed for quantity (0 means integers only, higher values allow more decimal places),minimum=0,default=1"`
 	MarketDataCacheSize  int                          `yaml:"market_data_cache_size" json:"market_data_cache_size" jsonschema:"title=Market Data Cache Size,description=The number of market data points to cache per symbol using sliding window algorithm. When data requests exceed cache size the system falls back to DuckDB. Set to 0 to disable caching.,minimum=0,default=1000"`
 	PortfolioCalculation PortfolioCalculationStrategy `yaml:"portfolio_calculation" json:"portfolio_calculation" jsonschema:"title=Portfolio Calculation Strategy,description=How individual-trade and cumulative PnL are computed. 'fifo' matches exits against earliest entries; 'average_cost' uses the running weighted-average cost of the currently-open position. Defaults to 'average_cost' when unset.,default=average_cost"`
+	RiskFreeRate         float64                      `yaml:"risk_free_rate" json:"risk_free_rate" jsonschema:"title=Risk-Free Rate,description=Annualized risk-free rate (as a decimal fraction; e.g. 0.04 = 4%) used when computing the Sharpe ratio from daily equity returns. Defaults to 0.,default=0"`
+	SharpeAnnualizationFactor int                     `yaml:"sharpe_annualization_factor" json:"sharpe_annualization_factor" jsonschema:"title=Sharpe Annualization Factor,description=Number of return periods per year used to annualize the Sharpe ratio (e.g. 252 for daily trading-day returns 365 for calendar-day returns). Set to 0 to disable annualization. Defaults to 252.,minimum=0,default=252"`
 }
 
 // UnmarshalYAML implements custom unmarshaling for BacktestEngineV1Config.
 func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type Config struct {
-		InitialCapital       float64                      `yaml:"initial_capital"`
-		Broker               commission_fee.Broker        `yaml:"broker"`
-		StartTime            *time.Time                   `yaml:"start_time"`
-		EndTime              *time.Time                   `yaml:"end_time"`
-		DecimalPrecision     int                          `yaml:"decimal_precision"`
-		MarketDataCacheSize  int                          `yaml:"market_data_cache_size"`
-		PortfolioCalculation PortfolioCalculationStrategy `yaml:"portfolio_calculation"`
+		InitialCapital            float64                      `yaml:"initial_capital"`
+		Broker                    commission_fee.Broker        `yaml:"broker"`
+		StartTime                 *time.Time                   `yaml:"start_time"`
+		EndTime                   *time.Time                   `yaml:"end_time"`
+		DecimalPrecision          int                          `yaml:"decimal_precision"`
+		MarketDataCacheSize       int                          `yaml:"market_data_cache_size"`
+		PortfolioCalculation      PortfolioCalculationStrategy `yaml:"portfolio_calculation"`
+		RiskFreeRate              float64                      `yaml:"risk_free_rate"`
+		SharpeAnnualizationFactor int                          `yaml:"sharpe_annualization_factor"`
 	}
 
 	var config Config
@@ -65,6 +69,8 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 	c.DecimalPrecision = config.DecimalPrecision
 	c.MarketDataCacheSize = config.MarketDataCacheSize
 	c.PortfolioCalculation = config.PortfolioCalculation
+	c.RiskFreeRate = config.RiskFreeRate
+	c.SharpeAnnualizationFactor = config.SharpeAnnualizationFactor
 
 	if config.StartTime != nil {
 		c.StartTime = optional.Some(*config.StartTime)
@@ -83,23 +89,27 @@ func (c *BacktestEngineV1Config) UnmarshalYAML(unmarshal func(interface{}) error
 // embedded config readable in artifacts such as stats.yaml.
 func (c BacktestEngineV1Config) MarshalYAML() (interface{}, error) {
 	type Config struct {
-		InitialCapital       float64                      `yaml:"initial_capital"`
-		Broker               commission_fee.Broker        `yaml:"broker"`
-		StartTime            *time.Time                   `yaml:"start_time,omitempty"`
-		EndTime              *time.Time                   `yaml:"end_time,omitempty"`
-		DecimalPrecision     int                          `yaml:"decimal_precision"`
-		MarketDataCacheSize  int                          `yaml:"market_data_cache_size"`
-		PortfolioCalculation PortfolioCalculationStrategy `yaml:"portfolio_calculation"`
+		InitialCapital            float64                      `yaml:"initial_capital"`
+		Broker                    commission_fee.Broker        `yaml:"broker"`
+		StartTime                 *time.Time                   `yaml:"start_time,omitempty"`
+		EndTime                   *time.Time                   `yaml:"end_time,omitempty"`
+		DecimalPrecision          int                          `yaml:"decimal_precision"`
+		MarketDataCacheSize       int                          `yaml:"market_data_cache_size"`
+		PortfolioCalculation      PortfolioCalculationStrategy `yaml:"portfolio_calculation"`
+		RiskFreeRate              float64                      `yaml:"risk_free_rate"`
+		SharpeAnnualizationFactor int                          `yaml:"sharpe_annualization_factor"`
 	}
 
 	out := Config{
-		InitialCapital:       c.InitialCapital,
-		Broker:               c.Broker,
-		StartTime:            nil,
-		EndTime:              nil,
-		DecimalPrecision:     c.DecimalPrecision,
-		MarketDataCacheSize:  c.MarketDataCacheSize,
-		PortfolioCalculation: c.PortfolioCalculation,
+		InitialCapital:            c.InitialCapital,
+		Broker:                    c.Broker,
+		StartTime:                 nil,
+		EndTime:                   nil,
+		DecimalPrecision:          c.DecimalPrecision,
+		MarketDataCacheSize:       c.MarketDataCacheSize,
+		PortfolioCalculation:      c.PortfolioCalculation,
+		RiskFreeRate:              c.RiskFreeRate,
+		SharpeAnnualizationFactor: c.SharpeAnnualizationFactor,
 	}
 
 	if v, err := c.StartTime.Take(); err == nil {
@@ -178,26 +188,30 @@ func (c *BacktestEngineV1Config) GenerateSchemaJSON() (string, error) {
 
 func TestConfig(startTime time.Time, endTime time.Time, broker commission_fee.Broker) BacktestEngineV1Config {
 	return BacktestEngineV1Config{
-		InitialCapital:       10000,
-		Broker:               broker,
-		StartTime:            optional.Some(startTime),
-		EndTime:              optional.Some(endTime),
-		DecimalPrecision:     1,
-		MarketDataCacheSize:  1000,
-		PortfolioCalculation: PortfolioCalculationAverageCost,
+		InitialCapital:            10000,
+		Broker:                    broker,
+		StartTime:                 optional.Some(startTime),
+		EndTime:                   optional.Some(endTime),
+		DecimalPrecision:          1,
+		MarketDataCacheSize:       1000,
+		PortfolioCalculation:      PortfolioCalculationAverageCost,
+		RiskFreeRate:              0,
+		SharpeAnnualizationFactor: 252,
 	}
 }
 
 // EmptyConfig returns a BacktestEngineV1Config with default values.
 func EmptyConfig() BacktestEngineV1Config {
 	return BacktestEngineV1Config{
-		InitialCapital:       0,
-		Broker:               commission_fee.BrokerInteractiveBroker,
-		StartTime:            optional.None[time.Time](),
-		EndTime:              optional.None[time.Time](),
-		DecimalPrecision:     1,
-		MarketDataCacheSize:  1000,
-		PortfolioCalculation: PortfolioCalculationAverageCost,
+		InitialCapital:            0,
+		Broker:                    commission_fee.BrokerInteractiveBroker,
+		StartTime:                 optional.None[time.Time](),
+		EndTime:                   optional.None[time.Time](),
+		DecimalPrecision:          1,
+		MarketDataCacheSize:       1000,
+		PortfolioCalculation:      PortfolioCalculationAverageCost,
+		RiskFreeRate:              0,
+		SharpeAnnualizationFactor: 252,
 	}
 }
 
@@ -211,4 +225,24 @@ func ResolvePortfolioCalculation(s PortfolioCalculationStrategy) PortfolioCalcul
 	default:
 		return PortfolioCalculationAverageCost
 	}
+}
+
+// DefaultSharpeAnnualizationFactor is the default number of periods per year
+// used to annualize the Sharpe ratio. 252 matches the conventional trading-day
+// count for US equities on daily returns.
+const DefaultSharpeAnnualizationFactor = 252
+
+// ResolveSharpeAnnualizationFactor returns the configured annualization factor,
+// substituting the default when the caller left it unset (zero). Negative
+// values are treated as zero (no annualization).
+func ResolveSharpeAnnualizationFactor(n int) int {
+	if n == 0 {
+		return DefaultSharpeAnnualizationFactor
+	}
+
+	if n < 0 {
+		return 0
+	}
+
+	return n
 }
