@@ -2,14 +2,17 @@
 data
 stats.yaml
 results
+!internal/indicator/test_data/results
 .DS_Store
 .idea
 config
 mocks/mock_*
 *.wasm
 internal/indicator/test_data/src/indicator_calculator/__pycache__
+internal/indicator/test_data/src/comparison/__pycache__
 *.parquet
 !test_data.parquet
+!comparison_data.parquet
 # Generated mock data files (should start with mock_ prefix)
 mock_*.parquet
 *.xcframework
