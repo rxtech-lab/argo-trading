@@ -44,6 +44,42 @@ func GetBacktestEngineVersion() string {
 	return version.GetVersion()
 }
 
+// newThrottledProgressCallback wraps a downstream progress handler with
+// per-run throttling so the UI receives at most ~200 updates per run plus
+// the final bar. Per-bar Go↔Swift callbacks dominate wall-clock time when
+// crossing the gomobile bridge (each round-trip is ~ms when the Swift
+// handler touches the main actor).
+//
+// A new run is detected by a change in total. The first callback of a new
+// run is always forwarded so the UI learns the new total immediately —
+// otherwise a large dataset following a smaller one can appear stuck at
+// the previous run's terminal state until ~total/200 bars elapse.
+//
+// The engine invokes OnProcessData sequentially per data point, so the
+// internal counters don't need synchronization.
+func newThrottledProgressCallback(emit func(current, total int) error) engine.OnProcessDataCallback {
+	var (
+		progressStep int
+		lastReported int
+		lastRunTotal int
+	)
+
+	return engine.OnProcessDataCallback(func(current, total int) error {
+		newRun := total != lastRunTotal
+		if newRun {
+			lastRunTotal = total
+			lastReported = 0
+			progressStep = max(total/200, 1)
+		}
+		if !newRun && current != total && current-lastReported < progressStep {
+			return nil
+		}
+		lastReported = current
+
+		return emit(current, total)
+	})
+}
+
 func NewArgo(helper ArgoHelper) (*Argo, error) {
 	backtestEngine, err := engine_v1.NewBacktestEngineV1()
 	if err != nil {
@@ -98,30 +134,7 @@ func (a *Argo) Run(backtestConfig string, strategyPath string, resultsFolderPath
 	onRunStart := engine.OnRunStartCallback(a.helper.OnRunStart)
 	onRunEnd := engine.OnRunEndCallback(a.helper.OnRunEnd)
 
-	// Throttle OnProcessData before crossing the gomobile bridge: per-bar
-	// Go↔Swift callbacks dominate wall-clock time (each round-trip is ~ms
-	// when the Swift handler touches the main actor). Fire ~0.5% resolution
-	// (≤200 callbacks per run) plus the final bar so the UI still completes.
-	// The engine invokes OnProcessData sequentially per data point, so the
-	// counters below don't need synchronization.
-	var (
-		progressStep int
-		lastReported int
-		lastRunTotal int
-	)
-	onProcessData := engine.OnProcessDataCallback(func(current, total int) error {
-		if total != lastRunTotal {
-			lastRunTotal = total
-			lastReported = 0
-			progressStep = max(total/200, 1)
-		}
-		if current != total && current-lastReported < progressStep {
-			return nil
-		}
-		lastReported = current
-
-		return a.helper.OnProcessData(current, total)
-	})
+	onProcessData := newThrottledProgressCallback(a.helper.OnProcessData)
 
 	// Initialize the engine with the given configuration file.
 	if err := a.engine.Initialize(backtestConfig); err != nil {
