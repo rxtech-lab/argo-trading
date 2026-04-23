@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "make lint && make fmt && go get golang.org/x/mobile@latest",
+        "cwd": ".",
+        "timeoutSec": 300
+      }
+    ]
+  }
+}
