@@ -63,9 +63,11 @@ func TestGetBacktestEngineConfigSchema_EnumFields(t *testing.T) {
 	require.True(t, ok, "schema should have broker property")
 	brokerEnum, ok := broker["enum"].([]interface{})
 	require.True(t, ok, "broker should have enum")
-	assert.Len(t, brokerEnum, 2)
-	assert.Contains(t, []string{brokerEnum[0].(string), brokerEnum[1].(string)}, "interactive_broker")
-	assert.Contains(t, []string{brokerEnum[0].(string), brokerEnum[1].(string)}, "zero_commission")
+	assert.Len(t, brokerEnum, 3)
+	brokerValues := []string{brokerEnum[0].(string), brokerEnum[1].(string), brokerEnum[2].(string)}
+	assert.Contains(t, brokerValues, "interactive_broker")
+	assert.Contains(t, brokerValues, "zero_commission")
+	assert.Contains(t, brokerValues, "binance")
 
 	// Check portfolio_calculation field has enum
 	portfolioCalc, ok := properties["portfolio_calculation"].(map[string]interface{})
