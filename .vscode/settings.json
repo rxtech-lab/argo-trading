@@ -25,5 +25,8 @@
     "*.parquet": "duckdb.dataFileViewer",
     "*.csv": "duckdb.dataFileViewer",
     "*.tsv": "duckdb.dataFileViewer"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "make": true
   }
 }

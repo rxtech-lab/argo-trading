@@ -22,6 +22,15 @@ type Trade struct {
 	// the CumulativePnL values are 8, 16, 14. Buys contribute 0 to the sum and
 	// inherit the prior cumulative value unchanged.
 	CumulativePnL float64 `csv:"cumulative_pnl"`
+	// LIFOPnL is the individual profit and loss for this trade computed against
+	// the most recent (last) entry trade(s) using last-in-first-out matching.
+	// For sell orders that close a long position, it matches the sell quantity
+	// against the latest unmatched buy lots (consuming newest first). For
+	// covering trades that close a short, it matches against the latest
+	// unmatched short entries. For opening (buy) trades it is 0. This sits
+	// alongside the FIFO-based PnL field to make the cost-basis comparison
+	// against the *last buy* explicit.
+	LIFOPnL float64 `csv:"lifo_pnl"`
 	// OpenPositionQty is the open position quantity after this trade.
 	// For long positions, it is the net long quantity. For short positions, it is the net short quantity.
 	OpenPositionQty float64 `csv:"open_position_qty"`
