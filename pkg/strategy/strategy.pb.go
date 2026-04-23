@@ -164,7 +164,10 @@ const (
 	IndicatorType_INDICATOR_BOLLINGER_BANDS IndicatorType = 2
 	// Stochastic Oscillator (NOT IMPLEMENTED)
 	IndicatorType_INDICATOR_STOCHASTIC_OSCILLATOR IndicatorType = 3
-	// Williams %R (NOT IMPLEMENTED)
+	// Williams %R
+	// Config: [period, overboughtThreshold?, oversoldThreshold?] - e.g., "[14]" or "[14, -20, -80]"
+	// Defaults: period=14, overboughtThreshold=-20, oversoldThreshold=-80
+	// RawValue: {"wr": float64} - Williams %R value (-100 to 0 scale)
 	IndicatorType_INDICATOR_WILLIAMS_R IndicatorType = 4
 	// ADX - Average Directional Index (NOT IMPLEMENTED)
 	IndicatorType_INDICATOR_ADX IndicatorType = 5
@@ -199,6 +202,11 @@ const (
 	// Defaults: period=20
 	// RawValue: {"ma": float64} - MA value
 	IndicatorType_INDICATOR_MA IndicatorType = 13
+	// PSY (Psychological Line)
+	// Config: [period, upperThreshold?, lowerThreshold?] - e.g., "[12]" or "[12, 75, 25]"
+	// Defaults: period=12, upperThreshold=75, lowerThreshold=25
+	// RawValue: {"psy": float64} - PSY value (0-100 scale, percent of up days)
+	IndicatorType_INDICATOR_PSY IndicatorType = 14
 )
 
 // Enum value maps for IndicatorType.
@@ -218,6 +226,7 @@ var (
 		11: "INDICATOR_WADDAH_ATTAR",
 		12: "INDICATOR_ATR",
 		13: "INDICATOR_MA",
+		14: "INDICATOR_PSY",
 	}
 	IndicatorType_value = map[string]int32{
 		"INDICATOR_RSI":                   0,
@@ -234,6 +243,7 @@ var (
 		"INDICATOR_WADDAH_ATTAR":          11,
 		"INDICATOR_ATR":                   12,
 		"INDICATOR_MA":                    13,
+		"INDICATOR_PSY":                   14,
 	}
 )
 

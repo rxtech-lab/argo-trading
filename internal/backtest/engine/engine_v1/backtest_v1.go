@@ -92,6 +92,8 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 	b.indicatorRegistry.RegisterIndicator(indicator.NewWaddahAttar())
 	b.indicatorRegistry.RegisterIndicator(indicator.NewRSI())
 	b.indicatorRegistry.RegisterIndicator(indicator.NewMA())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewWR())
+	b.indicatorRegistry.RegisterIndicator(indicator.NewPSY())
 
 	// initialize the state
 	b.state, err = NewBacktestState(b.log)

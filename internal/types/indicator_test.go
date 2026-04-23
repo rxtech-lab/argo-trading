@@ -29,6 +29,7 @@ func (suite *IndicatorTestSuite) TestIndicatorTypeConstants() {
 	suite.Equal(IndicatorType("waddah_attar"), IndicatorTypeWaddahAttar)
 	suite.Equal(IndicatorType("atr"), IndicatorTypeATR)
 	suite.Equal(IndicatorType("ma"), IndicatorTypeMA)
+	suite.Equal(IndicatorType("psy"), IndicatorTypePSY)
 }
 
 func (suite *IndicatorTestSuite) TestIndicatorTypeAsString() {
@@ -46,6 +47,7 @@ func (suite *IndicatorTestSuite) TestIndicatorTypeAsString() {
 	suite.Equal("waddah_attar", string(IndicatorTypeWaddahAttar))
 	suite.Equal("atr", string(IndicatorTypeATR))
 	suite.Equal("ma", string(IndicatorTypeMA))
+	suite.Equal("psy", string(IndicatorTypePSY))
 }
 
 func (suite *IndicatorTestSuite) TestIndicatorTypeCount() {
@@ -65,9 +67,10 @@ func (suite *IndicatorTestSuite) TestIndicatorTypeCount() {
 		IndicatorTypeWaddahAttar,
 		IndicatorTypeATR,
 		IndicatorTypeMA,
+		IndicatorTypePSY,
 	}
 
-	suite.Len(indicators, 14)
+	suite.Len(indicators, 15)
 }
 
 func (suite *IndicatorTestSuite) TestIndicatorTypeUniqueness() {
@@ -87,6 +90,7 @@ func (suite *IndicatorTestSuite) TestIndicatorTypeUniqueness() {
 		IndicatorTypeWaddahAttar,
 		IndicatorTypeATR,
 		IndicatorTypeMA,
+		IndicatorTypePSY,
 	}
 
 	seen := make(map[IndicatorType]bool)

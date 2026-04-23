@@ -365,6 +365,11 @@ func TestStrategyIndicatorTypeToIndicatorType(t *testing.T) {
 			expected: types.IndicatorTypeMA,
 		},
 		{
+			name:     "PSY indicator",
+			input:    strategy.IndicatorType_INDICATOR_PSY,
+			expected: types.IndicatorTypePSY,
+		},
+		{
 			name:     "unknown defaults to RSI",
 			input:    strategy.IndicatorType(999),
 			expected: types.IndicatorTypeRSI,
@@ -505,6 +510,11 @@ func TestIndicatorTypeToStrategyIndicatorType(t *testing.T) {
 			name:     "MA indicator",
 			input:    types.IndicatorTypeMA,
 			expected: strategy.IndicatorType_INDICATOR_MA,
+		},
+		{
+			name:     "PSY indicator",
+			input:    types.IndicatorTypePSY,
+			expected: strategy.IndicatorType_INDICATOR_PSY,
 		},
 		{
 			name:     "unknown defaults to RSI",
