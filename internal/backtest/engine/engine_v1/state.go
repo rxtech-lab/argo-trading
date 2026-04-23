@@ -146,7 +146,8 @@ func (b *BacktestState) Initialize() error {
 			position_type TEXT,
 			open_position_qty DOUBLE,
 			balance DOUBLE,
-			hold_time BIGINT
+			hold_time BIGINT,
+			average_cost DOUBLE
 		)
 	`)
 	if err != nil {
@@ -253,6 +254,14 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			return nil, fmt.Errorf("failed to calculate hold time: %w", err)
 		}
 
+		// Per-unit weighted-average cost basis relevant to this trade.
+		averageCost, err := b.computeTradeAverageCost(order)
+		if err != nil {
+			tx.Rollback()
+
+			return nil, fmt.Errorf("failed to calculate average cost: %w", err)
+		}
+
 		// Create trade record
 		trade := types.Trade{
 			Order: types.Order{
@@ -278,6 +287,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			OpenPositionQty: openPositionQty,
 			Balance:         balance,
 			HoldTime:        holdTime,
+			AverageCost:     averageCost,
 		}
 
 		// Insert trade using Squirrel
@@ -287,14 +297,14 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 				"is_completed", "reason", "message", "strategy_name",
 				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
-				"open_position_qty", "balance", "hold_time",
+				"open_position_qty", "balance", "hold_time", "average_cost",
 			).
 			Values(
 				orderID, trade.Order.Symbol, trade.Order.Side, trade.Order.Quantity, trade.Order.Price,
 				trade.Order.Timestamp, trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
 				order.StrategyName, trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
 				trade.Fee, trade.PnL, trade.CumulativePnL, trade.Order.PositionType,
-				trade.OpenPositionQty, trade.Balance, trade.HoldTime,
+				trade.OpenPositionQty, trade.Balance, trade.HoldTime, trade.AverageCost,
 			).
 			RunWith(tx)
 
@@ -1454,6 +1464,118 @@ func (b *BacktestState) calculateAverageCostPnL(symbol string, positionType type
 	pnl, _ := result.Float64()
 
 	return pnl, nil
+}
+
+// computeTradeAverageCost returns the per-unit weighted-average cost basis of
+// the position relevant to this trade:
+//   - For BUY (entry) trades: the updated running average after the buy is
+//     applied — i.e. the new blended cost basis of the resulting position.
+//   - For SELL (closing) trades: the running average BEFORE the sell is
+//     applied — i.e. the cost basis being closed out. This matches the
+//     post-sell average on partial closes and stays non-zero on full closes
+//     (so analysts can compare sell price against cost basis on every row).
+//
+// Entry fees are capitalised into the basis using the same sign convention as
+// calculateAverageCostPnL (added for long entries, subtracted for short
+// entries). Returns 0 only when there is no open position to reference (e.g.
+// a defensive sell against an empty position). Independent of the configured
+// portfolio calculation strategy.
+func (b *BacktestState) computeTradeAverageCost(order types.Order) (float64, error) {
+	tradesQuery := b.sq.
+		Select("order_type", "executed_qty", "executed_price", "commission").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        order.Symbol,
+			"position_type": order.PositionType,
+		}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query trades for average cost: %w", err)
+	}
+	defer rows.Close()
+
+	openQty := decimal.Zero
+	costBasis := decimal.Zero
+
+	apply := func(orderType types.PurchaseType, qty, price, fee float64) {
+		qtyDec := decimal.NewFromFloat(qty)
+		priceDec := decimal.NewFromFloat(price)
+		feeDec := decimal.NewFromFloat(fee)
+
+		if orderType == types.PurchaseTypeBuy {
+			var entryValue decimal.Decimal
+			if order.PositionType == types.PositionTypeLong {
+				entryValue = priceDec.Mul(qtyDec).Add(feeDec)
+			} else {
+				entryValue = priceDec.Mul(qtyDec).Sub(feeDec)
+			}
+
+			openQty = openQty.Add(qtyDec)
+			costBasis = costBasis.Add(entryValue)
+
+			return
+		}
+
+		if openQty.IsZero() {
+			return
+		}
+
+		avg := costBasis.Div(openQty)
+		matchedDec := decimal.NewFromFloat(math.Min(qty, openQty.InexactFloat64()))
+		openQty = openQty.Sub(matchedDec)
+		costBasis = costBasis.Sub(avg.Mul(matchedDec))
+
+		if openQty.Sign() <= 0 {
+			openQty = decimal.Zero
+			costBasis = decimal.Zero
+		}
+	}
+
+	for rows.Next() {
+		var (
+			orderType string
+			qty       float64
+			price     float64
+			fee       float64
+		)
+
+		if err := rows.Scan(&orderType, &qty, &price, &fee); err != nil {
+			return 0, fmt.Errorf("failed to scan trade for average cost: %w", err)
+		}
+
+		apply(types.PurchaseType(orderType), qty, price, fee)
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating trades for average cost: %w", err)
+	}
+
+	// For closing (SELL) trades, report the cost basis being closed — i.e. the
+	// running average BEFORE applying the sell. Partial closes leave the
+	// average unchanged, so this matches the post-close value in that case; on
+	// a full close, it stays non-zero rather than resetting to 0.
+	if order.Side == types.PurchaseTypeSell {
+		if openQty.Sign() <= 0 {
+			return 0, nil
+		}
+
+		avg, _ := costBasis.Div(openQty).Float64()
+
+		return avg, nil
+	}
+
+	apply(order.Side, order.Quantity, order.Price, order.Fee)
+
+	if openQty.Sign() <= 0 {
+		return 0, nil
+	}
+
+	avg, _ := costBasis.Div(openQty).Float64()
+
+	return avg, nil
 }
 
 // calculateTradeResult calculates the trade result statistics for a symbol.

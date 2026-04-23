@@ -37,6 +37,16 @@ type Trade struct {
 	// duration (in seconds) between the closing trade and each matched entry
 	// trade. For entry (opening) trades, HoldTime is 0.
 	HoldTime int `csv:"hold_time"`
+	// AverageCost is the per-unit weighted-average cost basis of the position
+	// relevant to this trade (computed per symbol+position_type).
+	//   - For BUY (entry) trades: the updated running average after the buy
+	//     is applied (the new blended cost basis of the resulting position).
+	//   - For SELL (closing) trades: the running average before the sell is
+	//     applied (the cost basis being closed out). This stays non-zero even
+	//     on full closes, so sell price can always be compared against it.
+	// Entry fees are capitalised into the basis (added for long, subtracted
+	// for short). Returns 0 only when there is no open position to reference.
+	AverageCost float64 `csv:"average_cost"`
 }
 
 // Position represents current holdings of an asset.

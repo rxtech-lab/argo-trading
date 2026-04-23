@@ -845,6 +845,7 @@ func convertBinanceTradeToTrade(bt *binance.TradeV3, symbol string) types.Trade 
 		OpenPositionQty: 0,
 		Balance:         0,
 		HoldTime:        0,
+		AverageCost:     0,
 	}
 }
 
