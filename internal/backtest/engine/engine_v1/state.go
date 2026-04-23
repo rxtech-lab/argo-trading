@@ -143,6 +143,7 @@ func (b *BacktestState) Initialize() error {
 			commission DOUBLE,
 			pnl DOUBLE,
 			cumulative_pnl DOUBLE,
+			lifo_pnl DOUBLE,
 			position_type TEXT,
 			open_position_qty DOUBLE,
 			balance DOUBLE,
@@ -233,6 +234,15 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 
 		cumulativePnl := priorPnlSum + fifoPnl
 
+		// LIFO PnL: closing trades are matched against the most recent (last)
+		// unmatched entry trades. Opening trades return 0.
+		lifoPnl, err := b.computeClosingLIFOPnL(order, currentPosition)
+		if err != nil {
+			tx.Rollback()
+
+			return nil, fmt.Errorf("failed to calculate LIFO PnL: %w", err)
+		}
+
 		openPositionQty := computeOpenPositionQty(order, currentPosition)
 
 		// Calculate cash balance after this trade.
@@ -284,6 +294,7 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			Fee:             order.Fee,
 			PnL:             fifoPnl,
 			CumulativePnL:   cumulativePnl,
+			LIFOPnL:         lifoPnl,
 			OpenPositionQty: openPositionQty,
 			Balance:         balance,
 			HoldTime:        holdTime,
@@ -296,14 +307,14 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			Columns(
 				"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 				"is_completed", "reason", "message", "strategy_name",
-				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
+				"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "lifo_pnl", "position_type",
 				"open_position_qty", "balance", "hold_time", "average_cost",
 			).
 			Values(
 				orderID, trade.Order.Symbol, trade.Order.Side, trade.Order.Quantity, trade.Order.Price,
 				trade.Order.Timestamp, trade.Order.IsCompleted, trade.Order.Reason.Reason, trade.Order.Reason.Message,
 				order.StrategyName, trade.ExecutedAt, trade.ExecutedQty, trade.ExecutedPrice,
-				trade.Fee, trade.PnL, trade.CumulativePnL, trade.Order.PositionType,
+				trade.Fee, trade.PnL, trade.CumulativePnL, trade.LIFOPnL, trade.Order.PositionType,
 				trade.OpenPositionQty, trade.Balance, trade.HoldTime, trade.AverageCost,
 			).
 			RunWith(tx)
@@ -501,7 +512,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 		Select(
 			"order_id", "symbol", "order_type", "quantity", "price", "timestamp",
 			"is_completed", "reason", "message", "strategy_name",
-			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "position_type",
+			"executed_at", "executed_qty", "executed_price", "commission", "pnl", "cumulative_pnl", "lifo_pnl", "position_type",
 			"hold_time",
 		).
 		From("trades").
@@ -536,6 +547,7 @@ func (b *BacktestState) GetAllTrades() ([]types.Trade, error) {
 			&trade.Fee,
 			&trade.PnL,
 			&trade.CumulativePnL,
+			&trade.LIFOPnL,
 			&trade.Order.PositionType,
 			&trade.HoldTime,
 		)
@@ -1196,6 +1208,146 @@ func (b *BacktestState) calculateLIFOHoldTime(symbol string, positionType types.
 	}
 
 	return int(math.Round(weightedSeconds / matchedQtyTotal)), nil
+}
+
+// computeClosingLIFOPnL calculates the closing PnL for a trade using
+// last-in-first-out matching against prior entry trades. It returns 0 for
+// opening trades. Unlike computeClosingPnL this is independent of the
+// portfolio calculation strategy: it is always reported as a separate column
+// alongside the strategy-driven PnL so that callers can compare each closing
+// trade's result against the most recent buy lots.
+func (b *BacktestState) computeClosingLIFOPnL(order types.Order, position types.Position) (float64, error) {
+	isLongClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeLong && position.TotalLongPositionQuantity > 0
+	isShortClose := order.Side == types.PurchaseTypeSell && order.PositionType == types.PositionTypeShort && position.TotalShortPositionQuantity > 0
+
+	if !isLongClose && !isShortClose {
+		return 0, nil
+	}
+
+	return b.calculateLIFOPnL(order.Symbol, order.PositionType, order.Quantity, order.Price, order.Fee)
+}
+
+// calculateLIFOPnL computes the individual PnL for a closing trade by matching
+// against the most recent unmatched entry (BUY) trades for the given
+// symbol+positionType. Because prior partial closes may have already consumed
+// lots from the top of the LIFO stack — leaving older lots partially available
+// "below" newer ones — we replay the full lot history to reconstruct the stack
+// as it stands immediately before this close, then walk the stack from newest
+// to oldest to compute the matched entry cost.
+//
+// Long PnL  = sell_value - sell_fee - matched_entry_cost
+// Short PnL = matched_entry_value - (sell_value + sell_fee)
+//
+// Matching follows the same fee convention as calculateFIFOPnL: entry fees are
+// pro-rated by matched quantity and capitalised into the basis (added for
+// long, subtracted for short).
+func (b *BacktestState) calculateLIFOPnL(symbol string, positionType types.PositionType, sellQty float64, sellPrice float64, sellFee float64) (float64, error) {
+	tradesQuery := b.sq.
+		Select("order_type", "executed_qty", "executed_price", "commission").
+		From("trades").
+		Where(squirrel.Eq{
+			"symbol":        symbol,
+			"position_type": positionType,
+		}).
+		OrderBy("executed_at ASC", "rowid ASC").
+		RunWith(b.db)
+
+	rows, err := tradesQuery.Query()
+	if err != nil {
+		return 0, fmt.Errorf("failed to query trades for LIFO PnL: %w", err)
+	}
+	defer rows.Close()
+
+	type lot struct {
+		qty           float64
+		price         float64
+		feePerUnitOrg float64 // original entry fee per unit (constant across partial consumption)
+	}
+
+	var stack []lot
+
+	for rows.Next() {
+		var (
+			orderType string
+			qty       float64
+			price     float64
+			fee       float64
+		)
+
+		if err := rows.Scan(&orderType, &qty, &price, &fee); err != nil {
+			return 0, fmt.Errorf("failed to scan trade for LIFO PnL: %w", err)
+		}
+
+		if types.PurchaseType(orderType) == types.PurchaseTypeBuy {
+			perUnitFee := 0.0
+			if qty > 0 {
+				perUnitFee = fee / qty
+			}
+			stack = append(stack, lot{qty: qty, price: price, feePerUnitOrg: perUnitFee})
+
+			continue
+		}
+
+		// SELL: pop from top of stack (LIFO consumption of prior entries).
+		remaining := qty
+		for remaining > 0 && len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			if top.qty <= remaining {
+				remaining -= top.qty
+				stack = stack[:len(stack)-1]
+
+				continue
+			}
+
+			top.qty -= remaining
+			remaining = 0
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("error iterating trades for LIFO PnL: %w", err)
+	}
+
+	if len(stack) == 0 {
+		return 0, nil
+	}
+
+	// Walk the stack from newest to oldest matching the current close, without
+	// mutating the reconstructed stack (subsequent closes will re-replay).
+	remaining := sellQty
+	matchedCost := decimal.Zero
+
+	for i := len(stack) - 1; i >= 0 && remaining > 0; i-- {
+		entry := stack[i]
+		matchedQty := math.Min(entry.qty, remaining)
+		matchedDec := decimal.NewFromFloat(matchedQty)
+
+		entryFeeProrated := decimal.NewFromFloat(entry.feePerUnitOrg).Mul(matchedDec)
+
+		if positionType == types.PositionTypeLong {
+			cost := decimal.NewFromFloat(entry.price).Mul(matchedDec).Add(entryFeeProrated)
+			matchedCost = matchedCost.Add(cost)
+		} else {
+			value := decimal.NewFromFloat(entry.price).Mul(matchedDec).Sub(entryFeeProrated)
+			matchedCost = matchedCost.Add(value)
+		}
+
+		remaining -= matchedQty
+	}
+
+	sellValue := decimal.NewFromFloat(sellPrice).Mul(decimal.NewFromFloat(sellQty))
+	sellFeeDec := decimal.NewFromFloat(sellFee)
+
+	var result decimal.Decimal
+	if positionType == types.PositionTypeLong {
+		result = sellValue.Sub(sellFeeDec).Sub(matchedCost)
+	} else {
+		result = matchedCost.Sub(sellValue.Add(sellFeeDec))
+	}
+
+	pnl, _ := result.Float64()
+
+	return pnl, nil
 }
 
 // computeOpenPositionQty calculates the open position quantity after a trade.
