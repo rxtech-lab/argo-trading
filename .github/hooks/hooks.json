@@ -4,7 +4,7 @@
     "sessionEnd": [
       {
         "type": "command",
-        "bash": "make lint && make fmt && go get golang.org/x/mobile@latest",
+        "bash": "make lint && make fmt",
         "cwd": ".",
         "timeoutSec": 300
       }
