@@ -221,7 +221,10 @@ enum IndicatorType {
   // Stochastic Oscillator (NOT IMPLEMENTED)
   INDICATOR_STOCHASTIC_OSCILLATOR = 3;
 
-  // Williams %R (NOT IMPLEMENTED)
+  // Williams %R
+  // Config: [period, overboughtThreshold?, oversoldThreshold?] - e.g., "[14]" or "[14, -20, -80]"
+  // Defaults: period=14, overboughtThreshold=-20, oversoldThreshold=-80
+  // RawValue: {"wr": float64} - Williams %R value (-100 to 0 scale)
   INDICATOR_WILLIAMS_R = 4;
 
   // ADX - Average Directional Index (NOT IMPLEMENTED)
@@ -265,6 +268,12 @@ enum IndicatorType {
   // Defaults: period=20
   // RawValue: {"ma": float64} - MA value
   INDICATOR_MA = 13;
+
+  // PSY (Psychological Line)
+  // Config: [period, upperThreshold?, lowerThreshold?] - e.g., "[12]" or "[12, 75, 25]"
+  // Defaults: period=12, upperThreshold=75, lowerThreshold=25
+  // RawValue: {"psy": float64} - PSY value (0-100 scale, percent of up days)
+  INDICATOR_PSY = 14;
 }
 
 message GetRequest {

@@ -109,6 +109,8 @@ func StrategyIndicatorTypeToIndicatorType(indicatorType strategy.IndicatorType) 
 		return types.IndicatorTypeATR
 	case strategy.IndicatorType_INDICATOR_MA:
 		return types.IndicatorTypeMA
+	case strategy.IndicatorType_INDICATOR_PSY:
+		return types.IndicatorTypePSY
 	default:
 		return types.IndicatorTypeRSI
 	}
@@ -163,6 +165,8 @@ func IndicatorTypeToStrategyIndicatorType(indicatorType types.IndicatorType) str
 		return strategy.IndicatorType_INDICATOR_ATR
 	case types.IndicatorTypeMA:
 		return strategy.IndicatorType_INDICATOR_MA
+	case types.IndicatorTypePSY:
+		return strategy.IndicatorType_INDICATOR_PSY
 	default:
 		return strategy.IndicatorType_INDICATOR_RSI
 	}
