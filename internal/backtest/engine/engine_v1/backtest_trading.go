@@ -646,7 +646,7 @@ func (b *BacktestTrading) executeMarketOrder(order types.ExecuteOrder) error {
 	}
 
 	// Calculate commission fee
-	commission := b.commission.Calculate(order.Quantity)
+	commission := b.commission.Calculate(order.Quantity, executePrice)
 
 	// Create the executed order
 	executedOrder := types.Order{

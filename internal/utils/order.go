@@ -18,7 +18,7 @@ func CalculateMaxQuantity(balance float64, price float64, commissionFee commissi
 
 	// Iteratively refine by accounting for fees
 	for i := 0; i < 10; i++ { // Usually converges quickly, limit iterations
-		totalCost := maxQty*price + commissionFee.Calculate(maxQty)
+		totalCost := maxQty*price + commissionFee.Calculate(maxQty, price)
 		if totalCost <= balance {
 			break
 		}
