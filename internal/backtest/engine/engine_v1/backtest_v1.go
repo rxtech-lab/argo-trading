@@ -116,6 +116,8 @@ func (b *BacktestEngineV1) Initialize(config string) error {
 		commissionFee = commission_fee.NewInteractiveBrokerCommissionFee()
 	case commission_fee.BrokerZero:
 		commissionFee = commission_fee.NewZeroCommissionFee()
+	case commission_fee.BrokerBinance:
+		commissionFee = commission_fee.NewBinanceCommissionFee()
 	default:
 		commissionFee = commission_fee.NewInteractiveBrokerCommissionFee()
 	}
