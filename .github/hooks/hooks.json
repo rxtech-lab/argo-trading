@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "make lint && make fmt",
+        "cwd": ".",
+        "timeoutSec": 300
+      }
+    ]
+  }
+}

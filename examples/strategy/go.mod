@@ -1,6 +1,6 @@
 module github.com/sirily11/argo-trading-go/examples/strategy
 
-go 1.25.5
+go 1.26.2
 
 require (
 	github.com/knqyf263/go-plugin v0.9.0
@@ -10,12 +10,13 @@ require (
 require (
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/invopop/jsonschema v0.12.0 // indirect
-	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/tetratelabs/wazero v1.9.0 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
+	github.com/invopop/jsonschema v0.13.0 // indirect
+	github.com/mailru/easyjson v0.9.2 // indirect
+	github.com/tetratelabs/wazero v1.11.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
