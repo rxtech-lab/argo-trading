@@ -842,6 +842,7 @@ func convertBinanceTradeToTrade(bt *binance.TradeV3, symbol string) types.Trade 
 		Fee:             commission,
 		PnL:             0, // Not directly available from trade
 		CumulativePnL:   0, // Not directly available from trade
+		LIFOPnL:         0, // Not directly available from trade
 		OpenPositionQty: 0,
 		Balance:         0,
 		HoldTime:        0,
