@@ -55,10 +55,32 @@ This will automatically create a sample strategy on your local machine.
 
 ## Use in Swift
 
-The ArgoTrading.xcframework is available in our GitHub Releases. Download and add it directly to your Xcode project.
+### Swift Package Manager
 
-**Dependencies:**
+You can add this repository directly as a Swift package in Xcode:
 
-- libduckdb.dylib is required
-- Download libduckdb-osx-universal.zip from the [DuckDB releases page](https://github.com/duckdb/duckdb/releases)
-- Drag libduckdb.dylib into your Xcode project and ensure it's included in your target's "Frameworks, Libraries, and Embedded Content" section
+1. In Xcode, go to **File → Add Package Dependencies…**
+2. Enter the repository URL: `https://github.com/rxtech-lab/argo-trading`
+3. Select the desired version and add the `ArgoTrading` package to your target.
+
+### Local Development
+
+If you need to develop or test locally against a custom build of the framework:
+
+1. Build the Swift framework:
+   ```bash
+   make build-swift-argo
+   ```
+
+2. Sign the framework:
+   ```bash
+   .scripts/sign-framework.sh
+   ```
+
+3. In Xcode, add the local `ArgoTradingLocal` package (pointing to your local repository checkout) instead of the remote package.
+
+### Dependencies
+
+- `libduckdb.dylib` is required.
+- Download `libduckdb-osx-universal.zip` from the [DuckDB releases page](https://github.com/duckdb/duckdb/releases).
+- Drag `libduckdb.dylib` into your Xcode project and ensure it's included in your target's **Frameworks, Libraries, and Embedded Content** section.
