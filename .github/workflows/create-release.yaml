@@ -66,7 +66,7 @@ jobs:
         run: make generate
 
       - name: Import code signing certificates
-        uses: apple-actions/import-codesign-certs@v6
+        uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.P12_PASSWORD }}
@@ -82,7 +82,7 @@ jobs:
           SIGNING_CERTIFICATE_NAME: ${{ secrets.SIGNING_CERTIFICATE_NAME }}
 
       - name: Import installer certificates
-        uses: apple-actions/import-codesign-certs@v6
+        uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.INSTALLER_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.P12_PASSWORD }}
