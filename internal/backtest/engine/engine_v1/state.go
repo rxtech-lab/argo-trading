@@ -2,12 +2,12 @@ package engine
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -30,6 +30,14 @@ type BacktestState struct {
 	portfolioStrategy         PortfolioCalculationStrategy
 	riskFreeRate              float64
 	sharpeAnnualizationFactor int
+
+	// positionCache maintains an in-memory mirror of per-symbol position state so
+	// GetPosition can answer in O(1) without re-running the 5-CTE SQL aggregation
+	// against the full trades table on every call. Updated incrementally after
+	// each committed trade in Update; reset in Cleanup. Strategies that call
+	// GetPosition every bar were the dominant cost in profiling.
+	positionCacheMu sync.Mutex
+	positionCache   map[string]*types.Position
 }
 
 // CalculatePNL calculates the profit/loss for a trade
@@ -58,6 +66,8 @@ func NewBacktestState(logger *logger.Logger) (*BacktestState, error) {
 		portfolioStrategy:         PortfolioCalculationFIFO,
 		riskFreeRate:              0,
 		sharpeAnnualizationFactor: DefaultSharpeAnnualizationFactor,
+		positionCacheMu:           sync.Mutex{},
+		positionCache:             make(map[string]*types.Position),
 	}, nil
 }
 
@@ -332,8 +342,12 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 			return nil, fmt.Errorf("failed to commit transaction: %w", err)
 		}
 
-		// Add result
+		// Mirror the trade in the in-memory position cache. Done after commit so
+		// a rolled-back transaction never leaves the cache ahead of the DB.
 		order.OrderID = orderID
+		b.applyTradeToCache(order)
+
+		// Add result
 		results = append(results, UpdateResult{
 			Order:         order,
 			Trade:         trade,
@@ -376,132 +390,32 @@ func (b *BacktestState) StoreFailedOrder(order types.Order) error {
 	return nil
 }
 
-// GetPosition retrieves the current position for a symbol by calculating from trades.
+// GetPosition retrieves the current position for a symbol. Reads from the
+// in-memory cache when available; otherwise falls back to recomputing from the
+// trades table and populates the cache for subsequent calls.
 func (b *BacktestState) GetPosition(symbol string) (types.Position, error) {
-	// Extended CTEs to calculate both long (buy/sell) and short (sell/buy) position fields
-	query := `
-    WITH long_buy_trades AS (
-       SELECT 
-          SUM(executed_qty) as total_long_in_qty,
-          SUM(commission) as total_long_in_fee,
-          SUM(executed_qty * executed_price) as total_long_in_amount
-       FROM trades 
-       WHERE symbol = ? AND order_type = ? AND position_type = ?
-    ),
-    long_sell_trades AS (
-       SELECT 
-          SUM(executed_qty) as total_long_out_qty,
-          SUM(commission) as total_long_out_fee,
-          SUM(executed_qty * executed_price) as total_long_out_amount
-       FROM trades 
-       WHERE symbol = ? AND order_type = ? AND position_type = ?
-    ),
-    short_sell_trades AS (
-       SELECT 
-          SUM(executed_qty) as total_out_short_qty,
-          SUM(commission) as total_short_out_fee,
-          SUM(executed_qty * executed_price) as total_short_out_amount
-       FROM trades 
-       WHERE symbol = ? AND order_type = ? AND position_type = ?
-    ),
-    short_buy_trades AS (
-       SELECT 
-          SUM(executed_qty) as total_short_in_qty,
-          SUM(commission) as total_short_in_fee,
-          SUM(executed_qty * executed_price) as total_short_in_amount
-       FROM trades 
-       WHERE symbol = ? AND order_type = ? AND position_type = ?
-    ),
-    first_trade AS (
-       SELECT 
-          MIN(executed_at) as first_trade_time
-       FROM trades 
-       WHERE symbol = ?
-    )
-    SELECT 
-       ? as symbol,
-       COALESCE(b.total_long_in_qty, 0) - COALESCE(s.total_long_out_qty, 0) as quantity,
-       COALESCE(b.total_long_in_qty, 0) as total_in_long_position_quantity,
-       COALESCE(s.total_long_out_qty, 0) as total_out_long_position_quantity,
-       COALESCE(b.total_long_in_amount, 0) as total_in_long_position_amount,
-       COALESCE(s.total_long_out_amount, 0) as total_out_long_position_amount,
-       COALESCE(b.total_long_in_fee, 0) as total_long_in_fee,
-       COALESCE(s.total_long_out_fee, 0)  as total_long_out_fee,
-       COALESCE(sb.total_short_in_fee, 0) as total_short_in_fee,
-       COALESCE(ss.total_short_out_fee, 0)  as total_short_out_fee,
-       ft.first_trade_time as open_timestamp,
-       MAX(t.strategy_name) as strategy_name,
-       COALESCE(sb.total_short_in_qty, 0) as total_in_short_position_quantity,
-       COALESCE(ss.total_out_short_qty, 0) as total_out_short_position_quantity,
-       COALESCE(sb.total_short_in_amount, 0) as total_in_short_position_amount,
-       COALESCE(ss.total_short_out_amount, 0) as total_out_short_position_amount,
-       COALESCE(sb.total_short_in_qty, 0) - COALESCE(ss.total_out_short_qty, 0) as short_quantity
-    FROM trades t
-    LEFT JOIN long_buy_trades b ON 1=1
-    LEFT JOIN long_sell_trades s ON 1=1
-    LEFT JOIN short_sell_trades ss ON 1=1
-    LEFT JOIN short_buy_trades sb ON 1=1
-    CROSS JOIN first_trade ft
-    WHERE t.symbol = ?
-    GROUP BY b.total_long_in_qty, s.total_long_out_qty, b.total_long_in_amount, s.total_long_out_amount, b.total_long_in_fee, s.total_long_out_fee, sb.total_short_in_fee, ss.total_short_out_fee, ss.total_out_short_qty, sb.total_short_in_qty, ss.total_short_out_amount, sb.total_short_in_amount, ss.total_short_out_fee, sb.total_short_in_fee, ft.first_trade_time
-    `
-
-	args := []interface{}{
-		symbol, types.PurchaseTypeBuy, types.PositionTypeLong, // long_buy_trades
-		symbol, types.PurchaseTypeSell, types.PositionTypeLong, // long_sell_trades
-		symbol, types.PurchaseTypeSell, types.PositionTypeShort, // short_sell_trades
-		symbol, types.PurchaseTypeBuy, types.PositionTypeShort, // short_buy_trades
-		symbol, // first_trade CTE symbol parameter
-		symbol, // symbol for select
-		symbol, // symbol for WHERE
+	if b == nil {
+		return types.Position{}, fmt.Errorf("backtest state is nil")
 	}
 
-	var position types.Position
-	err := b.db.QueryRow(query, args...).Scan(
-		&position.Symbol,
-		&position.TotalLongPositionQuantity,
-		&position.TotalLongInPositionQuantity,
-		&position.TotalLongOutPositionQuantity,
-		&position.TotalLongInPositionAmount,
-		&position.TotalLongOutPositionAmount,
-		&position.TotalLongInFee,
-		&position.TotalLongOutFee,
-		&position.TotalShortInFee,
-		&position.TotalShortOutFee,
-		&position.OpenTimestamp,
-		&position.StrategyName,
-		&position.TotalShortInPositionQuantity,
-		&position.TotalShortOutPositionQuantity,
-		&position.TotalShortInPositionAmount,
-		&position.TotalShortOutPositionAmount,
-		&position.TotalShortPositionQuantity,
-	)
+	b.positionCacheMu.Lock()
+	if cached, ok := b.positionCache[symbol]; ok {
+		out := *cached
+		b.positionCacheMu.Unlock()
 
-	if errors.Is(err, sql.ErrNoRows) {
-		return types.Position{
-			Symbol:                        symbol,
-			TotalLongPositionQuantity:     0,
-			TotalShortPositionQuantity:    0,
-			TotalLongInPositionQuantity:   0,
-			TotalLongOutPositionQuantity:  0,
-			TotalLongInPositionAmount:     0,
-			TotalLongOutPositionAmount:    0,
-			TotalShortInPositionQuantity:  0,
-			TotalShortOutPositionQuantity: 0,
-			TotalShortInPositionAmount:    0,
-			TotalShortOutPositionAmount:   0,
-			TotalLongInFee:                0,
-			TotalLongOutFee:               0,
-			TotalShortInFee:               0,
-			TotalShortOutFee:              0,
-			OpenTimestamp:                 time.Time{},
-			StrategyName:                  "",
-		}, nil
+		return out, nil
 	}
+	b.positionCacheMu.Unlock()
 
+	position, err := b.getPositionFromDB(symbol)
 	if err != nil {
-		return types.Position{}, fmt.Errorf("failed to query position: %w", err)
+		return types.Position{}, err
 	}
+
+	b.positionCacheMu.Lock()
+	cached := position
+	b.positionCache[symbol] = &cached
+	b.positionCacheMu.Unlock()
 
 	return position, nil
 }
@@ -581,6 +495,8 @@ func (b *BacktestState) Cleanup() error {
 	if err != nil {
 		return fmt.Errorf("failed to cleanup tables: %w", err)
 	}
+
+	b.resetPositionCache()
 
 	// Reinitialize
 	return b.Initialize()

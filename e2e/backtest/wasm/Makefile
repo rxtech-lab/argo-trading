@@ -10,6 +10,7 @@ build:
 	GOOS=wasip1 GOARCH=wasm go build -o ./log_error/log_error_plugin.wasm -buildmode=c-shared ./log_error/log_error_strategy.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./portfolio_comparison/portfolio_comparison_plugin.wasm -buildmode=c-shared ./portfolio_comparison/portfolio_comparison.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./rsi_comparison/rsi_comparison_plugin.wasm -buildmode=c-shared ./rsi_comparison/rsi_comparison.go
+	GOOS=wasip1 GOARCH=wasm go build -o ./multi_confirm/multi_confirm_plugin.wasm -buildmode=c-shared ./multi_confirm/multi_confirm_strategy.go
 # Clean WASM files
 clean:
 	rm -f *.wasm
