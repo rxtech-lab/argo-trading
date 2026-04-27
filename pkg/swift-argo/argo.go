@@ -16,7 +16,7 @@ type ArgoHelper interface {
 	OnStrategyEnd(strategyIndex int, strategyName string)
 	OnRunStart(runID string, configIndex int, configName string, dataFileIndex int, dataFilePath string, totalDataPoints int) error
 	OnRunEnd(configIndex int, configName string, dataFileIndex int, dataFilePath string, resultFolderPath string)
-	OnProcessData(current int, total int) error
+	OnProcessData(current int, total int, barsPerSecond float64, realizedPnL float64) error
 }
 
 type Argo struct {
@@ -57,26 +57,26 @@ func GetBacktestEngineVersion() string {
 //
 // The engine invokes OnProcessData sequentially per data point, so the
 // internal counters don't need synchronization.
-func newThrottledProgressCallback(emit func(current, total int) error) engine.OnProcessDataCallback {
+func newThrottledProgressCallback(emit func(current, total int, barsPerSecond, realizedPnL float64) error) engine.OnProcessDataCallback {
 	var (
 		progressStep int
 		lastReported int
 		lastRunTotal int
 	)
 
-	return engine.OnProcessDataCallback(func(current, total int) error {
-		newRun := total != lastRunTotal
+	return engine.OnProcessDataCallback(func(info engine.ProgressInfo) error {
+		newRun := info.Total != lastRunTotal
 		if newRun {
-			lastRunTotal = total
+			lastRunTotal = info.Total
 			lastReported = 0
-			progressStep = max(total/200, 1)
+			progressStep = max(info.Total/200, 1)
 		}
-		if !newRun && current != total && current-lastReported < progressStep {
+		if !newRun && info.Current != info.Total && info.Current-lastReported < progressStep {
 			return nil
 		}
-		lastReported = current
+		lastReported = info.Current
 
-		return emit(current, total)
+		return emit(info.Current, info.Total, info.BarsPerSecond, info.RealizedPnL)
 	})
 }
 

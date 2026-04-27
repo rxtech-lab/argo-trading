@@ -29,8 +29,20 @@ type OnRunStartCallback func(runID string, configIndex int, configName string, d
 // OnRunEndCallback is called when processing of a config+data file combination ends.
 type OnRunEndCallback func(configIndex int, configName string, dataFileIndex int, dataFilePath string, resultFolderPath string)
 
+// ProgressInfo carries per-bar progress metrics passed to OnProcessDataCallback.
+type ProgressInfo struct {
+	// Current is the index of the bar just processed (1-based).
+	Current int
+	// Total is the total number of bars in this run.
+	Total int
+	// BarsPerSecond is the wall-clock throughput since the start of this run.
+	BarsPerSecond float64
+	// RealizedPnL is the cumulative realized PnL across all closed trades in this run.
+	RealizedPnL float64
+}
+
 // OnProcessDataCallback is called for each data point processed.
-type OnProcessDataCallback func(current int, total int) error
+type OnProcessDataCallback func(info ProgressInfo) error
 
 // LifecycleCallbacks holds all lifecycle callback functions for the backtest engine.
 // All fields are pointers - nil means no callback will be invoked.

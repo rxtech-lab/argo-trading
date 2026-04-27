@@ -78,11 +78,12 @@ func main() {
 	}
 	engine.LoadStrategy(strategy_runtime)
 
-	onProcessDataCallback := engine_types.OnProcessDataCallback(func(currentCount int, totalCount int) error {
+	onProcessDataCallback := engine_types.OnProcessDataCallback(func(info engine_types.ProgressInfo) error {
 		if progressBar == nil {
-			progressBar = progressbar.New(totalCount)
-			progressBar.Add(currentCount)
+			progressBar = progressbar.New(info.Total)
+			progressBar.Add(info.Current)
 		}
+		progressBar.Describe(fmt.Sprintf("%.0f bars/s | realized PnL %.2f", info.BarsPerSecond, info.RealizedPnL))
 		progressBar.Add(1)
 		return nil
 	})

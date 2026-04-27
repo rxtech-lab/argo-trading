@@ -3,23 +3,35 @@ package swiftargo
 import (
 	"testing"
 
+	"github.com/rxtech-lab/argo-trading/internal/backtest/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type progressEvent struct {
-	current int
-	total   int
+	current       int
+	total         int
+	barsPerSecond float64
+	realizedPnL   float64
 }
 
-func collectingEmitter() (emit func(current, total int) error, events *[]progressEvent) {
+func collectingEmitter() (emit func(current, total int, barsPerSecond, realizedPnL float64) error, events *[]progressEvent) {
 	captured := make([]progressEvent, 0)
 
-	return func(current, total int) error {
-		captured = append(captured, progressEvent{current: current, total: total})
+	return func(current, total int, barsPerSecond, realizedPnL float64) error {
+		captured = append(captured, progressEvent{
+			current:       current,
+			total:         total,
+			barsPerSecond: barsPerSecond,
+			realizedPnL:   realizedPnL,
+		})
 
 		return nil
 	}, &captured
+}
+
+func makeProgressInfo(current, total int) engine.ProgressInfo {
+	return engine.ProgressInfo{Current: current, Total: total}
 }
 
 // TestThrottledProgressCallback_FirstCallbackOfNewRunIsForwarded is the
@@ -32,15 +44,15 @@ func TestThrottledProgressCallback_FirstCallbackOfNewRunIsForwarded(t *testing.T
 	cb := newThrottledProgressCallback(emit)
 
 	// First run: small dataset, runs to completion.
-	require.NoError(t, cb(0, 475))
-	require.NoError(t, cb(475, 475))
+	require.NoError(t, cb(makeProgressInfo(0, 475)))
+	require.NoError(t, cb(makeProgressInfo(475, 475)))
 
 	before := len(*events)
 
 	// Second run: large dataset. progressStep = 1_000_000/200 = 5000, so
 	// without the new-run bypass, (0, 1_000_000) would be throttled away
 	// and the UI would keep showing the stale prior state.
-	require.NoError(t, cb(0, 1_000_000))
+	require.NoError(t, cb(makeProgressInfo(0, 1_000_000)))
 
 	require.Greater(t, len(*events), before, "first callback of new run must be forwarded")
 	last := (*events)[len(*events)-1]
@@ -57,7 +69,7 @@ func TestThrottledProgressCallback_FinalBarAlwaysForwarded(t *testing.T) {
 
 	const total = 10_000
 	for i := 0; i <= total; i++ {
-		require.NoError(t, cb(i, total))
+		require.NoError(t, cb(makeProgressInfo(i, total)))
 	}
 
 	last := (*events)[len(*events)-1]
@@ -74,7 +86,7 @@ func TestThrottledProgressCallback_ThrottlesWithinRun(t *testing.T) {
 
 	const total = 100_000
 	for i := 0; i <= total; i++ {
-		require.NoError(t, cb(i, total))
+		require.NoError(t, cb(makeProgressInfo(i, total)))
 	}
 
 	// Budget: ≤200 throttled updates + 1 final bar. Allow a small cushion
@@ -92,7 +104,7 @@ func TestThrottledProgressCallback_SmallDatasetEmitsEveryBar(t *testing.T) {
 
 	const total = 50
 	for i := 0; i <= total; i++ {
-		require.NoError(t, cb(i, total))
+		require.NoError(t, cb(makeProgressInfo(i, total)))
 	}
 
 	assert.Len(t, *events, total+1, "every bar (including the initial and final) should be forwarded for small datasets")
@@ -106,15 +118,15 @@ func TestThrottledProgressCallback_DifferentTotalsResetState(t *testing.T) {
 	cb := newThrottledProgressCallback(emit)
 
 	// Large run reaches a high lastReported.
-	require.NoError(t, cb(0, 100_000))
-	require.NoError(t, cb(50_000, 100_000))
-	require.NoError(t, cb(100_000, 100_000))
+	require.NoError(t, cb(makeProgressInfo(0, 100_000)))
+	require.NoError(t, cb(makeProgressInfo(50_000, 100_000)))
+	require.NoError(t, cb(makeProgressInfo(100_000, 100_000)))
 
 	before := len(*events)
 
 	// Smaller second run: must emit from bar 0.
-	require.NoError(t, cb(0, 400))
-	require.NoError(t, cb(1, 400))
+	require.NoError(t, cb(makeProgressInfo(0, 400)))
+	require.NoError(t, cb(makeProgressInfo(1, 400)))
 
 	require.Greater(t, len(*events), before)
 	first := (*events)[before]

@@ -1297,7 +1297,7 @@ func TestBacktestEngineV1_RunErrors(t *testing.T) {
 		backtestEngine.SetDataSource(mockDatasource)
 
 		callbackCalled := 0
-		callback := engine_types.OnProcessDataCallback(func(current int, total int) error {
+		callback := engine_types.OnProcessDataCallback(func(info engine_types.ProgressInfo) error {
 			callbackCalled++
 			return nil
 		})
@@ -1404,7 +1404,7 @@ func TestLifecycleCallbacks(t *testing.T) {
 		})
 
 		processDataCount := 0
-		onProcessData := engine_types.OnProcessDataCallback(func(current, total int) error {
+		onProcessData := engine_types.OnProcessDataCallback(func(info engine_types.ProgressInfo) error {
 			processDataCount++
 			return nil
 		})

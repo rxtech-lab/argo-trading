@@ -47,7 +47,7 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         }
     }
 
-    func onProcessData(_ current: Int, total: Int) throws {
+    func onProcessData(_ current: Int, total: Int, barsPerSecond: Double, realizedPnL: Double) throws {
         processDataCalled = true
         processDataCount += 1
 
