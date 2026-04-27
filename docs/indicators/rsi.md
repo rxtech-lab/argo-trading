@@ -142,4 +142,4 @@ func (s *MyStrategy) ProcessData(ctx context.Context, req *strategy.ProcessDataR
 
 - [MACD](macd.md) - Another momentum indicator
 - [Stochastic Oscillator](stochastic.md) - Similar oscillator concept (not implemented)
-- [Williams %R](williams-r.md) - Related momentum oscillator (not implemented)
+- [Williams %R](williams-r.md) - Related momentum oscillator
