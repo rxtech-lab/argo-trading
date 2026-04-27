@@ -38,6 +38,10 @@ type BacktestState struct {
 	// GetPosition every bar were the dominant cost in profiling.
 	positionCacheMu sync.Mutex
 	positionCache   map[string]*types.Position
+
+	// realizedPnL is the running sum of FIFO PnL across all committed trades
+	// for the current run. Reset by Initialize so each run starts at zero.
+	realizedPnL float64
 }
 
 // CalculatePNL calculates the profit/loss for a trade
@@ -68,7 +72,19 @@ func NewBacktestState(logger *logger.Logger) (*BacktestState, error) {
 		sharpeAnnualizationFactor: DefaultSharpeAnnualizationFactor,
 		positionCacheMu:           sync.Mutex{},
 		positionCache:             make(map[string]*types.Position),
+		realizedPnL:               0,
 	}, nil
+}
+
+// GetRealizedPnL returns the running cumulative realized PnL for the current run.
+// It is updated in O(1) on each closing trade so progress callbacks can read it
+// without hitting the database.
+func (b *BacktestState) GetRealizedPnL() float64 {
+	if b == nil {
+		return 0
+	}
+
+	return b.realizedPnL
 }
 
 // SetInitialBalance sets the initial cash balance for the backtest run.
@@ -106,6 +122,9 @@ func (b *BacktestState) Initialize() error {
 	if b == nil || b.db == nil {
 		return fmt.Errorf("backtest state or database is nil")
 	}
+
+	// Reset per-run accumulators so each run starts at zero.
+	b.realizedPnL = 0
 
 	// Create sequence for order IDs
 	_, err := b.db.Exec(`CREATE SEQUENCE IF NOT EXISTS order_id_seq`)
@@ -341,6 +360,9 @@ func (b *BacktestState) Update(orders []types.Order) ([]UpdateResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to commit transaction: %w", err)
 		}
+
+		// Update running realized PnL for fast lookups in progress callbacks.
+		b.realizedPnL += fifoPnl
 
 		// Mirror the trade in the in-memory position cache. Done after commit so
 		// a rolled-back transaction never leaves the cache ahead of the DB.

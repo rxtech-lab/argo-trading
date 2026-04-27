@@ -24,24 +24,24 @@ func (suite *EngineTestSuite) TestStrategyTypeAsString() {
 
 func (suite *EngineTestSuite) TestOnProcessDataCallbackType() {
 	// Test that the callback type works correctly
-	var callback OnProcessDataCallback = func(current int, total int) error {
+	var callback OnProcessDataCallback = func(info ProgressInfo) error {
 		return nil
 	}
 
 	suite.NotNil(callback)
-	err := callback(1, 10)
+	err := callback(ProgressInfo{Current: 1, Total: 10})
 	suite.NoError(err)
 }
 
 func (suite *EngineTestSuite) TestOnProcessDataCallbackWithProgress() {
 	var progress []int
-	callback := OnProcessDataCallback(func(current int, total int) error {
-		progress = append(progress, current)
+	callback := OnProcessDataCallback(func(info ProgressInfo) error {
+		progress = append(progress, info.Current)
 		return nil
 	})
 
 	for i := 1; i <= 5; i++ {
-		err := callback(i, 5)
+		err := callback(ProgressInfo{Current: i, Total: 5})
 		suite.NoError(err)
 	}
 

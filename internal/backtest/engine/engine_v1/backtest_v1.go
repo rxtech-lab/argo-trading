@@ -562,6 +562,7 @@ func (b *BacktestEngineV1) runSingleIteration(params runIterationParams) error {
 // processDataPoints processes all data points for a single run iteration.
 func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategyContext *runtime.RuntimeContext, slidingWindowDS *datasource.SlidingWindowDataSource, count int) error {
 	currentCount := 0
+	runStart := time.Now()
 
 	// Track insufficient data error state for marker boundaries
 	var (
@@ -629,7 +630,25 @@ func (b *BacktestEngineV1) processDataPoints(params runIterationParams, strategy
 
 		// Invoke OnProcessData callback
 		if params.callbacks.OnProcessData != nil {
-			if err := (*params.callbacks.OnProcessData)(currentCount, count); err != nil {
+			elapsed := time.Since(runStart).Seconds()
+
+			var barsPerSecond float64
+			if elapsed > 0 {
+				barsPerSecond = float64(currentCount) / elapsed
+			}
+
+			var realizedPnL float64
+			if b.state != nil {
+				realizedPnL = b.state.GetRealizedPnL()
+			}
+
+			info := engine.ProgressInfo{
+				Current:       currentCount,
+				Total:         count,
+				BarsPerSecond: barsPerSecond,
+				RealizedPnL:   realizedPnL,
+			}
+			if err := (*params.callbacks.OnProcessData)(info); err != nil {
 				return err
 			}
 		}
