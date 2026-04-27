@@ -236,7 +236,8 @@ The framework provides built-in technical indicators. First configure them in `I
 | ADX | `INDICATOR_ADX` | Average Directional Index | Not implemented |
 | CCI | `INDICATOR_CCI` | Commodity Channel Index | Not implemented |
 | Stochastic | `INDICATOR_STOCHASTIC_OSCILLATOR` | Stochastic Oscillator | Not implemented |
-| Williams %R | `INDICATOR_WILLIAMS_R` | Williams Percent Range | Not implemented |
+| Williams %R | `INDICATOR_WILLIAMS_R` | Williams Percent Range | [Reference](indicators/williams-r.md) |
+| PSY | `INDICATOR_PSY` | Psychological Line | [Reference](indicators/psy.md) |
 | Range Filter | `INDICATOR_RANGE_FILTER` | Range Filter | [Reference](indicators/range-filter.md) |
 | Waddah Attar | `INDICATOR_WADDAH_ATTAR` | Waddah Attar Explosion | [Reference](indicators/waddah-attar.md) |
 
