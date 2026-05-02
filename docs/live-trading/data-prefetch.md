@@ -1,8 +1,8 @@
 ---
+slug: live-trading/data-prefetch
 title: Data Prefetch
 description: Historical data prefetching for accurate indicator calculations in live trading
 ---
-
 # Data Prefetch
 
 This document describes the data prefetch feature that ensures indicators have sufficient historical data for accurate calculations from the moment live trading begins.

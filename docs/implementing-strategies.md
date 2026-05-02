@@ -1,8 +1,8 @@
 ---
+slug: implementing-strategies
 title: Implementing Trading Strategies
 description: Guide to implementing trading strategies in the Argo Trading framework using WebAssembly plugins
 ---
-
 # Implementing Trading Strategies
 
 This guide explains how to implement trading strategies in the Argo Trading framework. Strategies are compiled to WebAssembly (WASM) and run in an isolated plugin architecture.

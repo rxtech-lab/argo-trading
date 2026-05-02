@@ -1,8 +1,8 @@
 ---
+slug: live-trading/index
 title: Live Trading Engine
 description: Real-time strategy execution with streaming market data and live/paper trading
 ---
-
 # Live Trading Engine
 
 The Live Trading Engine enables real-time strategy execution using streaming market data and live/paper trading providers. It follows patterns established by the backtest engine, allowing the same WASM strategies to work in both backtest and live modes.

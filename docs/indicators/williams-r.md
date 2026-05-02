@@ -1,8 +1,8 @@
 ---
+slug: indicators/williams-r
 title: Williams %R (WR)
 description: Williams %R momentum oscillator - configuration, raw values, signal generation, and usage examples
 ---
-
 # Williams %R (WR)
 
 Williams %R is a momentum oscillator, developed by Larry Williams, that measures the level of the current close relative to the highest high over a lookback period. It oscillates between -100 and 0 and is used to identify overbought and oversold conditions.

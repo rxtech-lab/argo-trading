@@ -1,8 +1,8 @@
 ---
+slug: indicators/range-filter
 title: Range Filter
 description: Range Filter trend-following indicator - configuration, raw values, signal generation, and usage examples
 ---
-
 # Range Filter
 
 The Range Filter is a trend-following indicator that filters out market noise by using a dynamic range calculation. It helps identify trend direction and generates signals when price breaks through the filter levels.

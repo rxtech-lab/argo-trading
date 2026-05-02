@@ -1,8 +1,8 @@
 ---
+slug: indicators/atr
 title: ATR (Average True Range)
 description: Average True Range volatility indicator - configuration, raw values, and usage examples
 ---
-
 # ATR (Average True Range)
 
 The Average True Range (ATR) is a volatility indicator that measures market volatility by decomposing the entire range of an asset price for a given period.

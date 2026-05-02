@@ -1,8 +1,8 @@
 ---
+slug: indicators/psy
 title: PSY (Psychological Line)
 description: Psychological Line sentiment indicator - configuration, raw values, signal generation, and usage examples
 ---
-
 # PSY (Psychological Line)
 
 The Psychological Line (PSY) is a sentiment indicator that measures the percentage of periods within a lookback window that closed higher than the previous period. It reflects the buying vs. selling pressure on a percentage scale from 0 to 100 and is often used to identify overbought and oversold market conditions driven by trader psychology.

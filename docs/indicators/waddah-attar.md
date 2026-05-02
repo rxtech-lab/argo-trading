@@ -1,8 +1,8 @@
 ---
+slug: indicators/waddah-attar
 title: Waddah Attar Explosion
 description: Waddah Attar Explosion momentum/volatility indicator - configuration, raw values, signal generation, and usage examples
 ---
-
 # Waddah Attar Explosion
 
 The Waddah Attar Explosion is a momentum/volatility indicator that combines MACD and ATR to identify explosive price movements and trend direction.

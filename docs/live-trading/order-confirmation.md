@@ -1,8 +1,8 @@
 ---
+slug: live-trading/order-confirmation
 title: Order Confirmation
 description: Configuration and usage of order confirmation for live trading
 ---
-
 # Order Confirmation
 
 This document describes the order confirmation feature for the Live Trading Engine. Order confirmation allows you to review and approve or reject orders before they are sent to the trading provider, providing an additional safety layer for live trading.
