@@ -1,8 +1,8 @@
 ---
+slug: wallet-api-design
 title: Wallet API Design
 description: API design for the frontend wallet feature supporting multi-asset balances
 ---
-
 # Wallet API Design
 
 ## Overview

@@ -1,8 +1,8 @@
 ---
+slug: indicators/ma
 title: MA (Simple Moving Average)
 description: Simple Moving Average indicator - configuration, raw values, and usage examples
 ---
-
 # MA (Simple Moving Average)
 
 The Simple Moving Average (MA/SMA) calculates the arithmetic mean of a given set of prices over a specified number of periods. It provides equal weight to all data points in the calculation.

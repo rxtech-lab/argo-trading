@@ -1,8 +1,8 @@
 ---
+slug: logging
 title: Logging from Strategies
 description: How to emit log messages from a trading strategy using the Log API
 ---
-
 # Logging from Strategies
 
 Strategies run as WebAssembly plugins and cannot write directly to the host's

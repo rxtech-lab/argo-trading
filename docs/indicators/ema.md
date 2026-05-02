@@ -1,8 +1,8 @@
 ---
+slug: indicators/ema
 title: EMA (Exponential Moving Average)
 description: Exponential Moving Average indicator - configuration, raw values, and usage examples
 ---
-
 # EMA (Exponential Moving Average)
 
 The Exponential Moving Average (EMA) is a type of moving average that places greater weight on recent data points, making it more responsive to new information compared to a Simple Moving Average (SMA).

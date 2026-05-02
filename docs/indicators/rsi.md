@@ -1,8 +1,8 @@
 ---
+slug: indicators/rsi
 title: RSI (Relative Strength Index)
 description: Relative Strength Index indicator - configuration, raw values, signal generation, and usage examples
 ---
-
 # RSI (Relative Strength Index)
 
 The Relative Strength Index (RSI) is a momentum oscillator that measures the speed and magnitude of price changes. It oscillates between 0 and 100 and is used to identify overbought or oversold conditions.

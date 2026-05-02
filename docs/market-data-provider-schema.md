@@ -1,8 +1,8 @@
 ---
+slug: market-data-provider-schema
 title: Schema APIs for Swift
 description: JSON schemas for market data providers and live trading engine configuration, exposed to Swift via gomobile
 ---
-
 # Schema APIs for Swift
 
 The schema APIs expose JSON schemas for configuring streaming market data providers and the live trading engine. This enables SwiftUI to dynamically generate configuration forms based on the provider's and engine's requirements.

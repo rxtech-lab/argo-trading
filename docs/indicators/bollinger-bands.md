@@ -1,8 +1,8 @@
 ---
+slug: indicators/bollinger-bands
 title: Bollinger Bands
 description: Bollinger Bands volatility indicator - configuration, raw values, signal generation, and usage examples
 ---
-
 # Bollinger Bands
 
 Bollinger Bands are a volatility indicator consisting of a middle band (simple moving average) and two outer bands set at standard deviations above and below the middle band.

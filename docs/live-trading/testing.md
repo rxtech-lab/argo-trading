@@ -1,8 +1,8 @@
 ---
+slug: live-trading/testing
 title: Testing
 description: Mock providers, E2E tests, and prefetch testing for live trading
 ---
-
 # Testing
 
 This document describes the testing strategy for the Live Trading Engine, including mock providers, E2E test patterns, and comprehensive prefetch feature testing.

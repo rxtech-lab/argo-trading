@@ -1,8 +1,8 @@
 ---
+slug: live-trading/session-and-persistence
 title: Session Management and Persistence
 description: Daily statistics, multi-day sessions, and real-time data storage for live trading
 ---
-
 # Session Management and Persistence
 
 This document describes how the Live Trading Engine manages trading sessions, persists data in real-time, and handles multi-day operations.

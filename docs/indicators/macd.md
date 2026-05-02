@@ -1,8 +1,8 @@
 ---
+slug: indicators/macd
 title: MACD (Moving Average Convergence Divergence)
 description: MACD indicator - configuration, raw values, signal generation, and usage examples
 ---
-
 # MACD (Moving Average Convergence Divergence)
 
 The Moving Average Convergence Divergence (MACD) is a trend-following momentum indicator that shows the relationship between two exponential moving averages of a security's price.

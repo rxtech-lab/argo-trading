@@ -1,3 +1,7 @@
+---
+slug: optional-ending-time-design
+---
+
 # Design Document: Optional Ending Time and Trading Session Cleanup
 
 ## Overview

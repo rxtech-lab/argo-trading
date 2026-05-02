@@ -1,8 +1,8 @@
 ---
+slug: polygon-websocket-implementation
 title: Polygon WebSocket API Implementation Plan
 description: Design and implementation plan for adding Polygon.io WebSocket streaming support
 ---
-
 # Polygon WebSocket API Implementation Plan
 
 This document outlines the implementation plan for adding Polygon.io (Massive.com) WebSocket streaming support to the Argo Trading framework.

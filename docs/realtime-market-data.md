@@ -1,8 +1,8 @@
 ---
+slug: realtime-market-data
 title: Realtime Market Data Architecture
 description: Design for realtime market data streaming using Go iterators
 ---
-
 # Realtime Market Data Architecture
 
 This document describes the realtime market data streaming capability in the Argo Trading framework using Go 1.23+ iterators.
