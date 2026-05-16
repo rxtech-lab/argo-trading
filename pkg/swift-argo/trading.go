@@ -56,6 +56,9 @@ type TradingEngineHelper interface {
 	// current/total are in the provider's reported units (Binance reports time in ms,
 	// Polygon reports request counts).
 	OnPrefetchProgress(symbol string, current float64, total float64, message string) error
+
+	// OnProviderStatusChange is called when market data or trading provider connection status changes.
+	OnProviderStatusChange(marketDataStatus string, tradingStatus string) error
 }
 
 // TradingProviderInfo contains metadata about a trading provider.
@@ -402,6 +405,12 @@ func (t *TradingEngine) createCallbacks() engine.LiveTradingCallbacks {
 		return t.helper.OnPrefetchProgress(symbol, current, total, message)
 	})
 	callbacks.OnPrefetchProgress = &onPrefetchProgress
+
+	// OnProviderStatusChange callback
+	onProviderStatusChange := engine.OnProviderStatusChangeCallback(func(status types.ProviderStatusUpdate) error {
+		return t.helper.OnProviderStatusChange(string(status.MarketDataStatus), string(status.TradingStatus))
+	})
+	callbacks.OnProviderStatusChange = &onProviderStatusChange
 
 	return callbacks
 }

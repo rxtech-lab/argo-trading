@@ -214,6 +214,7 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var strategyErrorCalled = false
     var statusUpdateCalled = false
     var prefetchProgressCalled = false
+    var providerStatusChangeCalled = false
 
     // Store callback parameters for verification
     var lastSymbols: [String] = []
@@ -231,6 +232,8 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var lastPrefetchCurrent: Double = 0
     var lastPrefetchTotal: Double = 0
     var lastPrefetchMessage: String = ""
+    var lastMarketDataStatus: String = ""
+    var lastTradingStatus: String = ""
 
     // Control callback behavior
     var shouldFailOnEngineStart = false
@@ -330,6 +333,12 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastPrefetchMessage = message ?? ""
     }
 
+    func onProviderStatusChange(_ marketDataStatus: String?, tradingStatus: String?) throws {
+        providerStatusChangeCalled = true
+        lastMarketDataStatus = marketDataStatus ?? ""
+        lastTradingStatus = tradingStatus ?? ""
+    }
+
     /// Reset all tracking state
     func reset() {
         engineStartCalled = false
@@ -341,6 +350,7 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         strategyErrorCalled = false
         statusUpdateCalled = false
         prefetchProgressCalled = false
+        providerStatusChangeCalled = false
         lastSymbols = []
         lastInterval = ""
         lastPreviousDataPath = ""
@@ -356,6 +366,8 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastPrefetchCurrent = 0
         lastPrefetchTotal = 0
         lastPrefetchMessage = ""
+        lastMarketDataStatus = ""
+        lastTradingStatus = ""
         shouldFailOnEngineStart = false
         shouldFailOnMarketData = false
         shouldFailOnOrderPlaced = false

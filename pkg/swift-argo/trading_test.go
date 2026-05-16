@@ -29,6 +29,9 @@ type mockTradingHelper struct {
 	statusUpdates        []string
 	prefetchProgressCalls int
 	lastPrefetchSymbol   string
+	providerStatusCalls  int
+	marketDataStatus     string
+	tradingStatus        string
 	lastSymbols          []string
 	lastInterval         string
 	lastPreviousDataPath string
@@ -102,6 +105,15 @@ func (m *mockTradingHelper) OnPrefetchProgress(symbol string, current, total flo
 	defer m.mu.Unlock()
 	m.prefetchProgressCalls++
 	m.lastPrefetchSymbol = symbol
+	return nil
+}
+
+func (m *mockTradingHelper) OnProviderStatusChange(marketDataStatus string, tradingStatus string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.providerStatusCalls++
+	m.marketDataStatus = marketDataStatus
+	m.tradingStatus = tradingStatus
 	return nil
 }
 

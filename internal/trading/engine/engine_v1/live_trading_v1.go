@@ -249,7 +249,8 @@ func (e *LiveTradingEngineV1) SetMarketDataProvider(marketProvider provider.Prov
 
 // SetTradingProvider implements engine.LiveTradingEngine.
 func (e *LiveTradingEngineV1) SetTradingProvider(tradingProvider tradingprovider.TradingSystemProvider) error {
-	e.tradingProvider = tradingProvider
+	// Wrap with a logging decorator so strategy→host API calls are surfaced in running.log.
+	e.tradingProvider = tradingprovider.NewLoggingTradingSystemProvider(tradingProvider, e.log)
 	e.log.Debug("Trading provider set")
 
 	return nil
@@ -270,6 +271,13 @@ func (e *LiveTradingEngineV1) SetDataOutputPath(path string) error {
 	}
 
 	runPath := e.sessionManager.GetCurrentRunPath()
+
+	// Enable file output for engine logs so a human-readable running.log is
+	// written alongside the session's parquet artifacts. All existing holders
+	// of e.log share the pointer and pick up the new file sink automatically.
+	if err := e.log.EnableFileOutput(filepath.Join(runPath, "running.log")); err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to enable running.log file output", err)
+	}
 
 	e.log.Info("Session initialized",
 		zap.String("run_id", e.sessionManager.GetRunID()),
@@ -461,18 +469,28 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	// Set up provider status callbacks
 	e.setupProviderStatusCallbacks(callbacks.OnProviderStatusChange)
 
-	// Check trading provider connection
+	// Pre-trade check: verify the trading provider is reachable and credentials are
+	// valid before doing any other work (prefetch, strategy init, streaming). This
+	// calls a safe authenticated read (e.g. account info / balance) under the hood.
+	// If it fails, abort Run so the caller / UI sees a clear failure instead of a
+	// silently-degraded session that processes ticks but cannot trade.
 	e.log.Info("Checking trading provider connection...")
-	if err := e.tradingProvider.CheckConnection(ctx); err != nil {
-		e.log.Warn("Trading provider connection check failed", zap.Error(err))
-		e.updateTradingStatus(types.ProviderStatusDisconnected, callbacks.OnProviderStatusChange)
 
+	if err := e.tradingProvider.CheckConnection(ctx); err != nil {
+		e.log.Error("Trading provider precheck failed", zap.Error(err))
+		// tradingStatus starts as Disconnected; force-emit so the UI gets the
+		// state even though the value hasn't transitioned.
+		e.emitProviderStatusUpdate(callbacks.OnProviderStatusChange)
+
+		runErr = errors.Wrap(errors.ErrCodeBacktestInitFailed, "trading provider precheck failed", err)
 		if callbacks.OnError != nil {
-			(*callbacks.OnError)(fmt.Errorf("trading provider connection check failed: %w", err))
+			(*callbacks.OnError)(runErr)
 		}
-	} else {
-		e.updateTradingStatus(types.ProviderStatusConnected, callbacks.OnProviderStatusChange)
+
+		return runErr
 	}
+
+	e.updateTradingStatus(types.ProviderStatusConnected, callbacks.OnProviderStatusChange)
 
 	// Initialize strategy
 	if err := e.initializeStrategy(); err != nil {
@@ -671,16 +689,26 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		}
 
 		// Execute strategy
+		e.log.Info("processing strategy onTick",
+			zap.String("symbol", data.Symbol),
+			zap.Time("time", data.Time),
+			zap.Float64("close", data.Close),
+		)
 		if err := e.strategy.ProcessData(data); err != nil {
 			if callbacks.OnStrategyError != nil {
 				(*callbacks.OnStrategyError)(data, err)
 			}
 
-			e.log.Warn("Strategy error",
+			e.log.Warn("strategy returned error",
 				zap.String("symbol", data.Symbol),
 				zap.Error(err),
 			)
 			// Continue processing - don't abort on strategy errors
+		} else {
+			e.log.Info("strategy returned",
+				zap.String("symbol", data.Symbol),
+				zap.Time("time", data.Time),
+			)
 		}
 
 		// Write marks to parquet if available
