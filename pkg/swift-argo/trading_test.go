@@ -26,6 +26,9 @@ type mockTradingHelper struct {
 	orderFilledCalls     int
 	errorCalls           int
 	strategyErrors       int
+	statusUpdates        []string
+	prefetchProgressCalls int
+	lastPrefetchSymbol   string
 	lastSymbols          []string
 	lastInterval         string
 	lastPreviousDataPath string
@@ -85,6 +88,21 @@ func (m *mockTradingHelper) OnStrategyError(symbol string, timestamp int64, err 
 	defer m.mu.Unlock()
 	m.strategyErrors++
 	m.lastError = err
+}
+
+func (m *mockTradingHelper) OnStatusUpdate(status string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statusUpdates = append(m.statusUpdates, status)
+	return nil
+}
+
+func (m *mockTradingHelper) OnPrefetchProgress(symbol string, current, total float64, message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.prefetchProgressCalls++
+	m.lastPrefetchSymbol = symbol
+	return nil
 }
 
 // Test GetSupportedTradingProviders

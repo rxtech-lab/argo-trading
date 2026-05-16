@@ -17,3 +17,11 @@ type MarketDataWriter interface {
 	// GetOutputPath returns the configured output file path.
 	GetOutputPath() string
 }
+
+// BatchWriter is an optional capability for MarketDataWriter implementations that
+// can persist many rows much more cheaply in a single call than via repeated Write.
+// Bulk download paths (e.g. prefetch) should type-assert to BatchWriter and prefer
+// WriteBatch when available.
+type BatchWriter interface {
+	WriteBatch(data []types.MarketData) error
+}

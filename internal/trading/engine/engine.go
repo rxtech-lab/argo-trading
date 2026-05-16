@@ -44,6 +44,11 @@ type OnStatsUpdateCallback func(stats types.LiveTradeStats) error
 // OnStatusUpdateCallback is called when engine status changes.
 type OnStatusUpdateCallback func(status types.EngineStatus) error
 
+// OnPrefetchProgressCallback is called during historical data prefetch and gap-fill
+// downloads with per-symbol progress. current/total are in the provider's reported units
+// (Binance reports time elapsed in ms vs. total range; Polygon reports request counts).
+type OnPrefetchProgressCallback func(symbol string, current float64, total float64, message string) error
+
 // OnProviderStatusChangeCallback is called when provider connection status changes.
 // It receives the current status of both market data and trading providers.
 type OnProviderStatusChangeCallback func(status types.ProviderStatusUpdate) error
@@ -77,6 +82,10 @@ type LiveTradingCallbacks struct {
 
 	// OnStatusUpdate is called when engine status changes.
 	OnStatusUpdate *OnStatusUpdateCallback
+
+	// OnPrefetchProgress is called during prefetch and gap-fill downloads.
+	// The current EngineStatus (from OnStatusUpdate) distinguishes prefetch vs. gap-fill.
+	OnPrefetchProgress *OnPrefetchProgressCallback
 
 	// OnProviderStatusChange is called when provider connection status changes.
 	// It receives the current status of both market data and trading providers.

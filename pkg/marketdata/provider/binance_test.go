@@ -116,6 +116,7 @@ type mockBinanceKlinesService struct {
 	interval string
 	start    int64
 	end      int64
+	limit    int
 }
 
 func (m *mockBinanceKlinesService) Symbol(symbol string) BinanceKlinesService {
@@ -135,6 +136,11 @@ func (m *mockBinanceKlinesService) StartTime(startTime int64) BinanceKlinesServi
 
 func (m *mockBinanceKlinesService) EndTime(endTime int64) BinanceKlinesService {
 	m.end = endTime
+	return m
+}
+
+func (m *mockBinanceKlinesService) Limit(limit int) BinanceKlinesService {
+	m.limit = limit
 	return m
 }
 
@@ -660,11 +666,11 @@ func (suite *BinanceClientTestSuite) TestDownloadWriteErrorWithFinalizeSuccess()
 	suite.NotContains(err.Error(), "also failed to finalize")
 }
 
-// TestDownloadPagination tests pagination when we get exactly 500 klines (full page).
+// TestDownloadPagination tests pagination when we get exactly binanceKlinesLimit klines (full page).
 func (suite *BinanceClientTestSuite) TestDownloadPagination() {
-	// Create 500 klines to trigger pagination
-	firstPage := make([]*binance.Kline, 500)
-	for i := 0; i < 500; i++ {
+	// Create a full page of klines to trigger pagination
+	firstPage := make([]*binance.Kline, binanceKlinesLimit)
+	for i := 0; i < binanceKlinesLimit; i++ {
 		firstPage[i] = &binance.Kline{
 			OpenTime:  1704067200000 + int64(i*60000),
 			Open:      "42000.50",
@@ -676,16 +682,16 @@ func (suite *BinanceClientTestSuite) TestDownloadPagination() {
 		}
 	}
 
-	// Second page has fewer than 500 (last page)
+	// Second page has fewer than a full page (last page)
 	secondPage := []*binance.Kline{
 		{
-			OpenTime:  1704067200000 + 500*60000,
+			OpenTime:  1704067200000 + int64(binanceKlinesLimit)*60000,
 			Open:      "42300.00",
 			High:      "42400.00",
 			Low:       "42200.00",
 			Close:     "42350.00",
 			Volume:    "500.25",
-			CloseTime: 1704067200000 + 500*60000 + 59999,
+			CloseTime: 1704067200000 + int64(binanceKlinesLimit)*60000 + 59999,
 		},
 	}
 
@@ -703,16 +709,16 @@ func (suite *BinanceClientTestSuite) TestDownloadPagination() {
 	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/paginated.parquet", path)
-	// Should have written 501 records (500 from first page + 1 from second)
-	suite.Len(mockW.writtenData, 501)
+	// Should have written one full page + 1 record from the second page
+	suite.Len(mockW.writtenData, binanceKlinesLimit+1)
 	suite.Equal(2, mockAPI.callCount)
 }
 
 // TestDownloadPaginationWithAPIErrorOnSecondPage tests API error during pagination.
 func (suite *BinanceClientTestSuite) TestDownloadPaginationWithAPIErrorOnSecondPage() {
-	// Create 500 klines to trigger pagination
-	firstPage := make([]*binance.Kline, 500)
-	for i := 0; i < 500; i++ {
+	// Create a full page of klines to trigger pagination
+	firstPage := make([]*binance.Kline, binanceKlinesLimit)
+	for i := 0; i < binanceKlinesLimit; i++ {
 		firstPage[i] = &binance.Kline{
 			OpenTime:  1704067200000 + int64(i*60000),
 			Open:      "42000.50",
@@ -741,14 +747,14 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithAPIErrorOnSecondP
 	suite.Contains(err.Error(), "failed to fetch klines from Binance")
 	suite.Contains(err.Error(), "connection timeout")
 	// First page should have been written before error
-	suite.Len(mockW.writtenData, 500)
+	suite.Len(mockW.writtenData, binanceKlinesLimit)
 }
 
 // TestDownloadPaginationWriteErrorOnSecondPage tests write error during pagination.
 func (suite *BinanceClientTestSuite) TestDownloadPaginationWriteErrorOnSecondPage() {
-	// Create 500 klines to trigger pagination
-	firstPage := make([]*binance.Kline, 500)
-	for i := 0; i < 500; i++ {
+	// Create a full page of klines to trigger pagination
+	firstPage := make([]*binance.Kline, binanceKlinesLimit)
+	for i := 0; i < binanceKlinesLimit; i++ {
 		firstPage[i] = &binance.Kline{
 			OpenTime:  1704067200000 + int64(i*60000),
 			Open:      "42000.50",
@@ -762,13 +768,13 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWriteErrorOnSecondPag
 
 	secondPage := []*binance.Kline{
 		{
-			OpenTime:  1704067200000 + 500*60000,
+			OpenTime:  1704067200000 + int64(binanceKlinesLimit)*60000,
 			Open:      "42300.00",
 			High:      "42400.00",
 			Low:       "42200.00",
 			Close:     "42350.00",
 			Volume:    "500.25",
-			CloseTime: 1704067200000 + 500*60000 + 59999,
+			CloseTime: 1704067200000 + int64(binanceKlinesLimit)*60000 + 59999,
 		},
 	}
 
@@ -777,7 +783,7 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWriteErrorOnSecondPag
 	}
 	mockW := &mockWriter{
 		writeErr:       errors.New("disk full"),
-		writeErrAfterN: 500, // Fail after first 500 writes
+		writeErrAfterN: binanceKlinesLimit, // Fail after first full page of writes
 	}
 
 	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
@@ -826,18 +832,19 @@ func (suite *BinanceClientTestSuite) TestDownloadProgressCallback() {
 
 // TestDownloadPaginationTimeBreak tests pagination ending due to time condition.
 func (suite *BinanceClientTestSuite) TestDownloadPaginationTimeBreak() {
-	// Create 500 klines where the last kline's CloseTime exceeds the end time
-	// This triggers the "currentStartTime >= endTimeMillis" break condition
+	// Create a full page of klines where the last kline's CloseTime exceeds the end time.
+	// Returning exactly binanceKlinesLimit klines bypasses the "fewer than full page" break,
+	// so the loop must terminate via the "currentStartTime >= endTimeMillis" condition.
 	startTimeMs := int64(1704067200000) // 2024-01-01 00:00:00 UTC
-	endTimeMs := int64(1704070800000)   // 2024-01-01 01:00:00 UTC (1 hour later)
+	endTimeMs := startTimeMs + int64(binanceKlinesLimit)*60000
 
-	firstPage := make([]*binance.Kline, 500)
-	for i := 0; i < 500; i++ {
+	firstPage := make([]*binance.Kline, binanceKlinesLimit)
+	for i := 0; i < binanceKlinesLimit; i++ {
 		// Each kline is 1 minute, but we set CloseTime to exceed endTime at the end
 		openTime := startTimeMs + int64(i*60000)
 		closeTime := openTime + 59999
 		// For the last kline, set CloseTime to be at or after endTime
-		if i == 499 {
+		if i == binanceKlinesLimit-1 {
 			closeTime = endTimeMs + 1000 // CloseTime exceeds endTime
 		}
 		firstPage[i] = &binance.Kline{
@@ -865,19 +872,19 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationTimeBreak() {
 	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/timebreak.parquet", path)
-	suite.Len(mockW.writtenData, 500)
+	suite.Len(mockW.writtenData, binanceKlinesLimit)
 	// Only one API call needed because time break condition was met
 	suite.Equal(1, mockAPI.callCount)
 }
 
-// TestDownloadFullPageWriteError tests write error during processing of a full page (500 records).
+// TestDownloadFullPageWriteError tests write error during processing of a full page.
 func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteError() {
-	// Create exactly 500 klines (full page) to trigger processing via the full-page path (lines 162-171)
-	fullPage := make([]*binance.Kline, 500)
+	// Create exactly binanceKlinesLimit klines (full page) to trigger the full-page processing path.
+	fullPage := make([]*binance.Kline, binanceKlinesLimit)
 	startTimeMs := int64(1704067200000)
-	endTimeMs := startTimeMs + int64(500*60000) // 500 minutes
+	endTimeMs := startTimeMs + int64(binanceKlinesLimit)*60000
 
-	for i := 0; i < 500; i++ {
+	for i := 0; i < binanceKlinesLimit; i++ {
 		openTime := startTimeMs + int64(i*60000)
 		fullPage[i] = &binance.Kline{
 			OpenTime:  openTime,
@@ -912,10 +919,10 @@ func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteError() {
 
 // TestDownloadFullPageWriteErrorWithFinalizeError tests write error during full page with finalize error.
 func (suite *BinanceClientTestSuite) TestDownloadFullPageWriteErrorWithFinalizeError() {
-	fullPage := make([]*binance.Kline, 500)
+	fullPage := make([]*binance.Kline, binanceKlinesLimit)
 	startTimeMs := int64(1704067200000)
 
-	for i := 0; i < 500; i++ {
+	for i := 0; i < binanceKlinesLimit; i++ {
 		openTime := startTimeMs + int64(i*60000)
 		fullPage[i] = &binance.Kline{
 			OpenTime:  openTime,
@@ -995,12 +1002,14 @@ func (suite *BinanceClientTestSuite) TestProcessKlinesWithInvalidNumbers() {
 func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
 	startTimeMs := int64(1704067200000)
 
-	// Create three pages: two full (500 each) and one partial (100)
-	page1 := make([]*binance.Kline, 500)
-	page2 := make([]*binance.Kline, 500)
-	page3 := make([]*binance.Kline, 100)
+	// Create three pages: two full and one partial (100)
+	const partialPageSize = 100
 
-	for i := 0; i < 500; i++ {
+	page1 := make([]*binance.Kline, binanceKlinesLimit)
+	page2 := make([]*binance.Kline, binanceKlinesLimit)
+	page3 := make([]*binance.Kline, partialPageSize)
+
+	for i := 0; i < binanceKlinesLimit; i++ {
 		openTime := startTimeMs + int64(i*60000)
 		page1[i] = &binance.Kline{
 			OpenTime:  openTime,
@@ -1013,8 +1022,8 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
 		}
 	}
 
-	for i := 0; i < 500; i++ {
-		openTime := startTimeMs + int64((500+i)*60000)
+	for i := 0; i < binanceKlinesLimit; i++ {
+		openTime := startTimeMs + int64((binanceKlinesLimit+i)*60000)
 		page2[i] = &binance.Kline{
 			OpenTime:  openTime,
 			Open:      "42100.50",
@@ -1026,8 +1035,8 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
 		}
 	}
 
-	for i := 0; i < 100; i++ {
-		openTime := startTimeMs + int64((1000+i)*60000)
+	for i := 0; i < partialPageSize; i++ {
+		openTime := startTimeMs + int64((2*binanceKlinesLimit+i)*60000)
 		page3[i] = &binance.Kline{
 			OpenTime:  openTime,
 			Open:      "42200.50",
@@ -1048,13 +1057,13 @@ func (suite *BinanceClientTestSuite) TestDownloadPaginationWithLargeDataset() {
 	client.ConfigWriter(mockW)
 
 	startDate := time.UnixMilli(startTimeMs)
-	endDate := time.UnixMilli(startTimeMs + int64(2000*60000)) // Far enough in the future
+	endDate := time.UnixMilli(startTimeMs + int64((2*binanceKlinesLimit+partialPageSize+10)*60000)) // Far enough in the future
 
 	path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, func(current float64, total float64, message string) {})
 	suite.NoError(err)
 	suite.Equal("/tmp/large.parquet", path)
-	// Should have written 1100 records (500 + 500 + 100)
-	suite.Len(mockW.writtenData, 1100)
+	// Should have written 2*binanceKlinesLimit + partialPageSize records
+	suite.Len(mockW.writtenData, 2*binanceKlinesLimit+partialPageSize)
 	suite.Equal(3, mockAPI.callCount)
 }
 
@@ -1102,9 +1111,9 @@ func (suite *BinanceClientTestSuite) TestDownloadAPIError_KeepsFileWhenPartialDa
 	_, err = os.Stat(tmpPath)
 	suite.Require().NoError(err, "temp file should exist before test")
 
-	// Create 500 klines for first page (triggers pagination)
-	firstPage := make([]*binance.Kline, 500)
-	for i := 0; i < 500; i++ {
+	// Create a full page of klines for first page (triggers pagination)
+	firstPage := make([]*binance.Kline, binanceKlinesLimit)
+	for i := 0; i < binanceKlinesLimit; i++ {
 		firstPage[i] = &binance.Kline{
 			OpenTime:  1704067200000 + int64(i*60000),
 			Open:      "42000.50",
@@ -1262,4 +1271,91 @@ func (suite *BinanceClientTestSuite) TestDownload_CancellationCleansUpFile() {
 	// Verify temp file was deleted
 	_, err = os.Stat(tmpPath)
 	suite.True(os.IsNotExist(err), "temp file should be deleted when cancelled with no data written")
+}
+
+// TestDownloadNilProgressCallback verifies that Download tolerates a nil
+// onProgress callback. The prefetch manager passes nil here, and a previous
+// regression caused EXC_BAD_ACCESS by invoking the nil func unconditionally.
+// Single-page path.
+func (suite *BinanceClientTestSuite) TestDownloadNilProgressCallback() {
+	klines := []*binance.Kline{
+		{
+			OpenTime:  1704067200000,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: 1704067259999,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{klines: klines}
+	mockW := &mockWriter{outputPath: "/tmp/nil_progress.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	suite.NotPanics(func() {
+		path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, nil)
+		suite.NoError(err)
+		suite.Equal("/tmp/nil_progress.parquet", path)
+		suite.Len(mockW.writtenData, 1)
+	})
+}
+
+// TestDownloadNilProgressCallbackPagination exercises the pagination path
+// (full page followed by a short page) with a nil progress callback,
+// guaranteeing the callback is invoked more than once if not nil-guarded.
+func (suite *BinanceClientTestSuite) TestDownloadNilProgressCallbackPagination() {
+	startTimeMs := int64(1704067200000)
+
+	firstPage := make([]*binance.Kline, binanceKlinesLimit)
+	for i := 0; i < binanceKlinesLimit; i++ {
+		openTime := startTimeMs + int64(i*60000)
+		firstPage[i] = &binance.Kline{
+			OpenTime:  openTime,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: openTime + 59999,
+		}
+	}
+
+	lastKlineCloseTime := firstPage[binanceKlinesLimit-1].CloseTime
+	secondPage := []*binance.Kline{
+		{
+			OpenTime:  lastKlineCloseTime + 1,
+			Open:      "42000.50",
+			High:      "42500.00",
+			Low:       "41800.00",
+			Close:     "42300.00",
+			Volume:    "1000.5",
+			CloseTime: lastKlineCloseTime + 60000,
+		},
+	}
+
+	mockAPI := &mockBinanceAPIClient{
+		klinesPerCall: [][]*binance.Kline{firstPage, secondPage},
+	}
+	mockW := &mockWriter{outputPath: "/tmp/nil_progress_pag.parquet"}
+
+	client := NewBinanceClientWithAPI(mockAPI, []string{"BTCUSDT"}, "1m")
+	client.ConfigWriter(mockW)
+
+	startDate := time.UnixMilli(startTimeMs)
+	endDate := time.UnixMilli(startTimeMs + int64(binanceKlinesLimit+10)*60000)
+
+	suite.NotPanics(func() {
+		path, err := client.Download(context.Background(), "BTCUSDT", startDate, endDate, 1, models.Minute, nil)
+		suite.NoError(err)
+		suite.Equal("/tmp/nil_progress_pag.parquet", path)
+		suite.Len(mockW.writtenData, binanceKlinesLimit+1)
+		suite.Equal(2, mockAPI.callCount)
+	})
 }

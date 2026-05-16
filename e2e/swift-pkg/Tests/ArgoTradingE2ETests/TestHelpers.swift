@@ -47,7 +47,9 @@ class MockArgoHelper: NSObject, SwiftargoArgoHelperProtocol {
         }
     }
 
-    func onProcessData(_ current: Int, total: Int, barsPerSecond: Double, realizedPnL: Double) throws {
+    func onProcessData(_ current: Int, total: Int, barsPerSecond: Double, realizedPnL: Double)
+        throws
+    {
         processDataCalled = true
         processDataCount += 1
 
@@ -210,6 +212,8 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var orderFilledCalled = false
     var errorCalled = false
     var strategyErrorCalled = false
+    var statusUpdateCalled = false
+    var prefetchProgressCalled = false
 
     // Store callback parameters for verification
     var lastSymbols: [String] = []
@@ -221,6 +225,12 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var orderPlacedCount: Int = 0
     var orderFilledCount: Int = 0
     var lastOrderJSON: String = ""
+    var statusUpdates: [String] = []
+    var prefetchProgressCount: Int = 0
+    var lastPrefetchSymbol: String = ""
+    var lastPrefetchCurrent: Double = 0
+    var lastPrefetchTotal: Double = 0
+    var lastPrefetchMessage: String = ""
 
     // Control callback behavior
     var shouldFailOnEngineStart = false
@@ -255,7 +265,8 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     }
 
     func onMarketData(
-        _ runId: String?, symbol: String?, timestamp: Int64, open: Double, high: Double, low: Double, close: Double,
+        _ runId: String?, symbol: String?, timestamp: Int64, open: Double, high: Double,
+        low: Double, close: Double,
         volume: Double
     ) throws {
         lastRunId = runId ?? ""
@@ -303,6 +314,22 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastError = err
     }
 
+    func onStatusUpdate(_ status: String?) throws {
+        statusUpdateCalled = true
+        statusUpdates.append(status ?? "")
+    }
+
+    func onPrefetchProgress(
+        _ symbol: String?, current: Double, total: Double, message: String?
+    ) throws {
+        prefetchProgressCalled = true
+        prefetchProgressCount += 1
+        lastPrefetchSymbol = symbol ?? ""
+        lastPrefetchCurrent = current
+        lastPrefetchTotal = total
+        lastPrefetchMessage = message ?? ""
+    }
+
     /// Reset all tracking state
     func reset() {
         engineStartCalled = false
@@ -312,6 +339,8 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         orderFilledCalled = false
         errorCalled = false
         strategyErrorCalled = false
+        statusUpdateCalled = false
+        prefetchProgressCalled = false
         lastSymbols = []
         lastInterval = ""
         lastPreviousDataPath = ""
@@ -321,6 +350,12 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         orderPlacedCount = 0
         orderFilledCount = 0
         lastOrderJSON = ""
+        statusUpdates = []
+        prefetchProgressCount = 0
+        lastPrefetchSymbol = ""
+        lastPrefetchCurrent = 0
+        lastPrefetchTotal = 0
+        lastPrefetchMessage = ""
         shouldFailOnEngineStart = false
         shouldFailOnMarketData = false
         shouldFailOnOrderPlaced = false

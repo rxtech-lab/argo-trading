@@ -46,6 +46,16 @@ type TradingEngineHelper interface {
 
 	// OnStrategyError is called when the strategy returns an error.
 	OnStrategyError(symbol string, timestamp int64, err error)
+
+	// OnStatusUpdate is called when the engine status changes.
+	// status is one of "prefetching", "gap_filling", "running", "stopped".
+	OnStatusUpdate(status string) error
+
+	// OnPrefetchProgress is called during historical data prefetch and gap-fill downloads.
+	// Use OnStatusUpdate to distinguish whether the current phase is prefetch or gap-fill.
+	// current/total are in the provider's reported units (Binance reports time in ms,
+	// Polygon reports request counts).
+	OnPrefetchProgress(symbol string, current float64, total float64, message string) error
 }
 
 // TradingProviderInfo contains metadata about a trading provider.
@@ -380,6 +390,18 @@ func (t *TradingEngine) createCallbacks() engine.LiveTradingCallbacks {
 		t.helper.OnStrategyError(data.Symbol, data.Time.UnixMilli(), err)
 	})
 	callbacks.OnStrategyError = &onStrategyError
+
+	// OnStatusUpdate callback
+	onStatusUpdate := engine.OnStatusUpdateCallback(func(status types.EngineStatus) error {
+		return t.helper.OnStatusUpdate(string(status))
+	})
+	callbacks.OnStatusUpdate = &onStatusUpdate
+
+	// OnPrefetchProgress callback
+	onPrefetchProgress := engine.OnPrefetchProgressCallback(func(symbol string, current, total float64, message string) error {
+		return t.helper.OnPrefetchProgress(symbol, current, total, message)
+	})
+	callbacks.OnPrefetchProgress = &onPrefetchProgress
 
 	return callbacks
 }

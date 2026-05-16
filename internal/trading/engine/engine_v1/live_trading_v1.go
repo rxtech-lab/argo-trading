@@ -517,6 +517,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			e.streamingWriter,
 			e.marketDataProvider.GetInterval(),
 			callbacks.OnStatusUpdate,
+			callbacks.OnPrefetchProgress,
 		)
 
 		// Execute prefetch before starting stream
