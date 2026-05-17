@@ -616,6 +616,13 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	)
 	stream := e.marketDataProvider.Stream(ctx)
 
+	// Cursors into the in-memory log/mark buffers: each tick only persists
+	// entries appended since the previous tick. Without this, GetLogs/GetMarks
+	// returns the full buffer every tick and the parquet writers (append-only)
+	// duplicate every prior entry on each new bar.
+	persistedLogs := 0
+	persistedMarks := 0
+
 	// Process each market data point from the stream
 	for data, err := range stream {
 		// Check for context cancellation
@@ -747,33 +754,40 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			changedCategories = append(changedCategories, engine.LiveTradingDataCategoryMarketData)
 		}
 
-		// Write marks to parquet if available
+		// Write marks to parquet if available. Only write marks appended since
+		// the previous tick — the marker buffer is cumulative (the strategy may
+		// query GetMarkers via the host API), so we slice from persistedMarks.
 		if e.marksWriter != nil && e.marker != nil {
 			marks, _ := e.marker.GetMarks()
-			if len(marks) > 0 {
+			if len(marks) > persistedMarks {
+				newMarks := marks[persistedMarks:]
 				changedCategories = append(changedCategories, engine.LiveTradingDataCategoryMarks)
-			}
-			for _, mark := range marks {
-				if err := e.marksWriter.Write(mark); err != nil {
-					e.log.Warn("Failed to write mark",
-						zap.Error(err),
-					)
+				for _, mark := range newMarks {
+					if err := e.marksWriter.Write(mark); err != nil {
+						e.log.Warn("Failed to write mark",
+							zap.Error(err),
+						)
+					}
 				}
+				persistedMarks = len(marks)
 			}
 		}
 
-		// Write logs to parquet if available
+		// Write logs to parquet if available. Same cursor pattern as marks:
+		// only persist entries appended since the previous tick.
 		if e.logsWriter != nil && e.logStorage != nil {
 			logs, _ := e.logStorage.GetLogs()
-			if len(logs) > 0 {
+			if len(logs) > persistedLogs {
+				newLogs := logs[persistedLogs:]
 				changedCategories = append(changedCategories, engine.LiveTradingDataCategoryLogs)
-			}
-			for _, logEntry := range logs {
-				if err := e.logsWriter.Write(logEntry); err != nil {
-					e.log.Warn("Failed to write log",
-						zap.Error(err),
-					)
+				for _, logEntry := range newLogs {
+					if err := e.logsWriter.Write(logEntry); err != nil {
+						e.log.Warn("Failed to write log",
+							zap.Error(err),
+						)
+					}
 				}
+				persistedLogs = len(logs)
 			}
 		}
 

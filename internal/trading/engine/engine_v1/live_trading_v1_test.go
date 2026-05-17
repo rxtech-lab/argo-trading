@@ -2,8 +2,10 @@ package engine_v1
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"iter"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/marcboeker/go-duckdb"
 	internalLog "github.com/rxtech-lab/argo-trading/internal/log"
 	"github.com/rxtech-lab/argo-trading/internal/trading/engine"
 	"github.com/rxtech-lab/argo-trading/internal/types"
@@ -21,8 +24,39 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// countParquetRows opens the parquet file with DuckDB and returns the row count.
+func countParquetRows(path string) (int, error) {
+	db, err := sql.Open("duckdb", ":memory:")
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	var count int
+	row := db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM read_parquet('%s')`, path))
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // wasmFilePath is the relative path to the example strategy WASM file.
 const wasmFilePath = "../../../../examples/strategy/strategy.wasm"
+
+// logEveryTickWasmPath is a tiny WASM strategy that emits one INFO log per
+// ProcessData call. Used by the live-trading e2e test that verifies every
+// strategy log lands in logs.parquet through the real WASM → gRPC → host →
+// LogStorage → tick-loop → writer pipeline. Build with
+// `cd e2e/backtest/wasm && make build`.
+const logEveryTickWasmPath = "../../../../e2e/backtest/wasm/log_every_tick/log_every_tick_plugin.wasm"
+
+// logInDeferWasmPath is a WASM strategy that emits a DEBUG log from inside a
+// deferred function at ProcessData exit. Real strategies (e.g. MultiConfirm)
+// use this pattern for HOLD/no-action lines, and zap drops DEBUG entries
+// from the running.log — so logs.parquet is the only way to verify those
+// logs are persisted. The e2e test guards against silent regressions in
+// either the WASM defer path or the host's level-agnostic LogStorage write.
+const logInDeferWasmPath = "../../../../e2e/backtest/wasm/log_in_defer/log_in_defer_plugin.wasm"
 
 // LiveTradingEngineV1TestSuite is the test suite for LiveTradingEngineV1.
 type LiveTradingEngineV1TestSuite struct {
@@ -1770,6 +1804,451 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_StrategyLogsViaApiArePersisted() 
 	s.Equal("BTCUSDT", logs[0].Symbol)
 	s.Equal(types.LogLevelInfo, logs[0].Level)
 	s.Equal(now.Unix(), logs[0].Timestamp.Unix())
+}
+
+// TestRun_LogsAndMarksNotDuplicatedAcrossTicks is a regression test for a bug
+// where every tick re-wrote the entire in-memory log/mark buffer to the
+// parquet writers. LiveTradingLog.GetLogs() and LiveTradingMarker.GetMarks()
+// return the full cumulative buffer (the strategy may query GetMarkers via the
+// host API), but the parquet writers are append-only. The tick loop must
+// track a cursor and only persist entries appended since the previous tick.
+//
+// Repro: a strategy emits one log + one mark on its first ProcessData call
+// only (e.g. an "X strategy started" startup log gated by tickCount == 0).
+// After streaming N bars, the parquet files should contain exactly 1 row each,
+// not N rows.
+func (s *LiveTradingEngineV1TestSuite) TestRun_LogsAndMarksNotDuplicatedAcrossTicks() {
+	tempDir, err := os.MkdirTemp("", "live-trading-no-dup-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{EnableLogging: true})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.Require().NotNil(e.logStorage)
+	s.Require().NotNil(e.marker)
+	s.Require().NotNil(e.logsWriter)
+	s.Require().NotNil(e.marksWriter)
+
+	const totalBars = 5
+
+	// Emit one log + one mark only on the very first bar — mirrors the
+	// `if tickCount == 0` pattern real strategies use for startup logs.
+	callCount := 0
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).DoAndReturn(func(data types.MarketData) error {
+		if callCount == 0 {
+			_ = e.logStorage.Log(internalLog.LogEntry{
+				Timestamp: data.Time,
+				Symbol:    data.Symbol,
+				Level:     types.LogLevelInfo,
+				Message:   "startup log",
+			})
+			_ = e.marker.Mark(data, types.Mark{
+				MarketDataId: data.Id,
+				Color:        types.MarkColorGreen,
+				Shape:        types.MarkShapeCircle,
+				Level:        types.MarkLevelInfo,
+				Title:        "startup mark",
+			})
+		}
+		callCount++
+		return nil
+	}).Times(totalBars)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := make([]types.MarketData, totalBars)
+	for i := 0; i < totalBars; i++ {
+		testData[i] = createTestMarketData("BTCUSDT", now.Add(time.Duration(i)*time.Minute), 50000+float64(i))
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	err = eng.Run(context.Background(), engine.LiveTradingCallbacks{})
+	s.Require().NoError(err)
+
+	// The in-memory buffers should still hold exactly one entry — the host API
+	// remains a cumulative view so strategies that call GetMarkers see prior marks.
+	logs, err := e.logStorage.GetLogs()
+	s.Require().NoError(err)
+	s.Len(logs, 1, "logStorage should still hold the one log the strategy emitted")
+
+	marks, err := e.marker.GetMarks()
+	s.Require().NoError(err)
+	s.Len(marks, 1, "marker should still hold the one mark the strategy emitted")
+
+	// The parquet files must contain exactly one row each, not totalBars rows.
+	// Before the fix, the tick loop re-wrote every cumulative entry on every
+	// bar — so logs.parquet ended up with totalBars copies of the same row.
+	runPath := e.sessionManager.GetCurrentRunPath()
+	logsPath := filepath.Join(runPath, "logs.parquet")
+	s.Require().FileExists(logsPath)
+	logsRows, err := countParquetRows(logsPath)
+	s.Require().NoError(err)
+	s.Equal(1, logsRows, "logs.parquet must contain exactly one row, not one-per-tick duplicates")
+
+	marksPath := filepath.Join(runPath, "marks.parquet")
+	s.Require().FileExists(marksPath)
+	marksRows, err := countParquetRows(marksPath)
+	s.Require().NoError(err)
+	s.Equal(1, marksRows, "marks.parquet must contain exactly one row, not one-per-tick duplicates")
+}
+
+// TestRun_StrategyLogsEveryTickAllPersisted is the symmetric counterpart to
+// TestRun_LogsAndMarksNotDuplicatedAcrossTicks. It guards the other direction
+// of the cursor fix: when a strategy logs on every ProcessData call, every
+// log must land in logs.parquet exactly once (N ticks → N rows). A naive
+// drain-on-write fix would have collapsed this to whichever subset survived
+// races between Log() and the writer; a cursor-stuck-at-0 fix would have
+// kept duplicating. Only an advancing cursor produces N distinct rows.
+//
+// Uses the host's StrategyApi (the same path WASM strategies take through
+// gRPC), so the test covers the real Log → LogStorage → tick-loop → writer
+// chain end to end.
+func (s *LiveTradingEngineV1TestSuite) TestRun_StrategyLogsEveryTickAllPersisted() {
+	tempDir, err := os.MkdirTemp("", "live-trading-log-every-tick-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{EnableLogging: true})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.Require().NotNil(e.logStorage)
+	s.Require().NotNil(e.logsWriter)
+
+	const totalBars = 7
+
+	// Capture the StrategyApi the engine binds at init, then route every
+	// ProcessData call through api.Log() — the same path a real WASM strategy
+	// takes via gRPC. The message embeds the bar index so we can assert
+	// every distinct bar's log made it through.
+	var capturedAPI strategypb.StrategyApi
+	callIdx := 0
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).DoAndReturn(func(api strategypb.StrategyApi) error {
+		capturedAPI = api
+		return nil
+	})
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).DoAndReturn(func(data types.MarketData) error {
+		s.Require().NotNil(capturedAPI, "engine must bind StrategyApi before ProcessData")
+		_, logErr := capturedAPI.Log(context.Background(), &strategypb.LogRequest{
+			Level:   strategypb.LogLevel_LOG_LEVEL_INFO,
+			Message: fmt.Sprintf("tick %d", callIdx),
+		})
+		callIdx++
+		return logErr
+	}).Times(totalBars)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := make([]types.MarketData, totalBars)
+	for i := 0; i < totalBars; i++ {
+		testData[i] = createTestMarketData("BTCUSDT", now.Add(time.Duration(i)*time.Minute), 50000+float64(i))
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	err = eng.Run(context.Background(), engine.LiveTradingCallbacks{})
+	s.Require().NoError(err)
+
+	// In-memory buffer should hold all N logs (cumulative view preserved).
+	logs, err := e.logStorage.GetLogs()
+	s.Require().NoError(err)
+	s.Require().Len(logs, totalBars, "logStorage should hold one log per tick")
+
+	// And the parquet file should have exactly N rows — not 1 (drain bug),
+	// not N*(N+1)/2 (re-write-all bug). Verify the messages match the
+	// per-tick payloads to rule out N copies of the same row.
+	runPath := e.sessionManager.GetCurrentRunPath()
+	logsPath := filepath.Join(runPath, "logs.parquet")
+	s.Require().FileExists(logsPath)
+
+	rows, err := countParquetRows(logsPath)
+	s.Require().NoError(err)
+	s.Equal(totalBars, rows, "logs.parquet must contain one row per tick")
+
+	db, err := sql.Open("duckdb", ":memory:")
+	s.Require().NoError(err)
+	defer db.Close()
+
+	res, err := db.Query(fmt.Sprintf(`SELECT message FROM read_parquet('%s') ORDER BY timestamp ASC`, logsPath))
+	s.Require().NoError(err)
+	defer res.Close()
+
+	messages := []string{}
+	for res.Next() {
+		var msg string
+		s.Require().NoError(res.Scan(&msg))
+		messages = append(messages, msg)
+	}
+	s.Require().NoError(res.Err())
+
+	expected := make([]string, totalBars)
+	for i := 0; i < totalBars; i++ {
+		expected[i] = fmt.Sprintf("tick %d", i)
+	}
+	s.Equal(expected, messages, "every tick's log must be persisted exactly once with the original payload")
+}
+
+// TestRun_LogEveryTickWasmStrategy_E2E loads the real log_every_tick WASM
+// strategy and streams N bars through a mock provider. The strategy emits one
+// log per ProcessData call; the test asserts logs.parquet contains exactly N
+// distinct rows with the expected per-bar payloads.
+//
+// This is the full end-to-end pipeline: real WASM module instantiated via
+// wazero → go-plugin gRPC marshal/unmarshal → host StrategyApi.Log handler →
+// LiveTradingLog buffer → tick-loop cursor → LogsWriter → parquet. The
+// previously-added mock-strategy tests cover the host-side half; this one
+// also covers the WASM-side half.
+func (s *LiveTradingEngineV1TestSuite) TestRun_LogEveryTickWasmStrategy_E2E() {
+	absPath, err := filepath.Abs(logEveryTickWasmPath)
+	if err != nil || !fileExists(absPath) {
+		s.T().Skipf("log_every_tick WASM not found at %s. Run `cd e2e/backtest/wasm && make build`.", absPath)
+	}
+
+	tempDir, err := os.MkdirTemp("", "live-trading-log-every-tick-e2e")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{EnableLogging: true})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
+	s.Require().NoError(err)
+
+	err = eng.LoadStrategyFromFile(absPath)
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.Require().NotNil(e.logStorage)
+	s.Require().NotNil(e.logsWriter)
+
+	const totalBars = 6
+	now := time.Now().Truncate(time.Minute)
+	testData := make([]types.MarketData, totalBars)
+	for i := 0; i < totalBars; i++ {
+		testData[i] = createTestMarketData("BTCUSDT", now.Add(time.Duration(i)*time.Minute), 50000+float64(i))
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	err = eng.Run(context.Background(), engine.LiveTradingCallbacks{})
+	s.Require().NoError(err)
+
+	// In-memory buffer should hold one log per bar.
+	logs, err := e.logStorage.GetLogs()
+	s.Require().NoError(err)
+	s.Require().Len(logs, totalBars, "logStorage should hold one log per bar")
+
+	// And the parquet file should have exactly N rows with the per-bar payload
+	// the WASM strategy emitted. This is what the user originally reported as
+	// "logs.parquet only has one log even we log everytime" — that bug would
+	// surface here as either 1 row (drain-too-eagerly) or N*(N+1)/2 rows
+	// (re-write-all). The cursor fix produces exactly N.
+	runPath := e.sessionManager.GetCurrentRunPath()
+	logsPath := filepath.Join(runPath, "logs.parquet")
+	s.Require().FileExists(logsPath)
+
+	rows, err := countParquetRows(logsPath)
+	s.Require().NoError(err)
+	s.Equal(totalBars, rows, "logs.parquet must contain exactly one row per bar")
+
+	db, err := sql.Open("duckdb", ":memory:")
+	s.Require().NoError(err)
+	defer db.Close()
+
+	res, err := db.Query(fmt.Sprintf(`SELECT message FROM read_parquet('%s') ORDER BY timestamp ASC`, logsPath))
+	s.Require().NoError(err)
+	defer res.Close()
+
+	messages := []string{}
+	for res.Next() {
+		var msg string
+		s.Require().NoError(res.Scan(&msg))
+		messages = append(messages, msg)
+	}
+	s.Require().NoError(res.Err())
+
+	expected := make([]string, totalBars)
+	for i := 0; i < totalBars; i++ {
+		expected[i] = fmt.Sprintf("tick BTCUSDT close=%.4f", 50000+float64(i))
+	}
+	s.Equal(expected, messages, "every WASM strategy log must reach logs.parquet exactly once")
+}
+
+// TestRun_DebugLogFromDefer_E2E verifies a real WASM strategy that emits a
+// DEBUG log from inside a deferred function at ProcessData exit. zap drops
+// DEBUG, so the running.log won't see these entries — logs.parquet is the
+// only persistent record. The test asserts N bars produce N debug rows.
+//
+// This guards two regressions:
+//   - Host's StrategyApi.Log silently dropping DEBUG before LogStorage write
+//     (would leave parquet empty even when WASM did emit DEBUG)
+//   - WASM/wazero/go-plugin breaking deferred host calls (the BUY/SELL paths
+//     log inline so they would still work; the HOLD path uses defer and
+//     would silently disappear)
+func (s *LiveTradingEngineV1TestSuite) TestRun_DebugLogFromDefer_E2E() {
+	absPath, err := filepath.Abs(logInDeferWasmPath)
+	if err != nil || !fileExists(absPath) {
+		s.T().Skipf("log_in_defer WASM not found at %s. Run `cd e2e/backtest/wasm && make build`.", absPath)
+	}
+
+	tempDir, err := os.MkdirTemp("", "live-trading-debug-defer-e2e")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{EnableLogging: true})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
+	s.Require().NoError(err)
+
+	err = eng.LoadStrategyFromFile(absPath)
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.Require().NotNil(e.logStorage)
+	s.Require().NotNil(e.logsWriter)
+
+	const totalBars = 5
+	now := time.Now().Truncate(time.Minute)
+	testData := make([]types.MarketData, totalBars)
+	for i := 0; i < totalBars; i++ {
+		testData[i] = createTestMarketData("BTCUSDT", now.Add(time.Duration(i)*time.Minute), 50000+float64(i))
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	err = eng.Run(context.Background(), engine.LiveTradingCallbacks{})
+	s.Require().NoError(err)
+
+	// In-memory buffer should hold one DEBUG entry per bar.
+	logs, err := e.logStorage.GetLogs()
+	s.Require().NoError(err)
+	s.Require().Len(logs, totalBars, "logStorage should hold one DEBUG entry per bar")
+	for i, l := range logs {
+		s.Equal(types.LogLevelDebug, l.Level, "entry %d must be DEBUG", i)
+	}
+
+	// Parquet must persist all DEBUG rows — zap drops them but LogStorage
+	// (and therefore the parquet writer) is level-agnostic.
+	runPath := e.sessionManager.GetCurrentRunPath()
+	logsPath := filepath.Join(runPath, "logs.parquet")
+	s.Require().FileExists(logsPath)
+
+	rows, err := countParquetRows(logsPath)
+	s.Require().NoError(err)
+	s.Equal(totalBars, rows, "logs.parquet must contain one DEBUG row per bar")
+
+	db, err := sql.Open("duckdb", ":memory:")
+	s.Require().NoError(err)
+	defer db.Close()
+
+	res, err := db.Query(fmt.Sprintf(
+		`SELECT level, message FROM read_parquet('%s') ORDER BY timestamp ASC`,
+		logsPath,
+	))
+	s.Require().NoError(err)
+	defer res.Close()
+
+	type row struct{ level, message string }
+	rowsRead := []row{}
+	for res.Next() {
+		var r row
+		s.Require().NoError(res.Scan(&r.level, &r.message))
+		rowsRead = append(rowsRead, r)
+	}
+	s.Require().NoError(res.Err())
+
+	for i, r := range rowsRead {
+		s.Equal("debug", r.level, "parquet row %d must be debug level", i)
+		s.Equal(fmt.Sprintf("defer HOLD symbol=BTCUSDT close=%.4f", 50000+float64(i)), r.message,
+			"parquet row %d must carry the deferred log's payload", i)
+	}
 }
 
 // ============================================================================
