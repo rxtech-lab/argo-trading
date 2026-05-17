@@ -32,6 +32,11 @@ type mockTradingHelper struct {
 	providerStatusCalls  int
 	marketDataStatus     string
 	tradingStatus        string
+	dataChangedCalls     int
+	lastDataChangedRunID string
+	lastDataChangedCats  []string
+	lastDataChangedFinal bool
+	lastDataChangedSeq   int64
 	lastSymbols          []string
 	lastInterval         string
 	lastPreviousDataPath string
@@ -114,6 +119,20 @@ func (m *mockTradingHelper) OnProviderStatusChange(marketDataStatus string, trad
 	m.providerStatusCalls++
 	m.marketDataStatus = marketDataStatus
 	m.tradingStatus = tradingStatus
+	return nil
+}
+
+func (m *mockTradingHelper) OnLiveDataChanged(runId string, categories StringCollection, finalized bool, sequence int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dataChangedCalls++
+	m.lastDataChangedRunID = runId
+	m.lastDataChangedCats = make([]string, categories.Size())
+	for i := 0; i < categories.Size(); i++ {
+		m.lastDataChangedCats[i] = categories.Get(i)
+	}
+	m.lastDataChangedFinal = finalized
+	m.lastDataChangedSeq = sequence
 	return nil
 }
 

@@ -59,6 +59,21 @@ type TradingEngineHelper interface {
 
 	// OnProviderStatusChange is called when market data or trading provider connection status changes.
 	OnProviderStatusChange(marketDataStatus string, tradingStatus string) error
+
+	// OnLiveDataChanged is a coalesced reload/invalidation hint emitted after each
+	// per-tick batch of persistence writes and once more on engine stop with
+	// finalized=true.
+	//
+	//   - runId:      session run ID; empty when persistence is disabled.
+	//   - categories: which data groups were written in this batch. Each entry is
+	//     one of: "market_data", "trades", "orders", "marks", "logs", "stats".
+	//   - finalized:  true on the final emission after the engine has stopped and
+	//     all writers have flushed. Treat as "force full reload".
+	//   - sequence:   monotonically increasing within a single Run(), starting at 1.
+	//
+	// Consumers should debounce reloads (e.g. ~500ms) and only refresh the
+	// surfaces matching the reported categories.
+	OnLiveDataChanged(runId string, categories StringCollection, finalized bool, sequence int64) error
 }
 
 // TradingProviderInfo contains metadata about a trading provider.
@@ -411,6 +426,17 @@ func (t *TradingEngine) createCallbacks() engine.LiveTradingCallbacks {
 		return t.helper.OnProviderStatusChange(string(status.MarketDataStatus), string(status.TradingStatus))
 	})
 	callbacks.OnProviderStatusChange = &onProviderStatusChange
+
+	// OnLiveDataChanged callback
+	onLiveDataChanged := engine.OnLiveDataChangedCallback(func(runID string, categories []engine.LiveTradingDataCategory, finalized bool, sequence int64) error {
+		items := make([]string, len(categories))
+		for i, c := range categories {
+			items[i] = string(c)
+		}
+
+		return t.helper.OnLiveDataChanged(runID, &StringArray{items: items}, finalized, sequence)
+	})
+	callbacks.OnLiveDataChanged = &onLiveDataChanged
 
 	return callbacks
 }

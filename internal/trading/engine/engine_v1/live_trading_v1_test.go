@@ -16,6 +16,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/rxtech-lab/argo-trading/mocks"
+	strategypb "github.com/rxtech-lab/argo-trading/pkg/strategy"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 )
@@ -1681,6 +1682,94 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_WritesLogs() {
 	// Verify logs file was created
 	logsPath := filepath.Join(e.sessionManager.GetCurrentRunPath(), "logs.parquet")
 	s.FileExists(logsPath)
+}
+
+// TestRun_StrategyLogsViaApiArePersisted is a regression test for a bug where the
+// engine bound the WASM strategy API to one RuntimeContext at init time but
+// mutated CurrentMarketData on a *different* context inside Run(). The host's
+// Log handler gates persistence on `runtimeContext.CurrentMarketData != nil`,
+// so the strategy's api.Log() calls silently dropped on the floor and
+// logs.parquet stayed empty for the entire session.
+//
+// This test exercises the real strategy → host API path: it captures the
+// StrategyApi the engine passes to InitializeApi, then has the mock strategy
+// invoke api.Log() from inside ProcessData (the same path a WASM strategy
+// takes through gRPC). If the engine ever reverts to allocating a separate
+// context for the tick loop, CurrentMarketData will be nil on the bound
+// context and this test will fail.
+func (s *LiveTradingEngineV1TestSuite) TestRun_StrategyLogsViaApiArePersisted() {
+	tempDir, err := os.MkdirTemp("", "live-trading-strategy-api-logs-test")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	eng, err := NewLiveTradingEngineV1()
+	s.Require().NoError(err)
+
+	err = eng.Initialize(engine.LiveTradingEngineConfig{EnableLogging: true})
+	s.Require().NoError(err)
+
+	err = eng.SetDataOutputPath(tempDir)
+	s.Require().NoError(err)
+
+	e := eng.(*LiveTradingEngineV1)
+	s.Require().NotNil(e.logStorage)
+
+	// Capture the StrategyApi the engine binds to the strategy at init time —
+	// this is the same object a real WASM strategy receives via go-plugin.
+	var capturedAPI strategypb.StrategyApi
+	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
+	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
+	mockStrategy.EXPECT().InitializeApi(gomock.Any()).DoAndReturn(func(api strategypb.StrategyApi) error {
+		capturedAPI = api
+		return nil
+	})
+	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
+	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
+	mockStrategy.EXPECT().ProcessData(gomock.Any()).DoAndReturn(func(data types.MarketData) error {
+		s.Require().NotNil(capturedAPI, "engine must bind StrategyApi before ProcessData")
+		_, logErr := capturedAPI.Log(context.Background(), &strategypb.LogRequest{
+			Level:   strategypb.LogLevel_LOG_LEVEL_INFO,
+			Message: "strategy log via api",
+		})
+		return logErr
+	}).Times(1)
+
+	err = eng.LoadStrategy(mockStrategy)
+	s.Require().NoError(err)
+
+	now := time.Now()
+	testData := []types.MarketData{
+		createTestMarketData("BTCUSDT", now, 50000),
+	}
+
+	mockProvider := mocks.NewMockProvider(s.ctrl)
+	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
+	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
+	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
+
+	err = eng.SetMarketDataProvider(mockProvider)
+	s.Require().NoError(err)
+
+	mockTrading := mocks.NewMockTradingSystemProvider(s.ctrl)
+	mockTrading.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
+	mockTrading.EXPECT().CheckConnection(gomock.Any()).Return(nil).AnyTimes()
+	err = eng.SetTradingProvider(mockTrading)
+	s.Require().NoError(err)
+
+	err = eng.Run(context.Background(), engine.LiveTradingCallbacks{})
+	s.Require().NoError(err)
+
+	// The strategy's api.Log() call must have flowed all the way through to
+	// LogStorage. If CurrentMarketData was nil on the bound context (the bug),
+	// the host handler silently skips persistence and logs stays empty.
+	logs, err := e.logStorage.GetLogs()
+	s.Require().NoError(err)
+	s.Require().Len(logs, 1, "strategy log via api.Log() should be persisted to LogStorage")
+	s.Equal("strategy log via api", logs[0].Message)
+	s.Equal("BTCUSDT", logs[0].Symbol)
+	s.Equal(types.LogLevelInfo, logs[0].Level)
+	s.Equal(now.Unix(), logs[0].Timestamp.Unix())
 }
 
 // ============================================================================
