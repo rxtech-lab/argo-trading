@@ -103,10 +103,39 @@ func (w *StreamingDuckDBWriter) Write(data types.MarketData) error {
 		return fmt.Errorf("writer not initialized")
 	}
 
-	id := uuid.New().String()
+	if err := w.insertRow(data); err != nil {
+		return err
+	}
 
-	// Use INSERT OR REPLACE for upsert behavior (handles duplicates)
-	_, err := w.db.Exec(`
+	// Export to parquet after each write
+	if err := w.exportToParquet(); err != nil {
+		return fmt.Errorf("failed to export to parquet: %w", err)
+	}
+
+	return nil
+}
+
+// WriteBatch persists multiple market data points and exports to parquet exactly once.
+// This is dramatically faster than repeated Write calls for bulk loads (prefetch),
+// because exporting the parquet file requires scanning the entire table.
+func (w *StreamingDuckDBWriter) WriteBatch(data []types.MarketData) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.db == nil {
+		return fmt.Errorf("writer not initialized")
+	}
+
+	tx, err := w.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	stmt, err := tx.Prepare(`
 		INSERT INTO market_data (id, time, symbol, open, high, low, close, volume)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (symbol, time) DO UPDATE SET
@@ -116,12 +145,32 @@ func (w *StreamingDuckDBWriter) Write(data types.MarketData) error {
 			low = excluded.low,
 			close = excluded.close,
 			volume = excluded.volume
-	`, id, data.Time, data.Symbol, data.Open, data.High, data.Low, data.Close, data.Volume)
+	`)
 	if err != nil {
-		return fmt.Errorf("failed to insert data: %w", err)
+		_ = tx.Rollback()
+
+		return fmt.Errorf("failed to prepare batch insert: %w", err)
 	}
 
-	// Export to parquet after each write
+	for _, d := range data {
+		if _, err := stmt.Exec(uuid.New().String(), d.Time, d.Symbol, d.Open, d.High, d.Low, d.Close, d.Volume); err != nil {
+			_ = stmt.Close()
+			_ = tx.Rollback()
+
+			return fmt.Errorf("failed to insert batch row: %w", err)
+		}
+	}
+
+	if err := stmt.Close(); err != nil {
+		_ = tx.Rollback()
+
+		return fmt.Errorf("failed to close statement: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit batch: %w", err)
+	}
+
 	if err := w.exportToParquet(); err != nil {
 		return fmt.Errorf("failed to export to parquet: %w", err)
 	}
@@ -179,6 +228,26 @@ func (w *StreamingDuckDBWriter) Close() error {
 	return nil
 }
 
+// insertRow upserts a single row into the in-memory table. Caller must hold w.mu.
+func (w *StreamingDuckDBWriter) insertRow(data types.MarketData) error {
+	_, err := w.db.Exec(`
+		INSERT INTO market_data (id, time, symbol, open, high, low, close, volume)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (symbol, time) DO UPDATE SET
+			id = excluded.id,
+			open = excluded.open,
+			high = excluded.high,
+			low = excluded.low,
+			close = excluded.close,
+			volume = excluded.volume
+	`, uuid.New().String(), data.Time, data.Symbol, data.Open, data.High, data.Low, data.Close, data.Volume)
+	if err != nil {
+		return fmt.Errorf("failed to insert data: %w", err)
+	}
+
+	return nil
+}
+
 // exportToParquet exports the current data to the parquet file.
 func (w *StreamingDuckDBWriter) exportToParquet() error {
 	_, err := w.db.Exec(fmt.Sprintf(`
@@ -192,5 +261,8 @@ func (w *StreamingDuckDBWriter) exportToParquet() error {
 	return nil
 }
 
-// Verify StreamingDuckDBWriter implements MarketDataWriter interface.
-var _ MarketDataWriter = (*StreamingDuckDBWriter)(nil)
+// Verify StreamingDuckDBWriter implements MarketDataWriter and BatchWriter.
+var (
+	_ MarketDataWriter = (*StreamingDuckDBWriter)(nil)
+	_ BatchWriter      = (*StreamingDuckDBWriter)(nil)
+)

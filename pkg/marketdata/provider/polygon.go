@@ -248,7 +248,9 @@ func (c *PolygonClient) Download(ctx context.Context, ticker string, startDate t
 		timeElapsed := currentTimeMillis - startTimeMillis
 
 		// Report progress based on time elapsed vs total time range
-		onProgress(float64(timeElapsed), float64(totalTimeRange), fmt.Sprintf("Downloading %s", ticker))
+		if onProgress != nil {
+			onProgress(float64(timeElapsed), float64(totalTimeRange), fmt.Sprintf("Downloading %s", ticker))
+		}
 
 		marketData := types.MarketData{
 			Id:     "",

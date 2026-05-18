@@ -666,3 +666,44 @@ func (suite *PolygonClientTestSuite) TestDownload_CancellationCleansUpFile() {
 	_, err = os.Stat(tmpPath)
 	suite.True(os.IsNotExist(err), "temp file should be deleted when cancelled with no data written")
 }
+
+// TestDownloadNilProgressCallback verifies that Download tolerates a nil
+// onProgress callback. The prefetch manager passes nil here, and a previous
+// regression caused EXC_BAD_ACCESS by invoking the nil func unconditionally.
+func (suite *PolygonClientTestSuite) TestDownloadNilProgressCallback() {
+	aggs := []models.Agg{
+		{
+			Timestamp: models.Millis(time.Date(2024, 1, 1, 9, 30, 0, 0, time.UTC)),
+			Open:      100.0,
+			High:      101.0,
+			Low:       99.0,
+			Close:     100.5,
+			Volume:    1000000,
+		},
+		{
+			Timestamp: models.Millis(time.Date(2024, 1, 1, 9, 31, 0, 0, time.UTC)),
+			Open:      100.5,
+			High:      102.0,
+			Low:       100.0,
+			Close:     101.5,
+			Volume:    1500000,
+		},
+	}
+
+	mockIter := &mockPolygonIterator{aggs: aggs}
+	mockAPI := &mockPolygonAPIClient{iterator: mockIter}
+	mockW := &mockWriter{outputPath: "/tmp/nil_progress.parquet"}
+
+	client := NewPolygonClientWithAPI(mockAPI, []string{"SPY"}, "1m")
+	client.ConfigWriter(mockW)
+
+	startDate := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	suite.NotPanics(func() {
+		path, err := client.Download(context.Background(), "SPY", startDate, endDate, 1, models.Minute, nil)
+		suite.NoError(err)
+		suite.Equal("/tmp/nil_progress.parquet", path)
+		suite.Len(mockW.writtenData, 2)
+	})
+}

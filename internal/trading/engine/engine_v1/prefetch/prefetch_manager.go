@@ -24,6 +24,7 @@ type PrefetchManager struct {
 	streamingWriter  *writer.StreamingDuckDBWriter
 	logger           *logger.Logger
 	onStatusUpdate   *engine.OnStatusUpdateCallback
+	onProgress       *engine.OnPrefetchProgressCallback
 	parquetPath      string
 	interval         string
 	gapToleranceUnit time.Duration
@@ -37,6 +38,7 @@ func NewPrefetchManager(log *logger.Logger) *PrefetchManager {
 		streamingWriter:  nil,
 		logger:           log,
 		onStatusUpdate:   nil,
+		onProgress:       nil,
 		parquetPath:      "",
 		interval:         "",
 		gapToleranceUnit: time.Minute,
@@ -50,11 +52,13 @@ func (p *PrefetchManager) Initialize(
 	streamingWriter *writer.StreamingDuckDBWriter,
 	interval string,
 	onStatusUpdate *engine.OnStatusUpdateCallback,
+	onProgress *engine.OnPrefetchProgressCallback,
 ) {
 	p.config = config
 	p.provider = prov
 	p.streamingWriter = streamingWriter
 	p.onStatusUpdate = onStatusUpdate
+	p.onProgress = onProgress
 	p.parquetPath = streamingWriter.GetOutputPath()
 	p.interval = interval
 	p.gapToleranceUnit = parseIntervalDuration(interval)
@@ -153,6 +157,21 @@ func (p *PrefetchManager) emitStatus(status types.EngineStatus) {
 	}
 }
 
+// progressFnForSymbol returns a provider.OnDownloadProgress adapter that forwards
+// progress to the engine-level OnPrefetchProgressCallback with the symbol attached.
+// Returns nil when no progress callback is configured.
+//
+//nolint:funcorder // helper method used by exported methods
+func (p *PrefetchManager) progressFnForSymbol(symbol string) provider.OnDownloadProgress {
+	if p.onProgress == nil {
+		return nil
+	}
+
+	return func(current, total float64, message string) {
+		_ = (*p.onProgress)(symbol, current, total, message)
+	}
+}
+
 // ExecutePrefetch downloads historical data for the specified symbols.
 // This is Phase 1 of the prefetch process.
 func (p *PrefetchManager) ExecutePrefetch(ctx context.Context, symbols []string) error {
@@ -205,12 +224,37 @@ func (p *PrefetchManager) calculateStartTime() time.Time {
 }
 
 // downloadSymbolData downloads historical data for a single symbol.
+// If on-disk data already exists for the symbol and its last timestamp is newer
+// than the requested startTime, resume from there to avoid re-downloading bars
+// that are already stored. This makes engine restarts cheap.
 //
 //nolint:funcorder // helper method used by exported methods
 func (p *PrefetchManager) downloadSymbolData(ctx context.Context, symbol string, startTime time.Time) error {
+	effectiveStart := startTime
+	if lastStored, err := p.GetLastStoredTimestamp(symbol); err == nil {
+		resumeFrom := lastStored.Add(p.gapToleranceUnit)
+		if resumeFrom.After(effectiveStart) {
+			p.logger.Info("Resuming prefetch from last stored timestamp",
+				zap.String("symbol", symbol),
+				zap.Time("last_stored", lastStored),
+				zap.Time("resume_from", resumeFrom),
+			)
+
+			effectiveStart = resumeFrom
+		}
+	}
+
+	if !effectiveStart.Before(time.Now()) {
+		p.logger.Info("Stored data already covers requested window, skipping download",
+			zap.String("symbol", symbol),
+		)
+
+		return nil
+	}
+
 	p.logger.Info("Downloading historical data",
 		zap.String("symbol", symbol),
-		zap.Time("start", startTime),
+		zap.Time("start", effectiveStart),
 	)
 
 	// Configure the provider to write to the streaming writer
@@ -220,11 +264,11 @@ func (p *PrefetchManager) downloadSymbolData(ctx context.Context, symbol string,
 	_, err := p.provider.Download(
 		ctx,
 		symbol,
-		startTime,
+		effectiveStart,
 		time.Now(),
 		intervalToMultiplier(p.interval),
 		intervalToTimespan(p.interval),
-		nil, // No progress callback
+		p.progressFnForSymbol(symbol),
 	)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
@@ -321,7 +365,7 @@ func (p *PrefetchManager) FillGap(ctx context.Context, symbol string, from time.
 		to,
 		intervalToMultiplier(p.interval),
 		intervalToTimespan(p.interval),
-		nil,
+		p.progressFnForSymbol(symbol),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to fill gap: %w", err)

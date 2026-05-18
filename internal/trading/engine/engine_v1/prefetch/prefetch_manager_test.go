@@ -14,6 +14,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/trading/engine"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/mocks"
+	"github.com/rxtech-lab/argo-trading/pkg/marketdata/provider"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/writer"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
@@ -239,6 +240,7 @@ func (s *PrefetchManagerTestSuite) TestExecutePrefetch_Enabled_Success() {
 		streamingWriter,
 		"1m",
 		nil,
+		nil,
 	)
 
 	ctx := context.Background()
@@ -293,6 +295,7 @@ func (s *PrefetchManagerTestSuite) TestExecutePrefetch_Enabled_PartialFailure() 
 		streamingWriter,
 		"1m",
 		nil,
+		nil,
 	)
 
 	ctx := context.Background()
@@ -346,6 +349,7 @@ func (s *PrefetchManagerTestSuite) TestHandleStreamStart_NoStoredData() {
 		streamingWriter,
 		"1m",
 		&onStatusUpdate,
+		nil,
 	)
 
 	ctx := context.Background()
@@ -606,6 +610,7 @@ func (s *PrefetchManagerTestSuite) TestFillGap_Success() {
 		streamingWriter,
 		"1m",
 		&onStatusUpdate,
+		nil,
 	)
 
 	ctx := context.Background()
@@ -654,6 +659,7 @@ func (s *PrefetchManagerTestSuite) TestFillGap_DownloadFailure() {
 		mockProvider,
 		streamingWriter,
 		"1m",
+		nil,
 		nil,
 	)
 
@@ -712,6 +718,7 @@ func (s *PrefetchManagerTestSuite) TestExecutePrefetch_EmitsStatus() {
 		streamingWriter,
 		"1m",
 		&onStatusUpdate,
+		nil,
 	)
 
 	ctx := context.Background()
@@ -720,4 +727,72 @@ func (s *PrefetchManagerTestSuite) TestExecutePrefetch_EmitsStatus() {
 
 	// Should emit Prefetching status
 	s.Contains(statusUpdates, types.EngineStatusPrefetching)
+}
+
+func (s *PrefetchManagerTestSuite) TestExecutePrefetch_EmitsDownloadProgress() {
+	ctrl := gomock.NewController(s.T())
+	defer ctrl.Finish()
+
+	tempDir, err := os.MkdirTemp("", "prefetch_test_*")
+	s.Require().NoError(err)
+	defer os.RemoveAll(tempDir)
+
+	streamingWriter := writer.NewStreamingDuckDBWriter(tempDir, "test", "1m")
+	err = streamingWriter.Initialize()
+	s.Require().NoError(err)
+	defer streamingWriter.Close()
+
+	mockProvider := mocks.NewMockProvider(ctrl)
+	mockProvider.EXPECT().ConfigWriter(gomock.Any()).Times(1)
+	// The mock's Download is invoked with a non-nil onProgress; invoke it from
+	// within the mock to verify the adapter forwards to our callback.
+	mockProvider.EXPECT().Download(
+		gomock.Any(),
+		"BTCUSDT",
+		gomock.Any(),
+		gomock.Any(),
+		1,
+		models.Minute,
+		gomock.Any(),
+	).DoAndReturn(func(_ context.Context, _ string, _ time.Time, _ time.Time, _ int, _ models.Timespan, onProgress provider.OnDownloadProgress) (string, error) {
+		s.Require().NotNil(onProgress, "prefetch manager should forward a non-nil progress callback")
+		onProgress(50, 100, "downloading")
+		return "", nil
+	})
+
+	type progressEvent struct {
+		symbol  string
+		current float64
+		total   float64
+		message string
+	}
+	var events []progressEvent
+	onProgress := engine.OnPrefetchProgressCallback(func(symbol string, current, total float64, message string) error {
+		events = append(events, progressEvent{symbol, current, total, message})
+		return nil
+	})
+
+	pm := NewPrefetchManager(s.logger)
+	pm.Initialize(
+		engine.PrefetchConfig{
+			Enabled:       true,
+			StartTimeType: "days",
+			Days:          7,
+		},
+		mockProvider,
+		streamingWriter,
+		"1m",
+		nil,
+		&onProgress,
+	)
+
+	ctx := context.Background()
+	err = pm.ExecutePrefetch(ctx, []string{"BTCUSDT"})
+	s.NoError(err)
+
+	s.Require().Len(events, 1)
+	s.Equal("BTCUSDT", events[0].symbol)
+	s.Equal(50.0, events[0].current)
+	s.Equal(100.0, events[0].total)
+	s.Equal("downloading", events[0].message)
 }

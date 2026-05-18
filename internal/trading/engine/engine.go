@@ -44,9 +44,40 @@ type OnStatsUpdateCallback func(stats types.LiveTradeStats) error
 // OnStatusUpdateCallback is called when engine status changes.
 type OnStatusUpdateCallback func(status types.EngineStatus) error
 
+// OnPrefetchProgressCallback is called during historical data prefetch and gap-fill
+// downloads with per-symbol progress. current/total are in the provider's reported units
+// (Binance reports time elapsed in ms vs. total range; Polygon reports request counts).
+type OnPrefetchProgressCallback func(symbol string, current float64, total float64, message string) error
+
 // OnProviderStatusChangeCallback is called when provider connection status changes.
 // It receives the current status of both market data and trading providers.
 type OnProviderStatusChangeCallback func(status types.ProviderStatusUpdate) error
+
+// LiveTradingDataCategory identifies a logical group of persisted live-trading data
+// that has changed. Consumers use these to invalidate the matching UI surfaces.
+type LiveTradingDataCategory string
+
+const (
+	LiveTradingDataCategoryMarketData LiveTradingDataCategory = "market_data"
+	LiveTradingDataCategoryTrades     LiveTradingDataCategory = "trades"
+	LiveTradingDataCategoryOrders     LiveTradingDataCategory = "orders"
+	LiveTradingDataCategoryMarks      LiveTradingDataCategory = "marks"
+	LiveTradingDataCategoryLogs       LiveTradingDataCategory = "logs"
+	LiveTradingDataCategoryStats      LiveTradingDataCategory = "stats"
+)
+
+// OnLiveDataChangedCallback is invoked after a logical batch of persistence writes
+// completes. It is a coalesced reload/invalidation hint, not a per-write notification.
+//
+//   - runID:      session run ID; empty when persistence is disabled.
+//   - categories: which data groups were written in this batch.
+//   - finalized:  true on the final emission after the engine stops and all writers
+//     have flushed. Consumers should treat this as a "force full reload" signal.
+//   - sequence:   monotonically increasing within a single Run(), starting at 1.
+//
+// Consumers are expected to debounce reloads (e.g. ~500ms) and only refresh the
+// surfaces matching the reported categories.
+type OnLiveDataChangedCallback func(runID string, categories []LiveTradingDataCategory, finalized bool, sequence int64) error
 
 // LiveTradingCallbacks holds all lifecycle callback functions for the live trading engine.
 // All fields are pointers - nil means no callback will be invoked.
@@ -78,9 +109,18 @@ type LiveTradingCallbacks struct {
 	// OnStatusUpdate is called when engine status changes.
 	OnStatusUpdate *OnStatusUpdateCallback
 
+	// OnPrefetchProgress is called during prefetch and gap-fill downloads.
+	// The current EngineStatus (from OnStatusUpdate) distinguishes prefetch vs. gap-fill.
+	OnPrefetchProgress *OnPrefetchProgressCallback
+
 	// OnProviderStatusChange is called when provider connection status changes.
 	// It receives the current status of both market data and trading providers.
 	OnProviderStatusChange *OnProviderStatusChangeCallback
+
+	// OnLiveDataChanged is a coalesced invalidation hint emitted after each
+	// per-tick batch of persistence writes completes, and once more after the
+	// engine stops with finalized=true.
+	OnLiveDataChanged *OnLiveDataChangedCallback
 }
 
 // PrefetchConfig holds configuration for historical data prefetching.

@@ -8,9 +8,12 @@ build:
 	GOOS=wasip1 GOARCH=wasm go build -o ./place_decimal_order/place_decimal_order_plugin.wasm -buildmode=c-shared ./place_decimal_order/place_decimal_order.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./complex_strategy/complex_strategy_plugin.wasm -buildmode=c-shared ./complex_strategy/complex_strategy.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./log_error/log_error_plugin.wasm -buildmode=c-shared ./log_error/log_error_strategy.go
+	GOOS=wasip1 GOARCH=wasm go build -o ./log_every_tick/log_every_tick_plugin.wasm -buildmode=c-shared ./log_every_tick/log_every_tick_strategy.go
+	GOOS=wasip1 GOARCH=wasm go build -o ./log_in_defer/log_in_defer_plugin.wasm -buildmode=c-shared ./log_in_defer/log_in_defer_strategy.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./portfolio_comparison/portfolio_comparison_plugin.wasm -buildmode=c-shared ./portfolio_comparison/portfolio_comparison.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./rsi_comparison/rsi_comparison_plugin.wasm -buildmode=c-shared ./rsi_comparison/rsi_comparison.go
 	GOOS=wasip1 GOARCH=wasm go build -o ./multi_confirm/multi_confirm_plugin.wasm -buildmode=c-shared ./multi_confirm/multi_confirm_strategy.go
+	GOOS=wasip1 GOARCH=wasm go build -o ./stuck_repro/stuck_repro_plugin.wasm -buildmode=c-shared ./stuck_repro/stuck_repro_strategy.go
 # Clean WASM files
 clean:
 	rm -f *.wasm

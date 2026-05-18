@@ -18,18 +18,29 @@ func TestTradingTestSuite(t *testing.T) {
 
 // mockTradingHelper implements TradingEngineHelper for testing.
 type mockTradingHelper struct {
-	mu                   sync.Mutex
-	startCalled          bool
-	stopCalled           bool
-	marketDataCalls      int
-	orderPlacedCalls     int
-	orderFilledCalls     int
-	errorCalls           int
-	strategyErrors       int
-	lastSymbols          []string
-	lastInterval         string
-	lastPreviousDataPath string
-	lastError            error
+	mu                    sync.Mutex
+	startCalled           bool
+	stopCalled            bool
+	marketDataCalls       int
+	orderPlacedCalls      int
+	orderFilledCalls      int
+	errorCalls            int
+	strategyErrors        int
+	statusUpdates         []string
+	prefetchProgressCalls int
+	lastPrefetchSymbol    string
+	providerStatusCalls   int
+	marketDataStatus      string
+	tradingStatus         string
+	dataChangedCalls      int
+	lastDataChangedRunID  string
+	lastDataChangedCats   []string
+	lastDataChangedFinal  bool
+	lastDataChangedSeq    int64
+	lastSymbols           []string
+	lastInterval          string
+	lastPreviousDataPath  string
+	lastError             error
 }
 
 func (m *mockTradingHelper) OnEngineStart(symbols StringCollection, interval string, previousDataPath string) error {
@@ -85,6 +96,44 @@ func (m *mockTradingHelper) OnStrategyError(symbol string, timestamp int64, err 
 	defer m.mu.Unlock()
 	m.strategyErrors++
 	m.lastError = err
+}
+
+func (m *mockTradingHelper) OnStatusUpdate(status string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statusUpdates = append(m.statusUpdates, status)
+	return nil
+}
+
+func (m *mockTradingHelper) OnPrefetchProgress(symbol string, current, total float64, message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.prefetchProgressCalls++
+	m.lastPrefetchSymbol = symbol
+	return nil
+}
+
+func (m *mockTradingHelper) OnProviderStatusChange(marketDataStatus string, tradingStatus string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.providerStatusCalls++
+	m.marketDataStatus = marketDataStatus
+	m.tradingStatus = tradingStatus
+	return nil
+}
+
+func (m *mockTradingHelper) OnLiveDataChanged(runId string, categories StringCollection, finalized bool, sequence int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dataChangedCalls++
+	m.lastDataChangedRunID = runId
+	m.lastDataChangedCats = make([]string, categories.Size())
+	for i := 0; i < categories.Size(); i++ {
+		m.lastDataChangedCats[i] = categories.Get(i)
+	}
+	m.lastDataChangedFinal = finalized
+	m.lastDataChangedSeq = sequence
+	return nil
 }
 
 // Test GetSupportedTradingProviders

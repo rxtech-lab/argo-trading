@@ -20,12 +20,17 @@ import (
 // debugLog is a package-level zap logger for debug output in the market data provider.
 var debugLog, _ = zap.NewProduction()
 
+// binanceKlinesLimit is the maximum number of klines to request per page.
+// Binance allows up to 1000; using the max minimizes round-trips during prefetch.
+const binanceKlinesLimit = 1000
+
 // BinanceKlinesService defines the interface for fetching klines from Binance.
 type BinanceKlinesService interface {
 	Symbol(symbol string) BinanceKlinesService
 	Interval(interval string) BinanceKlinesService
 	StartTime(startTime int64) BinanceKlinesService
 	EndTime(endTime int64) BinanceKlinesService
+	Limit(limit int) BinanceKlinesService
 	Do(ctx context.Context) ([]*binance.Kline, error)
 }
 
@@ -85,6 +90,12 @@ func (w *binanceKlinesServiceWrapper) StartTime(startTime int64) BinanceKlinesSe
 
 func (w *binanceKlinesServiceWrapper) EndTime(endTime int64) BinanceKlinesService {
 	w.service = w.service.EndTime(endTime)
+
+	return w
+}
+
+func (w *binanceKlinesServiceWrapper) Limit(limit int) BinanceKlinesService {
+	w.service = w.service.Limit(limit)
 
 	return w
 }
@@ -383,6 +394,7 @@ func (c *BinanceClient) Download(ctx context.Context, ticker string, startDate t
 			Interval(interval).
 			StartTime(currentStartTime).
 			EndTime(endTimeMillis).
+			Limit(binanceKlinesLimit).
 			Do(ctx)
 		if err != nil {
 			// Attempt to finalize/close even if fetch fails
@@ -401,14 +413,16 @@ func (c *BinanceClient) Download(ctx context.Context, ticker string, startDate t
 		}
 
 		// Calculate relative progress (time elapsed vs total time range)
-		onProgress(
-			float64(currentStartTime-startTimeMillis),
-			float64(endTimeMillis-startTimeMillis),
-			fmt.Sprintf("Downloading %s klines from Binance", ticker),
-		)
+		if onProgress != nil {
+			onProgress(
+				float64(currentStartTime-startTimeMillis),
+				float64(endTimeMillis-startTimeMillis),
+				fmt.Sprintf("Downloading %s klines from Binance", ticker),
+			)
+		}
 
-		// Break conditions: no data or less than 500 records (last page)
-		if len(klines) == 0 || len(klines) < 500 {
+		// Break conditions: no data or fewer than a full page (last page)
+		if len(klines) == 0 || len(klines) < binanceKlinesLimit {
 			// Process the remaining klines if any
 			if err := processKlines(c.writer, ticker, klines); err != nil {
 				// Attempt to finalize/close even if processing fails
@@ -471,7 +485,16 @@ func (c *BinanceClient) Download(ctx context.Context, ticker string, startDate t
 }
 
 // processKlines converts Binance kline data to our internal MarketData format and writes it.
-func processKlines(writer writer.MarketDataWriter, ticker string, klines []*binance.Kline) error {
+// When the writer implements writer.BatchWriter, all rows in a page are persisted in a
+// single batch call — much faster for bulk download because writers like the streaming
+// parquet writer otherwise re-export the entire file after every Write.
+func processKlines(w writer.MarketDataWriter, ticker string, klines []*binance.Kline) error {
+	if len(klines) == 0 {
+		return nil
+	}
+
+	batch := make([]types.MarketData, 0, len(klines))
+
 	for _, k := range klines {
 		open, _ := strconv.ParseFloat(k.Open, 64)
 		high, _ := strconv.ParseFloat(k.High, 64)
@@ -479,7 +502,7 @@ func processKlines(writer writer.MarketDataWriter, ticker string, klines []*bina
 		closePrice, _ := strconv.ParseFloat(k.Close, 64)
 		volume, _ := strconv.ParseFloat(k.Volume, 64)
 
-		marketData := types.MarketData{
+		batch = append(batch, types.MarketData{
 			Id:     "",
 			Symbol: ticker,
 			Time:   time.UnixMilli(k.OpenTime), // Using OpenTime as the timestamp for the bar
@@ -489,9 +512,19 @@ func processKlines(writer writer.MarketDataWriter, ticker string, klines []*bina
 			Close:  closePrice,
 			Volume: volume,
 			// VWAP and N (trade count) might not be directly available in standard klines
+		})
+	}
+
+	if bw, ok := w.(writer.BatchWriter); ok {
+		if err := bw.WriteBatch(batch); err != nil {
+			return fmt.Errorf("failed to write market data batch: %w", err)
 		}
 
-		if err := writer.Write(marketData); err != nil {
+		return nil
+	}
+
+	for _, md := range batch {
+		if err := w.Write(md); err != nil {
 			return fmt.Errorf("failed to write market data: %w", err)
 		}
 	}

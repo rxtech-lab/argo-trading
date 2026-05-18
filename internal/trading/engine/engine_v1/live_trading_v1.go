@@ -47,6 +47,13 @@ type LiveTradingEngineV1 struct {
 	logStorage          internalLog.Log
 	initialized         bool
 
+	// strategyContext is the RuntimeContext bound to the WASM strategy API at
+	// init time. The tick loop mutates CurrentMarketData on this same struct so
+	// host callbacks (Log, Mark, etc.) can attach the current bar's symbol/time.
+	// Must be a single shared pointer — allocating a second context in Run()
+	// silently breaks host callbacks that gate on CurrentMarketData.
+	strategyContext *runtime.RuntimeContext
+
 	// Persistence fields for streaming data
 	dataDir              string                         // Directory for storing parquet files
 	providerName         string                         // Name of the data provider (e.g., "binance")
@@ -93,6 +100,7 @@ func NewLiveTradingEngineV1() (engine.LiveTradingEngine, error) {
 		log:                  log,
 		logStorage:           nil,
 		initialized:          false,
+		strategyContext:      nil,
 		dataDir:              "",
 		providerName:         "",
 		streamingWriter:      nil,
@@ -131,6 +139,7 @@ func NewLiveTradingEngineV1WithPersistence(dataDir, providerName string) (engine
 		log:                  log,
 		logStorage:           nil,
 		initialized:          false,
+		strategyContext:      nil,
 		dataDir:              dataDir,
 		providerName:         providerName,
 		streamingWriter:      nil,
@@ -249,7 +258,8 @@ func (e *LiveTradingEngineV1) SetMarketDataProvider(marketProvider provider.Prov
 
 // SetTradingProvider implements engine.LiveTradingEngine.
 func (e *LiveTradingEngineV1) SetTradingProvider(tradingProvider tradingprovider.TradingSystemProvider) error {
-	e.tradingProvider = tradingProvider
+	// Wrap with a logging decorator so strategy→host API calls are surfaced in running.log.
+	e.tradingProvider = tradingprovider.NewLoggingTradingSystemProvider(tradingProvider, e.log)
 	e.log.Debug("Trading provider set")
 
 	return nil
@@ -270,6 +280,13 @@ func (e *LiveTradingEngineV1) SetDataOutputPath(path string) error {
 	}
 
 	runPath := e.sessionManager.GetCurrentRunPath()
+
+	// Enable file output for engine logs so a human-readable running.log is
+	// written alongside the session's parquet artifacts. All existing holders
+	// of e.log share the pointer and pick up the new file sink automatically.
+	if err := e.log.EnableFileOutput(filepath.Join(runPath, "running.log")); err != nil {
+		return errors.Wrap(errors.ErrCodeBacktestInitFailed, "failed to enable running.log file output", err)
+	}
 
 	e.log.Info("Session initialized",
 		zap.String("run_id", e.sessionManager.GetRunID()),
@@ -324,6 +341,31 @@ func (e *LiveTradingEngineV1) SetDataOutputPath(path string) error {
 func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTradingCallbacks) error {
 	var runErr error
 	firstDataReceived := false
+
+	// Monotonically increasing sequence number for OnLiveDataChanged emissions.
+	var dataChangeSequence int64
+
+	// emitDataChanged emits the OnLiveDataChanged callback if registered. No-op when
+	// nil or when categories is empty (unless finalized, which always emits).
+	emitDataChanged := func(categories []engine.LiveTradingDataCategory, finalized bool) {
+		if callbacks.OnLiveDataChanged == nil {
+			return
+		}
+		if len(categories) == 0 && !finalized {
+			return
+		}
+
+		dataChangeSequence++
+
+		runID := ""
+		if e.sessionManager != nil {
+			runID = e.sessionManager.GetRunID()
+		}
+
+		if err := (*callbacks.OnLiveDataChanged)(runID, categories, finalized, dataChangeSequence); err != nil {
+			e.log.Warn("OnLiveDataChanged callback failed", zap.Error(err))
+		}
+	}
 
 	// Always call OnEngineStop and cleanup when Run exits
 	defer func() {
@@ -393,6 +435,20 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			}
 		}
 
+		// Emit a final coalesced reload hint so the UI does one definitive refresh
+		// of every category after all writers have flushed their tail rows.
+		emitDataChanged(
+			[]engine.LiveTradingDataCategory{
+				engine.LiveTradingDataCategoryMarketData,
+				engine.LiveTradingDataCategoryTrades,
+				engine.LiveTradingDataCategoryOrders,
+				engine.LiveTradingDataCategoryMarks,
+				engine.LiveTradingDataCategoryLogs,
+				engine.LiveTradingDataCategoryStats,
+			},
+			true,
+		)
+
 		if callbacks.OnEngineStop != nil {
 			(*callbacks.OnEngineStop)(runErr)
 		}
@@ -461,18 +517,28 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	// Set up provider status callbacks
 	e.setupProviderStatusCallbacks(callbacks.OnProviderStatusChange)
 
-	// Check trading provider connection
+	// Pre-trade check: verify the trading provider is reachable and credentials are
+	// valid before doing any other work (prefetch, strategy init, streaming). This
+	// calls a safe authenticated read (e.g. account info / balance) under the hood.
+	// If it fails, abort Run so the caller / UI sees a clear failure instead of a
+	// silently-degraded session that processes ticks but cannot trade.
 	e.log.Info("Checking trading provider connection...")
-	if err := e.tradingProvider.CheckConnection(ctx); err != nil {
-		e.log.Warn("Trading provider connection check failed", zap.Error(err))
-		e.updateTradingStatus(types.ProviderStatusDisconnected, callbacks.OnProviderStatusChange)
 
+	if err := e.tradingProvider.CheckConnection(ctx); err != nil {
+		e.log.Error("Trading provider precheck failed", zap.Error(err))
+		// tradingStatus starts as Disconnected; force-emit so the UI gets the
+		// state even though the value hasn't transitioned.
+		e.emitProviderStatusUpdate(callbacks.OnProviderStatusChange)
+
+		runErr = errors.Wrap(errors.ErrCodeBacktestInitFailed, "trading provider precheck failed", err)
 		if callbacks.OnError != nil {
-			(*callbacks.OnError)(fmt.Errorf("trading provider connection check failed: %w", err))
+			(*callbacks.OnError)(runErr)
 		}
-	} else {
-		e.updateTradingStatus(types.ProviderStatusConnected, callbacks.OnProviderStatusChange)
+
+		return runErr
 	}
+
+	e.updateTradingStatus(types.ProviderStatusConnected, callbacks.OnProviderStatusChange)
 
 	// Initialize strategy
 	if err := e.initializeStrategy(); err != nil {
@@ -517,6 +583,7 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 			e.streamingWriter,
 			e.marketDataProvider.GetInterval(),
 			callbacks.OnStatusUpdate,
+			callbacks.OnPrefetchProgress,
 		)
 
 		// Execute prefetch before starting stream
@@ -549,24 +616,12 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	)
 	stream := e.marketDataProvider.Stream(ctx)
 
-	// Determine which datasource to use for indicator calculations
-	// Use persistent datasource if available (queries parquet directly), otherwise use in-memory streaming datasource
-	var dataSource datasource.DataSource = e.streamingDataSource
-	if e.persistentDataSource != nil {
-		dataSource = e.persistentDataSource
-	}
-
-	// Create RuntimeContext for strategy - the context will be updated with current market data
-	strategyContext := runtime.RuntimeContext{
-		DataSource:        dataSource,
-		IndicatorRegistry: e.indicatorRegistry,
-		Marker:            e.marker,
-		TradingSystem:     e.tradingProvider,
-		Cache:             e.cache,
-		Logger:            e.log,
-		LogStorage:        e.logStorage,
-		CurrentMarketData: nil,
-	}
+	// Cursors into the in-memory log/mark buffers: each tick only persists
+	// entries appended since the previous tick. Without this, GetLogs/GetMarks
+	// returns the full buffer every tick and the parquet writers (append-only)
+	// duplicate every prior entry on each new bar.
+	persistedLogs := 0
+	persistedMarks := 0
 
 	// Process each market data point from the stream
 	for data, err := range stream {
@@ -652,8 +707,9 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		// Add to in-memory cache as well (used when persistence is not enabled)
 		e.streamingDataSource.AddToCache(data)
 
-		// Update current market data in strategy context
-		strategyContext.CurrentMarketData = &data
+		// Update current market data on the shared strategy context so host
+		// callbacks (Log, Mark) see the current bar.
+		e.strategyContext.CurrentMarketData = &data
 
 		// Invoke OnMarketData callback
 		if callbacks.OnMarketData != nil {
@@ -670,39 +726,68 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 		}
 
 		// Execute strategy
+		e.log.Info("processing strategy onTick",
+			zap.String("symbol", data.Symbol),
+			zap.Time("time", data.Time),
+			zap.Float64("close", data.Close),
+		)
 		if err := e.strategy.ProcessData(data); err != nil {
 			if callbacks.OnStrategyError != nil {
 				(*callbacks.OnStrategyError)(data, err)
 			}
 
-			e.log.Warn("Strategy error",
+			e.log.Warn("strategy returned error",
 				zap.String("symbol", data.Symbol),
 				zap.Error(err),
 			)
 			// Continue processing - don't abort on strategy errors
+		} else {
+			e.log.Info("strategy returned",
+				zap.String("symbol", data.Symbol),
+				zap.Time("time", data.Time),
+			)
 		}
 
-		// Write marks to parquet if available
+		// Track which categories produced persisted writes this tick.
+		changedCategories := make([]engine.LiveTradingDataCategory, 0, 4)
+		if e.streamingWriter != nil {
+			changedCategories = append(changedCategories, engine.LiveTradingDataCategoryMarketData)
+		}
+
+		// Write marks to parquet if available. Only write marks appended since
+		// the previous tick — the marker buffer is cumulative (the strategy may
+		// query GetMarkers via the host API), so we slice from persistedMarks.
 		if e.marksWriter != nil && e.marker != nil {
 			marks, _ := e.marker.GetMarks()
-			for _, mark := range marks {
-				if err := e.marksWriter.Write(mark); err != nil {
-					e.log.Warn("Failed to write mark",
-						zap.Error(err),
-					)
+			if len(marks) > persistedMarks {
+				newMarks := marks[persistedMarks:]
+				changedCategories = append(changedCategories, engine.LiveTradingDataCategoryMarks)
+				for _, mark := range newMarks {
+					if err := e.marksWriter.Write(mark); err != nil {
+						e.log.Warn("Failed to write mark",
+							zap.Error(err),
+						)
+					}
 				}
+				persistedMarks = len(marks)
 			}
 		}
 
-		// Write logs to parquet if available
+		// Write logs to parquet if available. Same cursor pattern as marks:
+		// only persist entries appended since the previous tick.
 		if e.logsWriter != nil && e.logStorage != nil {
 			logs, _ := e.logStorage.GetLogs()
-			for _, logEntry := range logs {
-				if err := e.logsWriter.Write(logEntry); err != nil {
-					e.log.Warn("Failed to write log",
-						zap.Error(err),
-					)
+			if len(logs) > persistedLogs {
+				newLogs := logs[persistedLogs:]
+				changedCategories = append(changedCategories, engine.LiveTradingDataCategoryLogs)
+				for _, logEntry := range newLogs {
+					if err := e.logsWriter.Write(logEntry); err != nil {
+						e.log.Warn("Failed to write log",
+							zap.Error(err),
+						)
+					}
 				}
+				persistedLogs = len(logs)
 			}
 		}
 
@@ -713,6 +798,8 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 				e.log.Warn("Failed to write stats",
 					zap.Error(err),
 				)
+			} else {
+				changedCategories = append(changedCategories, engine.LiveTradingDataCategoryStats)
 			}
 
 			// Emit stats callback
@@ -725,6 +812,9 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 				}
 			}
 		}
+
+		// Emit coalesced reload hint after all per-tick persistence writes.
+		emitDataChanged(changedCategories, false)
 	}
 
 	// After stream ends, check if it was due to context cancellation
@@ -779,8 +869,10 @@ func (e *LiveTradingEngineV1) initializeStrategy() error {
 		dataSource = e.persistentDataSource
 	}
 
-	// Create RuntimeContext for strategy initialization
-	strategyContext := runtime.RuntimeContext{
+	// Build the shared RuntimeContext once and store the pointer on the engine.
+	// Run() mutates CurrentMarketData on this same struct each tick so host
+	// callbacks (Log, Mark) can attach the current bar's symbol/time.
+	e.strategyContext = &runtime.RuntimeContext{
 		DataSource:        dataSource,
 		IndicatorRegistry: e.indicatorRegistry,
 		Marker:            e.marker,
@@ -792,7 +884,7 @@ func (e *LiveTradingEngineV1) initializeStrategy() error {
 	}
 
 	// Initialize strategy API first
-	err := e.strategy.InitializeApi(wasm.NewWasmStrategyApi(&strategyContext))
+	err := e.strategy.InitializeApi(wasm.NewWasmStrategyApi(e.strategyContext))
 	if err != nil {
 		return errors.Wrap(errors.ErrCodeStrategyRuntimeError, "failed to initialize strategy API", err)
 	}
