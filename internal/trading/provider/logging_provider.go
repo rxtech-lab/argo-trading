@@ -33,6 +33,7 @@ func (p *LoggingTradingSystemProvider) PlaceOrder(order types.ExecuteOrder) erro
 	if err != nil {
 		p.log.Warn("api call failed", zap.String("api", "PlaceOrder"), zap.Error(err))
 	}
+
 	return err
 }
 
@@ -45,11 +46,13 @@ func (p *LoggingTradingSystemProvider) PlaceMultipleOrders(orders []types.Execut
 	if err != nil {
 		p.log.Warn("api call failed", zap.String("api", "PlaceMultipleOrders"), zap.Error(err))
 	}
+
 	return err
 }
 
 func (p *LoggingTradingSystemProvider) GetPositions() ([]types.Position, error) {
 	p.log.Info("strategy wants to call api", zap.String("api", "GetPositions"))
+
 	return p.inner.GetPositions()
 }
 
@@ -58,6 +61,7 @@ func (p *LoggingTradingSystemProvider) GetPosition(symbol string) (types.Positio
 		zap.String("api", "GetPosition"),
 		zap.String("symbol", symbol),
 	)
+
 	return p.inner.GetPosition(symbol)
 }
 
@@ -70,6 +74,7 @@ func (p *LoggingTradingSystemProvider) CancelOrder(orderID string) error {
 	if err != nil {
 		p.log.Warn("api call failed", zap.String("api", "CancelOrder"), zap.Error(err))
 	}
+
 	return err
 }
 
@@ -79,6 +84,7 @@ func (p *LoggingTradingSystemProvider) CancelAllOrders() error {
 	if err != nil {
 		p.log.Warn("api call failed", zap.String("api", "CancelAllOrders"), zap.Error(err))
 	}
+
 	return err
 }
 
@@ -87,16 +93,19 @@ func (p *LoggingTradingSystemProvider) GetOrderStatus(orderID string) (types.Ord
 		zap.String("api", "GetOrderStatus"),
 		zap.String("order_id", orderID),
 	)
+
 	return p.inner.GetOrderStatus(orderID)
 }
 
 func (p *LoggingTradingSystemProvider) GetAccountInfo() (types.AccountInfo, error) {
 	p.log.Info("strategy wants to call api", zap.String("api", "GetAccountInfo"))
+
 	return p.inner.GetAccountInfo()
 }
 
 func (p *LoggingTradingSystemProvider) GetOpenOrders() ([]types.ExecuteOrder, error) {
 	p.log.Info("strategy wants to call api", zap.String("api", "GetOpenOrders"))
+
 	return p.inner.GetOpenOrders()
 }
 
@@ -105,6 +114,7 @@ func (p *LoggingTradingSystemProvider) GetTrades(filter types.TradeFilter) ([]ty
 		zap.String("api", "GetTrades"),
 		zap.Any("filter", filter),
 	)
+
 	return p.inner.GetTrades(filter)
 }
 
@@ -114,6 +124,7 @@ func (p *LoggingTradingSystemProvider) GetMaxBuyQuantity(symbol string, price fl
 		zap.String("symbol", symbol),
 		zap.Float64("price", price),
 	)
+
 	return p.inner.GetMaxBuyQuantity(symbol, price)
 }
 
@@ -122,6 +133,7 @@ func (p *LoggingTradingSystemProvider) GetMaxSellQuantity(symbol string) (float6
 		zap.String("api", "GetMaxSellQuantity"),
 		zap.String("symbol", symbol),
 	)
+
 	return p.inner.GetMaxSellQuantity(symbol)
 }
 

@@ -10,6 +10,7 @@ import (
 // Logger wraps the zap logger with additional functionality.
 type Logger struct {
 	*zap.Logger
+
 	file *os.File
 }
 

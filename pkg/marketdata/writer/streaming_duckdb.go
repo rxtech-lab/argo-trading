@@ -178,26 +178,6 @@ func (w *StreamingDuckDBWriter) WriteBatch(data []types.MarketData) error {
 	return nil
 }
 
-// insertRow upserts a single row into the in-memory table. Caller must hold w.mu.
-func (w *StreamingDuckDBWriter) insertRow(data types.MarketData) error {
-	_, err := w.db.Exec(`
-		INSERT INTO market_data (id, time, symbol, open, high, low, close, volume)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (symbol, time) DO UPDATE SET
-			id = excluded.id,
-			open = excluded.open,
-			high = excluded.high,
-			low = excluded.low,
-			close = excluded.close,
-			volume = excluded.volume
-	`, uuid.New().String(), data.Time, data.Symbol, data.Open, data.High, data.Low, data.Close, data.Volume)
-	if err != nil {
-		return fmt.Errorf("failed to insert data: %w", err)
-	}
-
-	return nil
-}
-
 // Flush forces an export to parquet.
 func (w *StreamingDuckDBWriter) Flush() error {
 	w.mu.Lock()
@@ -243,6 +223,26 @@ func (w *StreamingDuckDBWriter) Close() error {
 		}
 
 		w.db = nil
+	}
+
+	return nil
+}
+
+// insertRow upserts a single row into the in-memory table. Caller must hold w.mu.
+func (w *StreamingDuckDBWriter) insertRow(data types.MarketData) error {
+	_, err := w.db.Exec(`
+		INSERT INTO market_data (id, time, symbol, open, high, low, close, volume)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (symbol, time) DO UPDATE SET
+			id = excluded.id,
+			open = excluded.open,
+			high = excluded.high,
+			low = excluded.low,
+			close = excluded.close,
+			volume = excluded.volume
+	`, uuid.New().String(), data.Time, data.Symbol, data.Open, data.High, data.Low, data.Close, data.Volume)
+	if err != nil {
+		return fmt.Errorf("failed to insert data: %w", err)
 	}
 
 	return nil
