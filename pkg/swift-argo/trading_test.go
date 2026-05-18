@@ -18,29 +18,29 @@ func TestTradingTestSuite(t *testing.T) {
 
 // mockTradingHelper implements TradingEngineHelper for testing.
 type mockTradingHelper struct {
-	mu                   sync.Mutex
-	startCalled          bool
-	stopCalled           bool
-	marketDataCalls      int
-	orderPlacedCalls     int
-	orderFilledCalls     int
-	errorCalls           int
-	strategyErrors       int
-	statusUpdates        []string
+	mu                    sync.Mutex
+	startCalled           bool
+	stopCalled            bool
+	marketDataCalls       int
+	orderPlacedCalls      int
+	orderFilledCalls      int
+	errorCalls            int
+	strategyErrors        int
+	statusUpdates         []string
 	prefetchProgressCalls int
-	lastPrefetchSymbol   string
-	providerStatusCalls  int
-	marketDataStatus     string
-	tradingStatus        string
-	dataChangedCalls     int
-	lastDataChangedRunID string
-	lastDataChangedCats  []string
-	lastDataChangedFinal bool
-	lastDataChangedSeq   int64
-	lastSymbols          []string
-	lastInterval         string
-	lastPreviousDataPath string
-	lastError            error
+	lastPrefetchSymbol    string
+	providerStatusCalls   int
+	marketDataStatus      string
+	tradingStatus         string
+	dataChangedCalls      int
+	lastDataChangedRunID  string
+	lastDataChangedCats   []string
+	lastDataChangedFinal  bool
+	lastDataChangedSeq    int64
+	lastSymbols           []string
+	lastInterval          string
+	lastPreviousDataPath  string
+	lastError             error
 }
 
 func (m *mockTradingHelper) OnEngineStart(symbols StringCollection, interval string, previousDataPath string) error {
