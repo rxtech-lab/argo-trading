@@ -339,6 +339,30 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastTradingStatus = tradingStatus ?? ""
     }
 
+    // Track live-data reload notifications.
+    var liveDataChangedCalled = false
+    var liveDataChangedCount = 0
+    var lastLiveDataCategories: [String] = []
+    var lastLiveDataFinalized = false
+    var lastLiveDataSequence: Int64 = 0
+
+    func onLiveDataChanged(
+        _ runId: String?, categories: (any SwiftargoStringCollectionProtocol)?,
+        finalized: Bool, sequence: Int64
+    ) throws {
+        liveDataChangedCalled = true
+        liveDataChangedCount += 1
+        lastRunId = runId ?? ""
+        lastLiveDataFinalized = finalized
+        lastLiveDataSequence = sequence
+        if let cats = categories {
+            lastLiveDataCategories = []
+            for i in 0..<cats.size() {
+                lastLiveDataCategories.append(cats.get(i))
+            }
+        }
+    }
+
     /// Reset all tracking state
     func reset() {
         engineStartCalled = false
@@ -368,6 +392,11 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastPrefetchMessage = ""
         lastMarketDataStatus = ""
         lastTradingStatus = ""
+        liveDataChangedCalled = false
+        liveDataChangedCount = 0
+        lastLiveDataCategories = []
+        lastLiveDataFinalized = false
+        lastLiveDataSequence = 0
         shouldFailOnEngineStart = false
         shouldFailOnMarketData = false
         shouldFailOnOrderPlaced = false

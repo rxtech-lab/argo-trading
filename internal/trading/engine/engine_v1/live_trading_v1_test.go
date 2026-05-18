@@ -2597,25 +2597,14 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Tr
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
 	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
-	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
-	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
-	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
-	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 
 	err = eng.LoadStrategy(mockStrategy)
 	s.Require().NoError(err)
-
-	// Create test data
-	now := time.Now()
-	testData := []types.MarketData{
-		createTestMarketData("BTCUSDT", now, 50000),
-	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
 	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -2628,10 +2617,12 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Tr
 	s.Require().NoError(err)
 
 	var mu sync.Mutex
+	var statusUpdates []types.ProviderStatusUpdate
 
-	onStatusChange := engine.OnProviderStatusChangeCallback(func(_ types.ProviderStatusUpdate) error {
+	onStatusChange := engine.OnProviderStatusChangeCallback(func(update types.ProviderStatusUpdate) error {
 		mu.Lock()
 		defer mu.Unlock()
+		statusUpdates = append(statusUpdates, update)
 		return nil
 	})
 
@@ -2639,13 +2630,16 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_OnProviderStatusChangeCallback_Tr
 		OnProviderStatusChange: &onStatusChange,
 	}
 
+	// Precheck failure aborts Run and returns the wrapped error.
 	err = eng.Run(context.Background(), callbacks)
-	s.NoError(err)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "trading provider precheck failed")
 
-	// When CheckConnection fails, the status stays disconnected (initial value),
-	// so the callback is NOT called for trading status since no status change occurred.
-	// However, callback may still be called from market data status changes.
-	// This test verifies that the engine does not crash when CheckConnection fails.
+	// Force-emitted disconnected status should still reach the callback so the UI
+	// can render the failure state.
+	mu.Lock()
+	defer mu.Unlock()
+	s.GreaterOrEqual(len(statusUpdates), 1)
 }
 
 func (s *LiveTradingEngineV1TestSuite) TestRun_TradingProviderConnectionFails_CallsOnError() {
@@ -2657,25 +2651,14 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_TradingProviderConnectionFails_Ca
 
 	mockStrategy := mocks.NewMockStrategyRuntime(s.ctrl)
 	mockStrategy.EXPECT().Name().Return("TestStrategy").AnyTimes()
-	mockStrategy.EXPECT().InitializeApi(gomock.Any()).Return(nil)
-	mockStrategy.EXPECT().GetRuntimeEngineVersion().Return(version.Version, nil)
-	mockStrategy.EXPECT().Initialize(gomock.Any()).Return(nil)
-	mockStrategy.EXPECT().ProcessData(gomock.Any()).Return(nil).AnyTimes()
 
 	err = eng.LoadStrategy(mockStrategy)
 	s.Require().NoError(err)
-
-	// Create test data
-	now := time.Now()
-	testData := []types.MarketData{
-		createTestMarketData("BTCUSDT", now, 50000),
-	}
 
 	mockProvider := mocks.NewMockProvider(s.ctrl)
 	mockProvider.EXPECT().SetOnStatusChange(gomock.Any()).AnyTimes()
 	mockProvider.EXPECT().GetSymbols().Return([]string{"BTCUSDT"}).AnyTimes()
 	mockProvider.EXPECT().GetInterval().Return("1m").AnyTimes()
-	mockProvider.EXPECT().Stream(gomock.Any()).Return(createMockStream(testData, nil))
 
 	err = eng.SetMarketDataProvider(mockProvider)
 	s.Require().NoError(err)
@@ -2699,13 +2682,17 @@ func (s *LiveTradingEngineV1TestSuite) TestRun_TradingProviderConnectionFails_Ca
 		OnError: &onError,
 	}
 
+	// Precheck failure aborts Run and surfaces the wrapped error via both the
+	// return value and the OnError callback.
 	err = eng.Run(context.Background(), callbacks)
-	s.NoError(err)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "trading provider precheck failed")
+	s.Contains(err.Error(), "invalid API key")
 
 	mu.Lock()
 	defer mu.Unlock()
 	s.Require().NotNil(errorReceived, "OnError should have been called when CheckConnection fails")
-	s.Contains(errorReceived.Error(), "trading provider connection check failed")
+	s.Contains(errorReceived.Error(), "trading provider precheck failed")
 	s.Contains(errorReceived.Error(), "invalid API key")
 }
 
