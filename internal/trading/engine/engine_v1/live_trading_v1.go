@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/cache"
 	"github.com/rxtech-lab/argo-trading/internal/backtest/engine/engine_v1/datasource"
@@ -19,6 +21,7 @@ import (
 	"github.com/rxtech-lab/argo-trading/internal/trading/engine/engine_v1/stats"
 	"github.com/rxtech-lab/argo-trading/internal/trading/engine/engine_v1/writers"
 	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
+	"github.com/rxtech-lab/argo-trading/internal/trading/wallet"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/internal/version"
 	"github.com/rxtech-lab/argo-trading/pkg/errors"
@@ -623,6 +626,14 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 	persistedLogs := 0
 	persistedMarks := 0
 
+	// Wallet snapshot for change-detection across ticks. Only populated when at
+	// least one wallet callback is registered — otherwise we skip the extra
+	// broker round-trips entirely.
+	var walletState *walletSnapshot
+	if walletEventsRegistered(callbacks) {
+		walletState = e.emitWalletEvents(nil, callbacks)
+	}
+
 	// Process each market data point from the stream
 	for data, err := range stream {
 		// Check for context cancellation
@@ -815,6 +826,12 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 
 		// Emit coalesced reload hint after all per-tick persistence writes.
 		emitDataChanged(changedCategories, false)
+
+		// Diff broker-reported wallet state against the previous tick and fire
+		// any change callbacks. Skipped when no wallet callbacks are registered.
+		if walletEventsRegistered(callbacks) {
+			walletState = e.emitWalletEvents(walletState, callbacks)
+		}
 	}
 
 	// After stream ends, check if it was due to context cancellation
@@ -830,6 +847,175 @@ func (e *LiveTradingEngineV1) Run(ctx context.Context, callbacks engine.LiveTrad
 // GetConfigSchema implements engine.LiveTradingEngine.
 func (e *LiveTradingEngineV1) GetConfigSchema() (string, error) {
 	return engine.GetConfigSchema()
+}
+
+// Wallet implements engine.LiveTradingEngine. The returned facade reads from the
+// currently configured trading provider on every call — it is safe to use both
+// inside and outside Run(). Asset valuation goes through the provider's batch
+// price API, not the streaming bar cache, so prices are correct even for
+// symbols the engine is not currently subscribed to.
+func (e *LiveTradingEngineV1) Wallet() (wallet.Wallet, error) {
+	if e.tradingProvider == nil {
+		return nil, errors.New(errors.ErrCodeBacktestInitFailed, "trading provider not set - call SetTradingProvider() first")
+	}
+
+	return wallet.New(wallet.Config{
+		Provider: e.tradingProvider,
+	})
+}
+
+// walletSnapshot captures the wallet fields tracked across ticks for change
+// detection. Asset quantities are keyed by symbol so we only fire OnAssetsChanged
+// when the set or quantity actually moves.
+type walletSnapshot struct {
+	balance        float64
+	buyingPower    float64
+	assets         map[string]float64
+	openOrdersHash string
+}
+
+// emitWalletEvents reads the current account info, assets, and open orders from
+// the provider, compares against prev, and invokes the matching callbacks for
+// the values that changed. Returns the new snapshot so the caller can persist it
+// for the next diff. Callers must skip the call entirely when none of the
+// wallet callbacks are registered to avoid the extra broker round-trips.
+func (e *LiveTradingEngineV1) emitWalletEvents(prev *walletSnapshot, callbacks engine.LiveTradingCallbacks) *walletSnapshot {
+	current := &walletSnapshot{
+		balance:        prev.copyBalance(),
+		buyingPower:    prev.copyBuyingPower(),
+		assets:         prev.copyAssets(),
+		openOrdersHash: prev.copyOpenOrdersHash(),
+	}
+
+	if callbacks.OnBalanceChanged != nil || callbacks.OnBuyingPowerChanged != nil {
+		info, err := e.tradingProvider.GetAccountInfo()
+		if err != nil {
+			e.log.Warn("wallet snapshot: GetAccountInfo failed", zap.Error(err))
+		} else {
+			current.balance = info.Balance
+			current.buyingPower = info.BuyingPower
+		}
+	}
+
+	if callbacks.OnAssetsChanged != nil {
+		rawAssets, err := e.tradingProvider.GetAssets()
+		if err != nil {
+			e.log.Warn("wallet snapshot: GetAssets failed", zap.Error(err))
+		} else {
+			current.assets = make(map[string]float64, len(rawAssets))
+			for _, a := range rawAssets {
+				current.assets[a.Symbol] = a.Quantity
+			}
+		}
+	}
+
+	if callbacks.OnOrderChanged != nil {
+		openOrders, err := e.tradingProvider.GetOpenOrders()
+		if err != nil {
+			e.log.Warn("wallet snapshot: GetOpenOrders failed", zap.Error(err))
+		} else {
+			current.openOrdersHash = hashOpenOrders(openOrders)
+		}
+	}
+
+	if prev == nil {
+		return current
+	}
+
+	if callbacks.OnBalanceChanged != nil && prev.balance != current.balance {
+		if err := (*callbacks.OnBalanceChanged)(); err != nil {
+			e.log.Warn("OnBalanceChanged callback failed", zap.Error(err))
+		}
+	}
+
+	if callbacks.OnBuyingPowerChanged != nil && prev.buyingPower != current.buyingPower {
+		if err := (*callbacks.OnBuyingPowerChanged)(); err != nil {
+			e.log.Warn("OnBuyingPowerChanged callback failed", zap.Error(err))
+		}
+	}
+
+	if callbacks.OnAssetsChanged != nil && !assetMapsEqual(prev.assets, current.assets) {
+		if err := (*callbacks.OnAssetsChanged)(); err != nil {
+			e.log.Warn("OnAssetsChanged callback failed", zap.Error(err))
+		}
+	}
+
+	if callbacks.OnOrderChanged != nil && prev.openOrdersHash != current.openOrdersHash {
+		if err := (*callbacks.OnOrderChanged)(); err != nil {
+			e.log.Warn("OnOrderChanged callback failed", zap.Error(err))
+		}
+	}
+
+	return current
+}
+
+// walletEventsRegistered reports whether any wallet-related callback is wired
+// up. When false the engine skips the per-tick broker calls used for diffing.
+func walletEventsRegistered(c engine.LiveTradingCallbacks) bool {
+	return c.OnBalanceChanged != nil || c.OnBuyingPowerChanged != nil ||
+		c.OnAssetsChanged != nil || c.OnOrderChanged != nil
+}
+
+// hashOpenOrders produces a stable string from the open-order set used purely
+// for change detection — not a security hash.
+func hashOpenOrders(orders []types.ExecuteOrder) string {
+	ids := make([]string, 0, len(orders))
+	for _, o := range orders {
+		ids = append(ids, o.ID)
+	}
+	sort.Strings(ids)
+
+	return fmt.Sprintf("%d:%s", len(ids), strings.Join(ids, ","))
+}
+
+func (s *walletSnapshot) copyBalance() float64 {
+	if s == nil {
+		return 0
+	}
+
+	return s.balance
+}
+
+func (s *walletSnapshot) copyBuyingPower() float64 {
+	if s == nil {
+		return 0
+	}
+
+	return s.buyingPower
+}
+
+func (s *walletSnapshot) copyAssets() map[string]float64 {
+	if s == nil {
+		return nil
+	}
+
+	out := make(map[string]float64, len(s.assets))
+	for k, v := range s.assets {
+		out[k] = v
+	}
+
+	return out
+}
+
+func (s *walletSnapshot) copyOpenOrdersHash() string {
+	if s == nil {
+		return ""
+	}
+
+	return s.openOrdersHash
+}
+
+func assetMapsEqual(a, b map[string]float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if other, ok := b[k]; !ok || other != v {
+			return false
+		}
+	}
+
+	return true
 }
 
 // preRunCheck validates that all required components are configured before running.

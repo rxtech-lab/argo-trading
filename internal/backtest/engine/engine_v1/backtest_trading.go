@@ -378,6 +378,51 @@ func (b *BacktestTrading) GetAccountInfo() (types.AccountInfo, error) {
 	}, nil
 }
 
+// GetAssets implements tradingprovider.TradingSystemProvider.
+// Returns simulated asset holdings derived from position quantities. Zero-quantity
+// assets are omitted. The cash balance is exposed as a USDT asset so callers that
+// pair this with USD conversion get the expected total.
+func (b *BacktestTrading) GetAssets() ([]types.Asset, error) {
+	positions, err := b.state.GetAllPositions()
+	if err != nil {
+		return nil, err
+	}
+
+	assets := make([]types.Asset, 0, len(positions)+1)
+
+	if b.balance > 0 {
+		assets = append(assets, types.Asset{
+			Symbol:            "USDT",
+			Quantity:          b.balance,
+			BaseCurrency:      "",
+			BaseCurrencyValue: nil,
+		})
+	}
+
+	for _, pos := range positions {
+		qty := pos.TotalLongPositionQuantity
+		if qty <= 0 {
+			continue
+		}
+
+		assets = append(assets, types.Asset{
+			Symbol:            pos.Symbol,
+			Quantity:          qty,
+			BaseCurrency:      "",
+			BaseCurrencyValue: nil,
+		})
+	}
+
+	return assets, nil
+}
+
+// GetPrices implements tradingprovider.TradingSystemProvider.
+// Backtest mode has no live ticker feed — prices are not available outside the
+// current bar. Returns an empty map so wallet conversions degrade gracefully.
+func (b *BacktestTrading) GetPrices(_ []string) (map[string]float64, error) {
+	return map[string]float64{}, nil
+}
+
 // GetOpenOrders implements tradingprovider.TradingSystemProvider.
 // Returns all pending/open orders that have not been executed yet.
 func (b *BacktestTrading) GetOpenOrders() ([]types.ExecuteOrder, error) {

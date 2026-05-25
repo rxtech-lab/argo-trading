@@ -215,6 +215,10 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var statusUpdateCalled = false
     var prefetchProgressCalled = false
     var providerStatusChangeCalled = false
+    var orderChangedCalled = false
+    var balanceChangedCalled = false
+    var buyingPowerChangedCalled = false
+    var assetsChangedCalled = false
 
     // Store callback parameters for verification
     var lastSymbols: [String] = []
@@ -228,6 +232,10 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
     var lastOrderJSON: String = ""
     var statusUpdates: [String] = []
     var prefetchProgressCount: Int = 0
+    var orderChangedCount: Int = 0
+    var balanceChangedCount: Int = 0
+    var buyingPowerChangedCount: Int = 0
+    var assetsChangedCount: Int = 0
     var lastPrefetchSymbol: String = ""
     var lastPrefetchCurrent: Double = 0
     var lastPrefetchTotal: Double = 0
@@ -339,6 +347,26 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastTradingStatus = tradingStatus ?? ""
     }
 
+    func onOrderChanged() throws {
+        orderChangedCalled = true
+        orderChangedCount += 1
+    }
+
+    func onBalanceChanged() throws {
+        balanceChangedCalled = true
+        balanceChangedCount += 1
+    }
+
+    func onBuyingPowerChanged() throws {
+        buyingPowerChangedCalled = true
+        buyingPowerChangedCount += 1
+    }
+
+    func onAssetsChanged() throws {
+        assetsChangedCalled = true
+        assetsChangedCount += 1
+    }
+
     // Track live-data reload notifications.
     var liveDataChangedCalled = false
     var liveDataChangedCount = 0
@@ -375,6 +403,10 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         statusUpdateCalled = false
         prefetchProgressCalled = false
         providerStatusChangeCalled = false
+        orderChangedCalled = false
+        balanceChangedCalled = false
+        buyingPowerChangedCalled = false
+        assetsChangedCalled = false
         lastSymbols = []
         lastInterval = ""
         lastPreviousDataPath = ""
@@ -386,6 +418,10 @@ class MockTradingEngineHelper: NSObject, SwiftargoTradingEngineHelperProtocol {
         lastOrderJSON = ""
         statusUpdates = []
         prefetchProgressCount = 0
+        orderChangedCount = 0
+        balanceChangedCount = 0
+        buyingPowerChangedCount = 0
+        assetsChangedCount = 0
         lastPrefetchSymbol = ""
         lastPrefetchCurrent = 0
         lastPrefetchTotal = 0
