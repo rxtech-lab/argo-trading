@@ -74,6 +74,23 @@ type TradingEngineHelper interface {
 	// Consumers should debounce reloads (e.g. ~500ms) and only refresh the
 	// surfaces matching the reported categories.
 	OnLiveDataChanged(runId string, categories StringCollection, finalized bool, sequence int64) error
+
+	// OnOrderChanged signals that orders have changed (placed, filled, or status
+	// update). Consumers should re-fetch via WalletBridge.
+	OnOrderChanged() error
+
+	// OnBalanceChanged signals that the combined value of all assets has changed.
+	// Consumers should re-fetch via WalletBridge.GetBalanceJSON("balance", ...).
+	OnBalanceChanged() error
+
+	// OnBuyingPowerChanged signals that the cash available for new orders has
+	// changed. Consumers should re-fetch via WalletBridge.GetBalanceJSON(
+	// "buying_power", ...).
+	OnBuyingPowerChanged() error
+
+	// OnAssetsChanged signals that the set or quantity of held assets has
+	// changed. Consumers should re-fetch via WalletBridge.GetAssetsJSON.
+	OnAssetsChanged() error
 }
 
 // TradingProviderInfo contains metadata about a trading provider.
@@ -437,6 +454,27 @@ func (t *TradingEngine) createCallbacks() engine.LiveTradingCallbacks {
 		return t.helper.OnLiveDataChanged(runID, &StringArray{items: items}, finalized, sequence)
 	})
 	callbacks.OnLiveDataChanged = &onLiveDataChanged
+
+	// Wallet change callbacks
+	onOrderChanged := engine.OnOrderChangedCallback(func() error {
+		return t.helper.OnOrderChanged()
+	})
+	callbacks.OnOrderChanged = &onOrderChanged
+
+	onBalanceChanged := engine.OnBalanceChangedCallback(func() error {
+		return t.helper.OnBalanceChanged()
+	})
+	callbacks.OnBalanceChanged = &onBalanceChanged
+
+	onBuyingPowerChanged := engine.OnBuyingPowerChangedCallback(func() error {
+		return t.helper.OnBuyingPowerChanged()
+	})
+	callbacks.OnBuyingPowerChanged = &onBuyingPowerChanged
+
+	onAssetsChanged := engine.OnAssetsChangedCallback(func() error {
+		return t.helper.OnAssetsChanged()
+	})
+	callbacks.OnAssetsChanged = &onAssetsChanged
 
 	return callbacks
 }

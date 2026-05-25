@@ -22,6 +22,7 @@ type mockBinanceClient struct {
 	cancelOpenOrdersService *mockCancelOpenOrdersService
 	listTradesService       *mockListTradesService
 	tradeFeeService         *mockTradeFeeService
+	listPricesService       *mockListPricesService
 }
 
 func newMockBinanceClient() *mockBinanceClient {
@@ -33,6 +34,7 @@ func newMockBinanceClient() *mockBinanceClient {
 		cancelOpenOrdersService: &mockCancelOpenOrdersService{},
 		listTradesService:       &mockListTradesService{},
 		tradeFeeService:         &mockTradeFeeService{},
+		listPricesService:       &mockListPricesService{},
 	}
 }
 
@@ -62,6 +64,10 @@ func (m *mockBinanceClient) NewListTradesService() ListTradesService {
 
 func (m *mockBinanceClient) NewTradeFeeService() TradeFeeService {
 	return m.tradeFeeService
+}
+
+func (m *mockBinanceClient) NewListPricesService() ListPricesService {
+	return m.listPricesService
 }
 
 // mockCreateOrderService implements CreateOrderService
@@ -215,6 +221,22 @@ func (m *mockTradeFeeService) Symbol(symbol string) TradeFeeService {
 
 func (m *mockTradeFeeService) Do(_ context.Context) ([]*binance.TradeFeeDetails, error) {
 	return m.fees, m.err
+}
+
+// mockListPricesService implements ListPricesService.
+type mockListPricesService struct {
+	prices  []*binance.SymbolPrice
+	err     error
+	symbols []string
+}
+
+func (m *mockListPricesService) Symbols(symbols []string) ListPricesService {
+	m.symbols = symbols
+	return m
+}
+
+func (m *mockListPricesService) Do(_ context.Context) ([]*binance.SymbolPrice, error) {
+	return m.prices, m.err
 }
 
 type BinanceTradingTestSuite struct {

@@ -103,6 +103,21 @@ func (p *LoggingTradingSystemProvider) GetAccountInfo() (types.AccountInfo, erro
 	return p.inner.GetAccountInfo()
 }
 
+func (p *LoggingTradingSystemProvider) GetAssets() ([]types.Asset, error) {
+	p.log.Info("strategy wants to call api", zap.String("api", "GetAssets"))
+
+	return p.inner.GetAssets()
+}
+
+func (p *LoggingTradingSystemProvider) GetPrices(symbols []string) (map[string]float64, error) {
+	p.log.Info("strategy wants to call api",
+		zap.String("api", "GetPrices"),
+		zap.Int("count", len(symbols)),
+	)
+
+	return p.inner.GetPrices(symbols)
+}
+
 func (p *LoggingTradingSystemProvider) GetOpenOrders() ([]types.ExecuteOrder, error) {
 	p.log.Info("strategy wants to call api", zap.String("api", "GetOpenOrders"))
 
