@@ -37,6 +37,10 @@ type mockTradingHelper struct {
 	lastDataChangedCats   []string
 	lastDataChangedFinal  bool
 	lastDataChangedSeq    int64
+	orderChangedCalls     int
+	balanceChangedCalls   int
+	buyingPowerCalls      int
+	assetsChangedCalls    int
 	lastSymbols           []string
 	lastInterval          string
 	lastPreviousDataPath  string
@@ -133,6 +137,34 @@ func (m *mockTradingHelper) OnLiveDataChanged(runId string, categories StringCol
 	}
 	m.lastDataChangedFinal = finalized
 	m.lastDataChangedSeq = sequence
+	return nil
+}
+
+func (m *mockTradingHelper) OnOrderChanged() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.orderChangedCalls++
+	return nil
+}
+
+func (m *mockTradingHelper) OnBalanceChanged() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.balanceChangedCalls++
+	return nil
+}
+
+func (m *mockTradingHelper) OnBuyingPowerChanged() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.buyingPowerCalls++
+	return nil
+}
+
+func (m *mockTradingHelper) OnAssetsChanged() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.assetsChangedCalls++
 	return nil
 }
 

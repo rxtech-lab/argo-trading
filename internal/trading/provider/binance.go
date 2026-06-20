@@ -74,6 +74,13 @@ type TradeFeeService interface {
 	Do(ctx context.Context) ([]*binance.TradeFeeDetails, error)
 }
 
+// ListPricesService interface for fetching ticker prices in batch via
+// GET /api/v3/ticker/price. Pass an empty symbol list to fetch all pairs.
+type ListPricesService interface {
+	Symbols(symbols []string) ListPricesService
+	Do(ctx context.Context) ([]*binance.SymbolPrice, error)
+}
+
 // BinanceClient interface abstracts the Binance client for testing.
 type BinanceClient interface {
 	NewCreateOrderService() CreateOrderService
@@ -83,6 +90,7 @@ type BinanceClient interface {
 	NewCancelOpenOrdersService() CancelOpenOrdersService
 	NewListTradesService() ListTradesService
 	NewTradeFeeService() TradeFeeService
+	NewListPricesService() ListPricesService
 }
 
 // realBinanceClient wraps the actual binance.Client.
@@ -116,6 +124,10 @@ func (r *realBinanceClient) NewListTradesService() ListTradesService {
 
 func (r *realBinanceClient) NewTradeFeeService() TradeFeeService {
 	return &realTradeFeeService{service: r.client.NewTradeFeeService()}
+}
+
+func (r *realBinanceClient) NewListPricesService() ListPricesService {
+	return &realListPricesService{service: r.client.NewListPricesService()}
 }
 
 // Real service wrappers
@@ -259,6 +271,20 @@ func (s *realTradeFeeService) Symbol(symbol string) TradeFeeService {
 }
 
 func (s *realTradeFeeService) Do(ctx context.Context) ([]*binance.TradeFeeDetails, error) {
+	return s.service.Do(ctx)
+}
+
+type realListPricesService struct {
+	service *binance.ListPricesService
+}
+
+func (s *realListPricesService) Symbols(symbols []string) ListPricesService {
+	s.service = s.service.Symbols(symbols)
+
+	return s
+}
+
+func (s *realListPricesService) Do(ctx context.Context) ([]*binance.SymbolPrice, error) {
 	return s.service.Do(ctx)
 }
 
@@ -596,6 +622,69 @@ func (b *BinanceTradingSystemProvider) GetAccountInfo() (types.AccountInfo, erro
 		TotalFees:     0, // Not directly available from account info
 		MarginUsed:    0, // Not applicable for spot
 	}, nil
+}
+
+// GetAssets returns all asset balances reported by the broker (free + locked).
+// Zero-quantity assets are omitted.
+func (b *BinanceTradingSystemProvider) GetAssets() ([]types.Asset, error) {
+	ctx := context.Background()
+
+	account, err := b.client.NewGetAccountService().Do(ctx)
+	if err != nil {
+		return nil, errors.Wrap(errors.ErrCodeOrderFailed, "failed to get account info from Binance", err)
+	}
+
+	assets := make([]types.Asset, 0, len(account.Balances))
+
+	for _, balance := range account.Balances {
+		free, _ := strconv.ParseFloat(balance.Free, 64)
+		locked, _ := strconv.ParseFloat(balance.Locked, 64)
+		total := free + locked
+
+		if total <= 0 {
+			continue
+		}
+
+		assets = append(assets, types.Asset{
+			Symbol:            balance.Asset,
+			Quantity:          total,
+			BaseCurrency:      "",
+			BaseCurrencyValue: nil,
+		})
+	}
+
+	return assets, nil
+}
+
+// GetPrices returns the latest ticker price for each requested trading pair via
+// GET /api/v3/ticker/price. Symbols not returned by the API (e.g. unsupported
+// pairs like USDTUSDT) are omitted from the map. Pass an empty slice to fetch
+// every pair the exchange tracks.
+func (b *BinanceTradingSystemProvider) GetPrices(symbols []string) (map[string]float64, error) {
+	ctx := context.Background()
+
+	service := b.client.NewListPricesService()
+	if len(symbols) > 0 {
+		service = service.Symbols(symbols)
+	}
+
+	prices, err := service.Do(ctx)
+	if err != nil {
+		return nil, errors.Wrap(errors.ErrCodeOrderFailed, "failed to get prices from Binance", err)
+	}
+
+	out := make(map[string]float64, len(prices))
+
+	for _, p := range prices {
+		price, parseErr := strconv.ParseFloat(p.Price, 64)
+		if parseErr != nil || price <= 0 {
+			continue
+		}
+
+		out[p.Symbol] = price
+	}
+
+	return out, nil
 }
 
 // GetOpenOrders returns all pending/open orders.

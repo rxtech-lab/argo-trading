@@ -28,6 +28,14 @@ type TradingSystemProvider interface {
 	GetOrderStatus(orderID string) (types.OrderStatus, error)
 	// GetAccountInfo returns the current account state including balance, equity, and P&L
 	GetAccountInfo() (types.AccountInfo, error)
+	// GetAssets returns the raw asset balances reported by the broker (free + locked),
+	// without base-currency conversion. Zero-quantity assets are omitted.
+	GetAssets() ([]types.Asset, error)
+	// GetPrices returns the latest price for each requested trading pair, keyed
+	// on the broker's pair symbol (e.g. "BTCUSDT" -> 65000.0). Symbols the broker
+	// does not know are simply omitted from the map. Pass an empty slice to
+	// fetch every pair the broker tracks.
+	GetPrices(symbols []string) (map[string]float64, error)
 	// GetOpenOrders returns all pending/open orders that have not been executed yet
 	GetOpenOrders() ([]types.ExecuteOrder, error)
 	// GetTrades returns executed trades with optional filtering

@@ -6,6 +6,7 @@ import (
 
 	"github.com/rxtech-lab/argo-trading/internal/runtime"
 	tradingprovider "github.com/rxtech-lab/argo-trading/internal/trading/provider"
+	"github.com/rxtech-lab/argo-trading/internal/trading/wallet"
 	"github.com/rxtech-lab/argo-trading/internal/types"
 	"github.com/rxtech-lab/argo-trading/pkg/marketdata/provider"
 	"github.com/rxtech-lab/argo-trading/pkg/strategy"
@@ -79,6 +80,25 @@ const (
 // surfaces matching the reported categories.
 type OnLiveDataChangedCallback func(runID string, categories []LiveTradingDataCategory, finalized bool, sequence int64) error
 
+// Wallet change callbacks are coalesced invalidation hints — they carry no
+// payload and signal that the consumer should re-fetch from the wallet API.
+// They fire only when the underlying value has changed since the previous tick
+// or order event.
+
+// OnOrderChangedCallback fires when an order is placed, filled, or its status
+// otherwise changes.
+type OnOrderChangedCallback func() error
+
+// OnBalanceChangedCallback fires when the combined value of all assets changes.
+type OnBalanceChangedCallback func() error
+
+// OnBuyingPowerChangedCallback fires when the broker-reported buying power changes.
+type OnBuyingPowerChangedCallback func() error
+
+// OnAssetsChangedCallback fires when the set of held assets or their quantities
+// changes.
+type OnAssetsChangedCallback func() error
+
 // LiveTradingCallbacks holds all lifecycle callback functions for the live trading engine.
 // All fields are pointers - nil means no callback will be invoked.
 type LiveTradingCallbacks struct {
@@ -121,6 +141,19 @@ type LiveTradingCallbacks struct {
 	// per-tick batch of persistence writes completes, and once more after the
 	// engine stops with finalized=true.
 	OnLiveDataChanged *OnLiveDataChangedCallback
+
+	// OnOrderChanged signals that the set of orders has changed (placed, filled,
+	// or status update) and the UI should re-fetch from the wallet API.
+	OnOrderChanged *OnOrderChangedCallback
+
+	// OnBalanceChanged signals that the combined value of all assets has changed.
+	OnBalanceChanged *OnBalanceChangedCallback
+
+	// OnBuyingPowerChanged signals that the broker-reported buying power has changed.
+	OnBuyingPowerChanged *OnBuyingPowerChangedCallback
+
+	// OnAssetsChanged signals that the set or quantities of held assets has changed.
+	OnAssetsChanged *OnAssetsChangedCallback
 }
 
 // PrefetchConfig holds configuration for historical data prefetching.
@@ -193,4 +226,10 @@ type LiveTradingEngine interface {
 
 	// GetConfigSchema returns the JSON schema for engine configuration.
 	GetConfigSchema() (string, error)
+
+	// Wallet returns a read-only wallet facade over the currently configured
+	// trading provider. Returns an error if no trading provider has been set.
+	// The wallet is callable outside Run() so the UI can show balance/assets
+	// without an active session.
+	Wallet() (wallet.Wallet, error)
 }

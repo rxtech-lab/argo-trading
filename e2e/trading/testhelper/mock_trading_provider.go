@@ -244,6 +244,67 @@ func (m *MockTradingProvider) GetAccountInfo() (types.AccountInfo, error) {
 	}, nil
 }
 
+// GetAssets returns simulated asset holdings derived from the mock's cash balance
+// and current positions. Zero-quantity assets are omitted.
+func (m *MockTradingProvider) GetAssets() ([]types.Asset, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	assets := make([]types.Asset, 0, len(m.positions)+1)
+
+	if m.balance > 0 {
+		assets = append(assets, types.Asset{
+			Symbol:            "USDT",
+			Quantity:          m.balance,
+			BaseCurrency:      "",
+			BaseCurrencyValue: nil,
+		})
+	}
+
+	for symbol, pos := range m.positions {
+		if pos.TotalLongPositionQuantity <= 0 {
+			continue
+		}
+
+		assets = append(assets, types.Asset{
+			Symbol:            symbol,
+			Quantity:          pos.TotalLongPositionQuantity,
+			BaseCurrency:      "",
+			BaseCurrencyValue: nil,
+		})
+	}
+
+	return assets, nil
+}
+
+// GetPrices returns the current price for each requested symbol from the
+// mock's in-memory price map. Symbols with no recorded price are omitted.
+func (m *MockTradingProvider) GetPrices(symbols []string) (map[string]float64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if len(symbols) == 0 {
+		out := make(map[string]float64, len(m.currentPrice))
+		for symbol, price := range m.currentPrice {
+			if price > 0 {
+				out[symbol] = price
+			}
+		}
+
+		return out, nil
+	}
+
+	out := make(map[string]float64, len(symbols))
+
+	for _, symbol := range symbols {
+		if price, ok := m.currentPrice[symbol]; ok && price > 0 {
+			out[symbol] = price
+		}
+	}
+
+	return out, nil
+}
+
 // GetOpenOrders returns all open orders.
 func (m *MockTradingProvider) GetOpenOrders() ([]types.ExecuteOrder, error) {
 	m.mu.RLock()
