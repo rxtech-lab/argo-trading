@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-muted-fg: var(--muted-foreground);
+  --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
+
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* shadcn semantic tokens */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+}
+
+:root {
+  --radius: 0.85rem;
+
+  /* Deep, slightly blue-teal dark base */
+  --background: #06090e;
+  --foreground: #e8eef6;
+  --surface: #0b1017;
+  --elevated: #10161f;
+
+  --brand: #34d399; /* emerald */
+  --brand-2: #22d3ee; /* cyan */
+
+  --card: #0d131b;
+  --card-foreground: #e8eef6;
+  --popover: #0d131b;
+  --popover-foreground: #e8eef6;
+  --primary: #34d399;
+  --primary-foreground: #05130c;
+  --secondary: #131b25;
+  --secondary-foreground: #e8eef6;
+  --muted: #131b25;
+  --muted-foreground: #8b98a9;
+  --accent: #131b25;
+  --accent-foreground: #e8eef6;
+  --destructive: #f87171;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #34d399;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+  color: #ffffff;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply text-foreground font-sans;
+    background:
+      radial-gradient(
+        1100px 600px at 50% -8%,
+        color-mix(in srgb, var(--brand) 14%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        900px 500px at 85% 8%,
+        color-mix(in srgb, var(--brand-2) 10%, transparent),
+        transparent 55%
+      ),
+      var(--background);
+    background-attachment: fixed;
+  }
+}
+
+@utility glass {
+  background: color-mix(in srgb, #ffffff 3%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+/* Subtle dotted grid used behind hero */
+@utility grid-dots {
+  background-image: radial-gradient(
+    color-mix(in srgb, #ffffff 8%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+}
