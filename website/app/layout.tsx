@@ -27,34 +27,35 @@ const siteUrl =
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "RxArgo — Algorithmic trading, backtested and deployed",
+    default: "RxArgo — Plan, backtest, and trade live",
     template: "%s — RxArgo",
   },
   description:
-    "RxArgo is a desktop app for developing, backtesting, and deploying WASM trading strategies on real market data. Join the private beta waitlist.",
+    "RxArgo is a desktop platform to research what to invest in, backtest your strategy on real market data, and take it live — across asset classes and markets. Join the private beta waitlist.",
   applicationName: "RxArgo",
   keywords: [
     "RxArgo",
     "algorithmic trading",
+    "equity research",
     "backtesting",
+    "live trading",
     "trading strategies",
-    "WASM",
-    "Polygon.io",
-    "Binance",
+    "AI trading",
+    "multi-asset trading",
   ],
   openGraph: {
     type: "website",
     siteName: "RxArgo",
-    title: "RxArgo — Algorithmic trading, backtested and deployed",
+    title: "RxArgo — Plan, backtest, and trade live",
     description:
-      "Develop, backtest, and deploy WASM trading strategies on real market data — from historical backtest to live trading, in one desktop app.",
+      "Research what to invest in, backtest your strategy on real market data, and take it live — across asset classes and markets, in one desktop app.",
     url: siteUrl,
   },
   twitter: {
     card: "summary_large_image",
-    title: "RxArgo — Algorithmic trading, backtested and deployed",
+    title: "RxArgo — Plan, backtest, and trade live",
     description:
-      "Develop, backtest, and deploy WASM trading strategies on real market data — from historical backtest to live trading, in one desktop app.",
+      "Research what to invest in, backtest your strategy on real market data, and take it live — across asset classes and markets, in one desktop app.",
   },
 };
 
