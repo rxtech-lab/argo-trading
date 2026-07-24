@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "RxArgo — Algorithmic trading, backtested and deployed";
+export const alt = "RxArgo — Plan, backtest, and trade live";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -64,10 +64,9 @@ export default function OpengraphImage() {
             letterSpacing: -2.5,
           }}
         >
-          <div style={{ display: "flex" }}>Algorithmic trading,</div>
+          <div style={{ display: "flex" }}>Plan, backtest,</div>
           <div style={{ display: "flex", gap: 22 }}>
-            <span style={{ color: "#34d399" }}>backtested</span>
-            <span>and deployed.</span>
+            <span style={{ color: "#34d399" }}>and trade live.</span>
           </div>
         </div>
 
@@ -80,7 +79,7 @@ export default function OpengraphImage() {
           }}
         >
           <div style={{ display: "flex", fontSize: 26, color: "#8b98a9" }}>
-            WASM strategies · real market data · backtest to live
+            equity research · backtesting · live trading
           </div>
           <div
             style={{

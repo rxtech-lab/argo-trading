@@ -1,10 +1,10 @@
 import {
-  Boxes,
-  Gauge,
-  ShieldCheck,
-  TerminalSquare,
-  Waypoints,
-  Zap,
+  Activity,
+  Globe,
+  History,
+  Layers,
+  Newspaper,
+  Sparkles,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SignInButton } from "@/components/auth-buttons";
@@ -24,42 +24,42 @@ export const dynamic = "force-dynamic";
 
 const FEATURES = [
   {
-    icon: TerminalSquare,
-    title: "WASM strategies",
-    body: "Write in Go, compile to WebAssembly, run in an isolated plugin sandbox over gRPC.",
+    icon: Newspaper,
+    title: "Plan before you invest",
+    body: "Write equity research reports, search the latest news on any name, and turn it into a clear write-up — so you decide what's worth investing in before committing a dollar.",
   },
   {
-    icon: Waypoints,
-    title: "Real market data",
-    body: "Backtest against real Polygon.io and Binance data, stored locally as fast Parquet.",
+    icon: History,
+    title: "Backtest with confidence",
+    body: "Replay your strategy against years of real market data and see how it would have performed before you ever go live.",
   },
   {
-    icon: Gauge,
-    title: "Rich indicators",
-    body: "RSI, MACD, EMA, Bollinger Bands, ATR and more — configured and evaluated by the host.",
+    icon: Activity,
+    title: "Go live",
+    body: "Take the exact strategy you planned and backtested straight to live trading — no rewrites, one platform end to end.",
   },
   {
-    icon: Zap,
-    title: "Fast backtests",
-    body: "A DuckDB-backed engine crunches years of ticks in seconds so you iterate quickly.",
+    icon: Layers,
+    title: "Every asset class",
+    body: "Trade equities, crypto, and more from a single platform — bring the assets you care about together.",
   },
   {
-    icon: ShieldCheck,
-    title: "Isolated & safe",
-    body: "Strategies are stateless and sandboxed. State lives in the host cache, never the plugin.",
+    icon: Globe,
+    title: "Any market",
+    body: "Reach across different markets and venues, so your strategies aren't boxed into one exchange.",
   },
   {
-    icon: Boxes,
-    title: "Backtest to live",
-    body: "Take one strategy from historical simulation to live trading with a single framework.",
+    icon: Sparkles,
+    title: "AI-powered strategies",
+    body: "Build any strategy with AI — different edges, different profit engines. You think it, you get it.",
   },
 ];
 
 const STATS = [
-  ["Go → WASM", "Sandboxed strategies"],
-  ["10+", "Built-in indicators"],
-  ["2", "Market-data providers"],
-  ["1", "Backtest to live"],
+  ["Plan", "Research before you invest"],
+  ["Backtest", "Years of real market data"],
+  ["Live", "Trade in one platform"],
+  ["AI", "Any strategy you imagine"],
 ];
 
 export default async function Home() {
@@ -97,19 +97,19 @@ export default async function Home() {
 
             <Reveal delay={0.05}>
               <h1 className="mx-auto mt-7 max-w-4xl font-display text-5xl font-semibold leading-[1.03] tracking-tight sm:text-6xl md:text-7xl">
-                Algorithmic trading,{" "}
+                Plan, backtest,{" "}
                 <span className="bg-gradient-to-r from-brand to-brand-2 bg-clip-text text-transparent">
-                  backtested
+                  and trade live
                 </span>{" "}
-                and deployed.
+                — all in one place.
               </h1>
             </Reveal>
 
             <Reveal delay={0.1}>
               <p className="mx-auto mt-6 max-w-xl text-lg text-muted-fg">
-                Develop, test, and run WASM trading strategies on real market
-                data — from historical backtest to live trading, in one desktop
-                app.
+                Research what to invest in, backtest your strategy on real market
+                data, and take it live — across asset classes and markets, in one
+                desktop app.
               </p>
             </Reveal>
 
@@ -179,10 +179,10 @@ export default async function Home() {
         <section id="features" className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-28">
           <Reveal className="mx-auto max-w-2xl text-center">
             <span className="font-mono text-xs uppercase tracking-wider text-brand">
-              The framework
+              The platform
             </span>
             <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-              Everything you need to ship a strategy
+              From research to live trading
             </h2>
           </Reveal>
 
