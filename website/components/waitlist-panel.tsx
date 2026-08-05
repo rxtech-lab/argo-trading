@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Check, Clock, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { PRIMARY_CTA } from "@/components/auth-buttons";
+import { PRIMARY_CTA } from "@/lib/styles";
 import { joinWaitlistAction } from "@/app/actions";
 
 export type WaitlistStatus = "none" | "pending" | "approved";

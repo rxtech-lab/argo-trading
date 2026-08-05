@@ -1,13 +1,19 @@
 import {
   Activity,
+  ArrowUpRight,
+  FileSearch,
   Globe,
   History,
   Layers,
+  LineChart,
+  MessagesSquare,
   Newspaper,
   Sparkles,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SignInButton } from "@/components/auth-buttons";
+import { PRIMARY_CTA } from "@/lib/styles";
+import { cn } from "@/lib/utils";
 import { Reveal } from "@/components/reveal";
 import { WindowFrame } from "@/components/window-frame";
 import { ScreenshotShowcase } from "@/components/screenshot-showcase";
@@ -52,6 +58,26 @@ const FEATURES = [
     icon: Sparkles,
     title: "AI-powered strategies",
     body: "Build any strategy with AI — different edges, different profit engines. You think it, you get it.",
+  },
+];
+
+const RESEARCH_URL = "https://finance.bots.rxlab.app/";
+
+const RESEARCH_POINTS = [
+  {
+    icon: LineChart,
+    title: "Live quotes and odds",
+    body: "Equity and crypto prices, historical ranges, and prediction-market odds pulled as the agent works.",
+  },
+  {
+    icon: FileSearch,
+    title: "Filings and news, actually read",
+    body: "It opens SEC filings and full news articles, then cites the exact lines behind every figure.",
+  },
+  {
+    icon: MessagesSquare,
+    title: "Answers in the thread",
+    body: "Charts, tables, and probability bars land inline — keep the write-up as a searchable document.",
   },
 ];
 
@@ -134,6 +160,19 @@ export default async function Home() {
                 Explore the app
               </a>
             </Reveal>
+
+            <Reveal delay={0.2}>
+              <p className="mt-5 text-sm text-muted-fg">
+                Don&apos;t want to wait?{" "}
+                <a
+                  href="#research"
+                  className="font-medium text-brand underline-offset-4 hover:underline"
+                >
+                  Try the research desk in your browser
+                </a>{" "}
+                today.
+              </p>
+            </Reveal>
           </div>
 
           {/* Hero screenshot */}
@@ -174,6 +213,83 @@ export default async function Home() {
             </Reveal>
           </section>
         )}
+
+        {/* ── Research desk (available now, ahead of desktop access) ── */}
+        <section
+          id="research"
+          className="mx-auto max-w-6xl px-5 py-16 md:px-8 md:py-20"
+        >
+          <Reveal className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] px-6 py-12 md:px-12 md:py-14">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-20 -top-24 -z-10 size-80 opacity-60 blur-3xl"
+              style={{
+                background:
+                  "radial-gradient(50% 50% at 50% 50%, rgba(34,211,238,0.22), transparent 70%)",
+              }}
+            />
+
+            <div className="grid gap-10 lg:grid-cols-2 lg:items-center lg:gap-14">
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3 py-1 font-mono text-xs uppercase tracking-wider text-brand">
+                  Available now
+                </span>
+                <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+                  Start with the research desk
+                </h2>
+                <p className="mt-5 text-muted-fg">
+                  Waiting on desktop access? The research half of the platform is
+                  already live on the web. Ask the Intelligence Desk anything
+                  about a name — it pulls live quotes, reads the filings and the
+                  news, and answers with sources you can check.
+                </p>
+                <p className="mt-4 text-sm text-muted-fg">
+                  Same RxLab sign-in you use here. Nothing to install.
+                </p>
+
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <a
+                    href={RESEARCH_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(PRIMARY_CTA, "whitespace-nowrap")}
+                  >
+                    Try the research desk
+                    <ArrowUpRight className="size-4" strokeWidth={2.5} />
+                  </a>
+                  {!user && (
+                    <SignInButton
+                      label="Join the waitlist"
+                      className="whitespace-nowrap border border-white/12 bg-transparent text-foreground/90 shadow-none hover:bg-white/5 hover:shadow-none"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4">
+                {RESEARCH_POINTS.map((p, i) => (
+                  <Reveal
+                    key={p.title}
+                    index={i}
+                    className="flex gap-4 rounded-2xl border border-white/8 bg-white/[0.02] p-5"
+                  >
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-brand/20 bg-brand/10 text-brand">
+                      <p.icon className="size-5" strokeWidth={1.75} />
+                    </div>
+                    <div>
+                      <h3 className="font-display text-base font-semibold tracking-tight">
+                        {p.title}
+                      </h3>
+                      <p className="mt-1.5 text-sm leading-relaxed text-muted-fg">
+                        {p.body}
+                      </p>
+                    </div>
+                  </Reveal>
+                ))}
+              </div>
+            </div>
+          </Reveal>
+        </section>
 
         {/* ── Features ── */}
         <section id="features" className="mx-auto max-w-6xl px-5 py-20 md:px-8 md:py-28">
